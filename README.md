@@ -1,0 +1,434 @@
+# 施工项目月报管理系统
+
+基于 Supabase + 原生 HTML/CSS/JS 的施工项目月报报送与汇总管理系统。
+
+## 功能概述
+
+- **部门独立账号**：每个部门使用独立账号登录，数据互相隔离
+- **多种登录方式**：支持 **邮箱 / 部门名称 / 部门编码** 三种方式登录（如：`dept01@company.com`、`工程一部`、`DEPT-01`）
+- **账户自助设置**：每个账号可自行修改**登录邮箱**和**密码**（页面右上角「账户设置」）
+- **月度项目报送**：部门用户按月报送施工项目情况（可多个项目）
+- **管理员仪表盘**：查看哪些部门已报送/未报送，汇总所有报送数据
+- **一键导出 CSV**：将汇总表导出为 Excel 兼容的 CSV 文件
+- **账号管理**：管理员在页面上直接新增/编辑/删除部门账号（含修改邮箱、姓名、部门、密码）
+- **部门管理**：管理员在页面上直接新增/编辑/删除公司部门（修改部门名称、调整排序）
+- **报送表格配置**：管理员可统一修改部门填报的各类字段——**系统内置字段**（改名/必填/排序/启停）与**自定义字段**（自由增/删/改），报送表单、汇总表、CSV 导出全部自动同步
+- **行级安全 (RLS)**：基于 Supabase RLS 实现部门数据隔离，安全可靠
+
+## 文件结构
+
+```
+project-reporting/
+├── index.html          # 主入口页面
+├── vendor/
+│   └── supabase.min.js # Supabase JS SDK（本地文件，无需 CDN）
+├── css/
+│   └── style.css       # 全部样式
+├── js/
+│   ├── config.js       # Supabase 配置（需修改）
+│   ├── utils.js        # 工具函数（Toast、日期、CSV导出等）
+│   ├── auth.js         # 认证模块（多方式登录/登出/会话/改密/改邮箱）
+│   ├── reporter.js     # 部门报送模块（表单/列表/编辑/删除/动态字段）
+│   ├── admin.js        # 管理员仪表盘（报送概览/汇总表/导出/账号/部门/报送配置）
+│   ├── account.js      # 账户设置模块（自助修改邮箱与密码）
+│   └── app.js          # 应用入口（初始化/路由/登录页）
+├── sql/
+│   ├── schema.sql             # 完整数据库 Schema（含 RLS 策略）
+│   ├── fix.sql                # 登录报错一键修复脚本（幂等可重复执行）
+│   ├── assign-department.sql  # 账号部门分配脚本（诊断+分配+管理员设置）
+│   ├── user-management.sql    # 账号管理 RPC 函数（增/改/删账号，需执行）
+│   ├── department-management.sql # 部门管理 RPC 函数（增/改/删部门，需执行）
+│   ├── login-account.sql      # 多方式登录解析 + 自助改邮箱 RPC（需执行）
+│   └── form-config.sql        # 报送配置：项目类型 + 报送字段（内置/自定义）+ custom_data（需执行）
+└── README.md           # 本文件
+```
+
+## 常见问题排查
+
+### Q1：登录后提示"用户信息获取失败，请联系管理员"
+
+**原因**：账号密码验证通过，但查询用户配置表 `profiles` 时失败。常见三种：
+
+| 原因 | 说明 |
+|------|------|
+| SQL 未完整执行 | `profiles` 表不存在 → 提示"数据表不存在" |
+| 先建账号后执行 SQL | 触发器 `on_auth_user_created` 未生效，`profiles` 表中没有该用户记录 |
+| RLS 策略缺失 | 查询被行级安全策略拒绝 → 提示"权限不足" |
+
+**解决办法（1 分钟）**：
+
+1. 打开 Supabase 控制台 → **SQL Editor**
+2. 复制 `sql/fix.sql` 全部内容执行
+3. 脚本会自动：诊断缺失情况 → 补建表/触发器 → **为所有已有账号自动补插 profile 记录** → 重建 RLS 策略 → 复诊确认
+4. 修复完成后，重新登录即可
+
+> 新版前端会直接显示具体错误原因（如"数据库中没有找到该用户的配置记录"），按提示处理即可。
+
+### Q2：提示"您的账号尚未分配部门"
+
+**原因**：账号已通过认证、profile 记录也存在，但 `department_id` 为空（常见于 `fix.sql` 补插的 profile，默认未分配部门）。
+
+**推荐操作**：到 SQL Editor 执行 **`sql/assign-department.sql`**（含诊断查询 + 分配命令 + 管理员设置 + 结果确认），按提示替换邮箱和部门名称即可。
+
+**快速手动分配**（替换邮箱为实际邮箱）：
+
+```sql
+UPDATE public.profiles
+SET department_id = (SELECT id FROM public.departments WHERE name = '工程一部')
+WHERE email = 'dept01@example.com';
+```
+
+**注意事项**：
+- 管理员账号（`role = 'admin'`）**不需要**分配部门，登录后直接进入管理仪表盘
+- 若该账号本就是管理员，可改为执行：`UPDATE public.profiles SET role = 'admin' WHERE email = '...'`
+
+### Q3：刷新后报"Cannot destructure property 'user'"
+
+旧版初始化 bug，已修复。请 **Ctrl+Shift+R 强制刷新**（清缓存）。
+
+### Q4：页面一直显示"系统加载中"
+
+按 **F12** 打开控制台查看红色报错，将报错内容发给我排查。常见原因是 Supabase 配置未填或网络无法访问 Supabase 服务。
+
+### Q5：提示"邮箱或密码错误"
+
+**说明**：Supabase 出于安全考虑，账号不存在与密码错误返回相同提示。按顺序排查：
+
+1. **确认项目地址正确**：`js/config.js` 中的 `SUPABASE_URL` 是否是你**当前操作**的那个 Supabase 项目的地址（如有多个项目容易配错）
+2. **确认账号已创建**：Supabase 控制台 → **Authentication → Users**，看目标邮箱是否在列表里
+3. **确认密码正确**：若不确定，在 Users 页点该用户 → **"..." → Reset password** 设置新密码
+4. **确认邮箱已验证**：Authentication → Settings 中若开启了 **Confirm email**，新用户必须点击确认邮件后才能登录
+5. **检查邮箱是否写错**：创建账号时的邮箱与登录时输入必须完全一致（注意大小写与空格）
+
+**快速诊断**：到 SQL Editor 执行以下 SQL，查看账号是否已创建、密码是否已设置、是否已验证：
+
+```sql
+SELECT email, created_at,
+       encrypted_password IS NOT NULL AS "已设置密码",
+       email_confirmed_at IS NOT NULL AS "邮箱已验证"
+FROM auth.users
+ORDER BY created_at DESC;
+```
+
+如果该邮箱**不在结果中** → 说明账号从未创建成功，请重新在 Users 页面创建；
+如果在但**"邮箱已验证"为 false** → 去邮箱点击确认链接（或在 Authentication → Settings 关闭 Confirm email 并重新创建账号）。
+
+### Q6：提示"infinite recursion detected in policy for relation profiles（42P17）"
+
+**原因**：旧版 schema 的"管理员可查看所有 profile"策略在 `profiles` 表上又查询 `profiles` 表自身，PostgreSQL 检测到无限递归。
+
+**已修复**：新版将管理员判断封装为 `public.is_admin()` 函数（SECURITY DEFINER，绕过 RLS 不再递归），两个 SQL 文件均已更新。
+
+**操作**：到 SQL Editor 重新执行 **`sql/fix.sql`** 即可（幂等，自动重建 `is_admin()` 函数与策略），然后重新登录。
+
+## 部署步骤
+
+### 第一步：创建 Supabase 项目
+
+1. 访问 [https://supabase.com](https://supabase.com) 注册并创建新项目
+2. 记下 **Project URL** 和 **anon public key**（Settings → API）
+
+### 第二步：执行数据库 Schema
+
+1. 进入 Supabase 控制台 → **SQL Editor**
+2. 复制 `sql/schema.sql` 的全部内容并粘贴
+3. 点击 **Run** 执行
+4. 执行后自动创建：
+   - `departments` 部门表（含 24 个部门种子数据）
+   - `profiles` 用户配置表
+   - `project_reports` 项目报送表
+   - RLS 行级安全策略
+   - 触发器（注册自动创建 profile、自动更新时间戳）
+   - `v_monthly_summary` 汇总视图
+
+### 第三步：配置认证
+
+1. 进入 Supabase 控制台 → **Authentication → Providers**
+2. 确保 **Email** 已启用
+3. 进入 **Authentication → Settings**：
+   - 建议关闭 **"Enable email sign-ups"**（关闭公开注册，仅管理员创建账号）
+   - 或保持开启，自行控制注册
+
+### 第四步：创建用户账号
+
+#### 方式 A：在 Supabase 控制台创建（推荐）
+
+1. 进入 **Authentication → Users → Add user → Create new user**
+2. 输入部门邮箱和密码（如 `dept01@company.com` / `Pass1234!`）
+3. 重复为每个部门创建账号
+
+#### 方式 B：用 SQL 批量创建
+
+```sql
+-- 创建用户（会自动生成 profile 记录）
+-- 注意：auth.admin.create_user 需要在 SQL Editor 中以 service_role 执行
+-- 或直接在 Authentication 页面创建用户
+SELECT id, email FROM auth.users ORDER BY created_at;
+```
+
+### 第五步：分配部门与设置管理员
+
+```sql
+-- 将用户分配到对应部门（替换邮箱为实际邮箱）
+UPDATE public.profiles
+SET department_id = (SELECT id FROM public.departments WHERE name = '工程一部'),
+    full_name = '张三'
+WHERE email = 'dept01@company.com';
+
+-- 设置管理员账号
+UPDATE public.profiles
+SET role = 'admin', full_name = '系统管理员'
+WHERE email = 'admin@company.com';
+
+-- 查看所有用户分配情况
+SELECT p.email, p.full_name, p.role, d.name AS department_name
+FROM public.profiles p
+LEFT JOIN public.departments d ON d.id = p.department_id
+ORDER BY p.role DESC, d.sort_order;
+```
+
+> 💡 也可以到 SQL Editor 执行 **`sql/assign-department.sql`**（诊断 + 分配 + 确认一条龙）。
+
+### 第五点五步：启用页面账号管理功能
+
+管理员在页面直接新增/编辑/删除部门账号，需要先执行账号管理 RPC 函数：
+
+1. 到 Supabase 控制台 → **SQL Editor**
+2. 复制 `sql/user-management.sql` 的全部内容并粘贴执行
+3. 执行后管理员登录系统 → 仪表盘出现 **"账号管理"** 标签页，即可在页面中：
+   - **新增账号**：邮箱 + 密码 + 姓名 + 部门 + 角色
+   - **编辑账号**：修改邮箱（登录名）、姓名、所属部门、角色、重置密码
+   - **删除账号**：确认后删除（历史报送记录保留）
+
+> 安全说明：该功能基于 SECURITY DEFINER 数据库函数实现，函数内部校验调用者必须是管理员，前端仅使用 anon key，不会暴露任何密钥。
+
+### 第五点六步：启用页面部门管理功能
+
+管理员在页面直接新增/编辑/删除公司部门，需要先执行部门管理 RPC 函数：
+
+1. 到 Supabase 控制台 → **SQL Editor**
+2. 复制 `sql/department-management.sql` 的全部内容并粘贴执行
+3. 执行后管理员登录系统 → 仪表盘出现 **"部门管理"** 标签页，即可在页面中：
+   - **新增部门**：填写部门名称 + 排序号（不填自动排到最后），部门编码自动生成
+   - **编辑部门**：修改部门名称、调整排序号
+   - **删除部门**：确认后删除；**该部门下存在账号或报送记录时会被阻止**（防止历史数据丢失）
+
+> ⚠️ 删除保护说明：报送记录表的外键是 `ON DELETE CASCADE`，直接删除部门会连带删除全部历史报送数据。因此函数内置了检查——部门下有任何账号或报送记录都会拒绝删除并提示原因。确需删除时，请先转移/删除该部门账号，并确认历史报送数据可舍弃。
+
+### 第五点七步：启用多方式登录与自助账户设置
+
+登录支持 **邮箱 / 部门名称 / 部门编码** 三种方式，且每个账号可自助修改邮箱和密码，需要先执行：
+
+1. 到 Supabase 控制台 → **SQL Editor**
+2. 复制 `sql/login-account.sql` 的全部内容并粘贴执行（幂等，可重复执行）
+3. 执行后：
+   - **登录页**：账号框可直接输入邮箱（`dept01@company.com`）、**部门名称**（`工程一部`）或**部门编码**（`DEPT-01`）
+   - **账户设置**：登录后点击页面右上角 **「账户设置」** 按钮，可自行 **修改登录邮箱** 或 **修改密码**
+     - 修改邮箱后需使用新邮箱重新登录；新邮箱不能被其他账号占用
+     - 修改密码后其他登录设备将退出，下次登录请使用新密码
+
+> 说明：部门名称/编码登录时，系统自动解析为**该部门下的报送账号**邮箱进行密码认证；若该部门下没有账号，会提示联系管理员。
+
+### 第五点八步：启用报送配置功能（项目类型 + 报送字段管理）
+
+管理员可以在页面统一配置**默认项目报送表格**的全部内容：**项目类型选项**（增/改/删/停用）和**报送字段**（系统内置字段 + 自定义字段，均可改名/改必填/改排序/启停，自定义字段可增删），需要先执行：
+
+1. 到 Supabase 控制台 → **SQL Editor**
+2. 复制 `sql/form-config.sql` 的全部内容并粘贴执行（幂等，可重复执行）
+3. 执行后：
+   - 新建 `project_types`（项目类型表，自动内置 13 个默认类型）与 `report_fields`（报送字段配置表）
+   - `report_fields` 表自动写入 **16 个系统内置字段**（`is_builtin = true`，对应 `project_reports` 表的固定列，即"默认项目报送表格"）
+   - `project_reports` 表自动增加 `custom_data`（JSONB）列，用于保存自定义字段的值
+   - 管理员登录后，仪表盘出现 **「报送配置」** 标签页，可：
+     - **项目类型**：新增 / 编辑 / 停用 / 删除类型（已被报送记录使用的类型不能删除）
+     - **报送字段**：
+       - **系统内置字段**（16 个，如项目名称、项目类型、合同额、现场人数、安全隐患等）：可修改**显示名称 / 是否必填 / 排序 / 启用状态**；**类型由数据库列决定不可修改，也不可删除**（可停用，停用后从报送表单和汇总表中隐藏，历史数据完整保留）
+       - **自定义字段**：新增字段（选择 文本/数字/多行文本/下拉选择/日期 类型，可设必填与排序），编辑或删除
+   - 配置生效后：
+     - 部门报送表单按字段配置动态渲染（内置字段在基本信息区、自定义字段在附加数据区）
+     - 管理员汇总明细表与 CSV 导出自动同步字段列
+
+> **旧库升级**：已执行过旧版 `form-config.sql`（仅有项目类型 + 自定义字段）的库，**再次执行最新版脚本即可完成升级**——自动补充 `is_builtin` 列、写入 16 个内置字段种子（`ON CONFLICT DO NOTHING`，不覆盖你已有的自定义字段与已改配置）。
+
+> 兼容性：未执行本脚本（或配置表为空）时，系统自动回退到内置的默认报送表格，报送功能不受影响。
+
+### 第六步：配置前端
+
+1. 打开 `js/config.js`
+2. 替换为你的 Supabase 凭据：
+
+```js
+const SUPABASE_URL = 'https://你的项目ID.supabase.co';
+const SUPABASE_ANON_KEY = '你的 anon public key';
+```
+
+### 第七步：部署前端
+
+将 `project-reporting/` 整个目录（**包括 `vendor/` 文件夹**）上传到任意静态托管服务：
+
+- **Netlify**：拖拽文件夹到 [app.netlify.com/drop](https://app.netlify.com/drop)
+- **Vercel**：`npx vercel --prod`
+- **GitHub Pages**：上传到仓库后开启 Pages
+- **本地预览**：直接用浏览器打开 `index.html`
+- **腾讯云 EdgeOne**：上传到 EdgeOne Pages
+
+> 说明：Supabase JS SDK 已内置在 `vendor/supabase.min.js` 中，无需从 CDN 加载，国内网络环境下也能正常使用。
+
+## 使用说明
+
+### 部门用户
+
+1. 登录方式（三选一）：**邮箱**、**部门名称**（如 `工程一部`）、**部门编码**（如 `DEPT-01`），配合密码登录
+2. 选择报送年份和月份（默认当前月）
+3. 点击「新建项目报送」填写项目信息
+4. 可编辑或删除本月已提交的记录
+5. 可切换月份查看历史报送记录
+6. 点击右上角 **「账户设置」** 可自助：
+   - **修改登录邮箱**：改为其他邮箱（不能被其他账号占用），修改后需重新登录
+   - **修改密码**：设置新密码（至少 6 位），其他登录设备将退出
+
+### 管理员
+
+1. 使用管理员账号登录
+2. 选择查看的年份和月份
+3. 查看统计概览：部门总数、已报送数、未报送数、合同总额等
+4. 查看**部门报送状态**（紧凑网格卡片，绿色=已报送、红色=未报送，支持「全部/已报送/未报送」一键筛选）
+5. 查看汇总明细表（包含所有报送项目的完整信息；配置了自定义字段时自动增加对应列）
+6. 点击「导出汇总表 (CSV)」一键导出 Excel 兼容文件（含自定义字段列）
+7. 切换到「账号管理」标签页，可在页面直接：
+   - **新增账号**：填写邮箱、密码、姓名、所属部门、角色后创建
+   - **编辑账号**：修改登录邮箱、账号名称、所属部门、角色，或重置密码（留空不修改）
+   - **删除账号**：确认后删除，该账号历史报送记录保留
+   - 当前登录的管理员账号不允许在页面中修改或删除（防止误操作锁死系统）
+8. 切换到「部门管理」标签页，可在页面直接：
+   - **新增部门**：填写部门名称、排序号（不填自动排最后），部门编码自动生成
+   - **编辑部门**：修改部门名称、调整排序号（数字越小越靠前）
+   - **删除部门**：确认后删除；部门下存在账号或报送记录时会被系统阻止并提示原因
+9. 切换到「报送配置」标签页，可配置报送表格内容：
+   - **项目类型**：新增类型 / 编辑名称与排序 / 停用（不显示在表单）/ 删除（已被报送记录使用的类型会被阻止）
+   - **报送字段**（即"默认项目报送表格"的全部字段，可统一增/删/改）：
+     - **系统内置字段**（16 个，如项目名称、合同额、现场人数等）：可修改**显示名称 / 是否必填 / 排序 / 启用状态**；类型与数据库列绑定**不可修改**，**不可删除**（可停用隐藏，历史数据保留）
+     - **自定义字段**：新增字段（字段名称 + 类型：文本/数字/多行文本/下拉选择/日期 + 必填/选填 + 排序），编辑或删除；值保存在 `custom_data` 中
+   - 配置自动生效：部门报送表单、管理端汇总表与 CSV 导出都会按字段配置同步更新
+
+## 数据字段
+
+| 字段 | 说明 |
+|------|------|
+| 项目名称 | 施工项目名称 |
+| 项目类型 | 房屋建筑/市政/公路/水利/电力/通信/机电安装/装饰装修/园林绿化/环保/钢结构/基础设施/其他 |
+| 施工地点 | 项目施工地点 |
+| 合同额（万元） | 项目合同金额 |
+| 工期（月） | 项目总工期月数 |
+| 项目归属部门或实体 | 项目所属部门或实体 |
+| 项目负责人 | 项目负责人姓名 |
+| 联系方式 | 电话或邮箱 |
+| 项目整体进度情况 | 如"已完成总工程量的60%" |
+| 本月项目施工情况 | 本月施工内容描述 |
+| 设备型号及数量 | 如"挖掘机 CAT320 x1, 吊车 QY25 x2" |
+| 现场人数 | 现场施工人员数量 |
+| 现场车辆数 | 现场施工车辆数量 |
+| 是否进行安全自检 | 是/否 |
+| 是否存在安全隐患 | 是/否（存在时需填写隐患详情） |
+| custom_data | 自定义字段值（JSONB，由「报送配置」中的字段决定，可为空） |
+
+## 数据库表结构
+
+### project_types（报送配置：项目类型选项）
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| name | TEXT | 类型名称（唯一） |
+| sort_order | INTEGER | 排序序号 |
+| is_active | BOOLEAN | 是否启用（停用后不出现在报送表单） |
+
+### report_fields（报送配置：报送字段 = 内置 + 自定义）
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| field_key | TEXT | 字段标识（内置字段 = 数据库列名；自定义字段自动生成，如 f_3a5f2c91） |
+| label | TEXT | 显示名称 |
+| field_type | TEXT | text / number / textarea / select / date |
+| options | JSONB | 下拉选择选项数组 |
+| is_required | BOOLEAN | 是否必填 |
+| sort_order | INTEGER | 排序序号 |
+| is_active | BOOLEAN | 是否启用 |
+| is_builtin | BOOLEAN | 是否系统内置字段（内置字段不可删除/不可改类型，仅可改名称/必填/排序/启停） |
+
+### departments
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| name | TEXT | 部门名称（唯一） |
+| code | TEXT | 部门编码（唯一） |
+| sort_order | INTEGER | 排序序号 |
+
+### profiles
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键（关联 auth.users.id） |
+| email | TEXT | 邮箱 |
+| department_id | UUID | 部门ID（外键） |
+| role | TEXT | 角色：admin / reporter |
+| full_name | TEXT | 姓名 |
+
+### project_reports
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| department_id | UUID | 部门ID（外键） |
+| project_name | TEXT | 项目名称 |
+| project_type | TEXT | 项目类型 |
+| construction_location | TEXT | 施工地点 |
+| contract_amount | DECIMAL(14,2) | 合同额（万元） |
+| duration_months | INTEGER | 工期（月） |
+| department_entity | TEXT | 项目归属部门或实体 |
+| project_manager | TEXT | 项目负责人 |
+| contact_info | TEXT | 联系方式 |
+| overall_progress | TEXT | 项目整体进度情况 |
+| monthly_construction_status | TEXT | 本月项目施工情况 |
+| equipment_models | TEXT | 设备型号及数量 |
+| on_site_personnel | INTEGER | 现场人数 |
+| on_site_vehicles | INTEGER | 现场车辆数 |
+| safety_inspection | BOOLEAN | 是否进行安全自检 |
+| safety_hazards | BOOLEAN | 是否存在安全隐患 |
+| safety_hazard_detail | TEXT | 隐患详情 |
+| reporting_year | INTEGER | 报送年份 |
+| reporting_month | INTEGER | 报送月份 |
+| submitted_by | UUID | 提交人ID |
+| submitted_at | TIMESTAMPTZ | 提交时间 |
+
+## 安全机制
+
+- **行级安全 (RLS)**：用户只能查看/修改本部门的报送记录
+- **管理员权限**：管理员可查看所有部门的报送数据
+- **认证隔离**：每个部门使用独立邮箱账号，互不干扰
+- **自动 Profile**：用户注册自动创建配置记录（触发器）
+
+## 常见问题
+
+### Q: 如何修改部门列表？
+A: 在 Supabase SQL Editor 中执行：
+```sql
+-- 添加新部门
+INSERT INTO public.departments (name, code, sort_order)
+VALUES ('新部门名称', 'DEPT-25', 25);
+
+-- 修改部门名称
+UPDATE public.departments SET name = '新名称' WHERE code = 'DEPT-01';
+
+-- 删除部门（注意：关联数据也会受影响）
+-- DELETE FROM public.departments WHERE code = 'DEPT-24';
+```
+
+### Q: 忘记密码怎么办？
+A: 在 Supabase 控制台 → Authentication → Users 页面，对应用户点击「...」→ Send password recovery 或直接重置密码。
+
+### Q: 一个部门可以有多个账号吗？
+A: 可以。创建多个用户后将它们的 `department_id` 设为同一个部门即可。
+
+### Q: 如何增加或修改表单字段？
+A: 管理员登录后在 **「报送配置」** 标签页操作（需先执行 `sql/form-config.sql`）：
+- **增加字段**：在「报送字段」中点「新增字段」，选择类型（文本/数字/多行文本/下拉选择/日期）并保存，报送表单、汇总表、CSV 导出自动同步
+- **修改字段**：可修改显示名称、是否必填、排序、启用状态；**系统内置字段**（对应数据库固定列）的类型不可修改，自定义字段的类型可随时修改
+- **删除字段**：自定义字段可直接删除；内置字段不可删除（防止表结构损坏与历史数据丢失），改为「停用」即可从报送表格中隐藏
