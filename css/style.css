@@ -791,3 +791,136 @@ input[disabled] {
   margin: 16px 0;
 }
 
+/* ----- 部门报送：搜索框 + 详情展示 ----- */
+.toolbar-search {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border-dark);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  outline: none;
+  min-width: 220px;
+}
+.toolbar-search:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+/* 详情弹窗：字段网格（label + value 只读展示） */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 24px;
+}
+.detail-grid .detail-item.col-span-2 { grid-column: span 2; }
+.detail-item .detail-label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-bottom: 2px;
+}
+.detail-item .detail-value {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  word-break: break-word;
+}
+.detail-text {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin-top: 2px;
+}
+.detail-empty { color: var(--color-text-light); }
+
+@media (max-width: 768px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .detail-grid .detail-item.col-span-2 { grid-column: span 1; }
+  .toolbar-search { min-width: 100%; }
+}
+
+/* ==========================================================================
+   项目视角（在建 / 已完工 / 历史对比）
+   ========================================================================== */
+.project-tabs-wrap {
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.project-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.project-tabs .chip {
+  border: 1px solid var(--color-border-dark);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  line-height: 1.5;
+  transition: all 0.15s ease;
+}
+
+.project-tabs .chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+.project-tabs .chip.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.project-tabs .chip-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.project-tabs .chip.active .chip-count {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 历史对比：数值变化标注 */
+.trend-up   { color: var(--color-danger);  font-weight: 600; margin-left: 2px; }
+.trend-down { color: var(--color-success); font-weight: 600; margin-left: 2px; }
+.trend-flat { color: var(--color-text-light); margin-left: 2px; }
+
+/* 单元格内容截断（悬停显示完整内容） */
+.cell-ellipsis {
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 大尺寸弹窗（历史对比） */
+.modal-lg { max-width: 980px; width: 94%; }
+
+/* 历史对比表紧凑化 */
+.compare-table td,
+.compare-table th {
+  padding: 7px 10px;
+  font-size: 0.8125rem;
+}
+
+.compare-table td:first-child { white-space: nowrap; }
+
+/* 完工项目详情页代码提示 */
+.alert code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+}
+
+

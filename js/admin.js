@@ -6,11 +6,12 @@
 const Admin = {
 
   state: {
-    view: 'reports',          // 'reports' | 'users' | 'departments' | 'config'
+    view: 'reports',          // 'reports' | 'completed' | 'users' | 'departments' | 'config'
     year: null,
     month: null,
     departments: [],
     reports: [],
+    completedProjects: [],    // 已完工项目（按项目归并，取最近一次完工报送）
     users: [],
     usersLoaded: false,
     departmentsLoaded: false,
@@ -58,6 +59,10 @@ const Admin = {
             <div id="admin-status"></div>
             <div id="admin-summary"></div>
           </div>
+          <!-- 完工项目汇总视图 -->
+          <div id="admin-completed-view" style="display:none;">
+            <div id="admin-completed-content"></div>
+          </div>
           <!-- 账号管理视图 -->
           <div id="admin-users-view" style="display:none;">
             <div id="admin-users-content"></div>
@@ -78,6 +83,7 @@ const Admin = {
   buildTabs() {
     const views = [
       { key: 'reports',     label: '报送管理' },
+      { key: 'completed',   label: '完工项目' },
       { key: 'users',       label: '账号管理' },
       { key: 'departments', label: '部门管理' },
       { key: 'config',      label: '报送配置' },
@@ -103,17 +109,21 @@ const Admin = {
     if (btn) btn.classList.add('active');
 
     const reportsView = document.getElementById('admin-reports-view');
+    const completedView = document.getElementById('admin-completed-view');
     const usersView = document.getElementById('admin-users-view');
     const deptsView = document.getElementById('admin-departments-view');
     const configView = document.getElementById('admin-config-view');
-    if (!reportsView || !usersView || !deptsView || !configView) return;
+    if (!reportsView || !completedView || !usersView || !deptsView || !configView) return;
 
     reportsView.style.display = view === 'reports' ? '' : 'none';
+    completedView.style.display = view === 'completed' ? '' : 'none';
     usersView.style.display = view === 'users' ? '' : 'none';
     deptsView.style.display = view === 'departments' ? '' : 'none';
     configView.style.display = view === 'config' ? '' : 'none';
 
-    if (view === 'users') {
+    if (view === 'completed') {
+      await this.loadCompletedProjects();
+    } else if (view === 'users') {
       if (!this.state.usersLoaded) {
         await this.loadUsers();
       } else {
@@ -516,6 +526,249 @@ const Admin = {
     const filename = `施工项目月报汇总_${this.state.year}年${this.state.month}月.csv`;
     Utils.exportCSV(exportData, filename, columns);
     Utils.toast(`已导出 ${reports.length} 条记录`, 'success');
+  },
+
+  // ========================================================================
+  // 完工项目汇总（全部部门已完工项目）
+  // ========================================================================
+
+  /**
+   * 加载全部已完工项目
+   * 查询所有报送记录中 project_status = 'completed' 的记录，
+   * 按 部门+项目名称+施工地点 归并为项目，取最近一次完工报送。
+   * 旧库未执行 project-status.sql（列不存在）时给出明确升级提示。
+   */
+  async loadCompletedProjects() {
+    const container = document.getElementById('admin-completed-content');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h2>已完工项目汇总</h2></div>
+        <div class="card-body">
+          <div class="empty-state"><div class="spinner" style="margin:0 auto;"></div><p style="margin-top:12px;">加载中...</p></div>
+        </div>
+      </div>
+    `;
+
+    const res = await sb.from('project_reports')
+      .select('*, departments(name, code)')
+      .eq('project_status', 'completed')
+      .order('reporting_year', { ascending: false })
+      .order('reporting_month', { ascending: false });
+
+    if (res.error) {
+      // 旧库未执行 project-status.sql：列不存在 → 明确提示升级
+      const isMissingColumn = res.error.code === '42703' || res.error.code === 'PGRST204'
+        || /project_status/.test(res.error.message || '');
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-header"><h2>已完工项目汇总</h2></div>
+          <div class="card-body">
+            <div class="alert ${isMissingColumn ? 'alert-warning' : 'alert-danger'}">
+              ${isMissingColumn
+                ? '当前数据库尚未启用「项目状态」功能。请在 Supabase SQL Editor 中执行 <code>sql/project-status.sql</code>，刷新本页后即可查看全部部门已完工项目。'
+                : '加载失败：' + Utils.escapeHtml(res.error.message)}
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // 按 部门+项目名称+施工地点 归并（查询结果已按年月倒序，Map 首次放入的即最新一次）
+    const map = new Map();
+    for (const r of res.data || []) {
+      const key = r.department_id + '|' + String(r.project_name) + '|' + String(r.construction_location || '');
+      if (!map.has(key)) map.set(key, r);
+    }
+    const projects = [...map.values()]
+      .sort((a, b) => (b.reporting_year - a.reporting_year) || (b.reporting_month - a.reporting_month));
+
+    this.state.completedProjects = projects;
+    this.renderCompletedTable(projects);
+  },
+
+  /**
+   * 渲染完工项目汇总表
+   */
+  renderCompletedTable(projects) {
+    const container = document.getElementById('admin-completed-content');
+    if (!container) return;
+
+    const totalAmount = projects.reduce((s, p) => s + Number(p.contract_amount || 0), 0);
+    const deptCount = new Set(projects.map(p => p.department_id)).size;
+
+    container.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">已完工项目数</div>
+          <div class="stat-value">${projects.length}</div>
+        </div>
+        <div class="stat-card success">
+          <div class="stat-label">涉及部门</div>
+          <div class="stat-value">${deptCount}</div>
+        </div>
+        <div class="stat-card warning">
+          <div class="stat-label">完工项目合同总额（万元）</div>
+          <div class="stat-value">${totalAmount.toLocaleString('zh-CN', {maximumFractionDigits: 2})}</div>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <span class="toolbar-hint">全部部门已完工项目汇总（按项目归并，取最近一次完工报送）</span>
+        </div>
+        <div class="toolbar-right">
+          <button class="btn btn-secondary" onclick="Admin.exportCompletedCSV()">导出完工项目表 (CSV)</button>
+          <button class="btn btn-secondary" onclick="Admin.loadCompletedProjects()">刷新</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h2>已完工项目汇总（共 ${projects.length} 个）</h2>
+        </div>
+        <div class="card-body">
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>序号</th>
+                  <th>报送部门</th>
+                  <th>项目名称</th>
+                  <th>项目类型</th>
+                  <th>施工地点</th>
+                  <th>合同额(万元)</th>
+                  <th>完工报送月份</th>
+                  <th>报送时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${projects.length === 0 ? `
+                  <tr class="empty-row"><td colspan="9">暂无已完工项目</td></tr>
+                ` : projects.map((p, i) => this.renderCompletedRow(p, i)).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  renderCompletedRow(p, index) {
+    const deptName = p.departments ? p.departments.name : '-';
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${Utils.escapeHtml(deptName)}</td>
+        <td><strong>${Utils.escapeHtml(p.project_name)}</strong></td>
+        <td>${Utils.escapeHtml(p.project_type)}</td>
+        <td>${Utils.escapeHtml(p.construction_location)}</td>
+        <td>${Utils.formatAmount(p.contract_amount)}</td>
+        <td>${p.reporting_year}年${p.reporting_month}月</td>
+        <td style="white-space:nowrap;">${Utils.formatDateTime(p.submitted_at)}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-secondary btn-sm" onclick="Admin.showCompletedDetail('${p.id}')">查看</button>
+        </td>
+      </tr>
+    `;
+  },
+
+  /**
+   * 完工项目详情弹窗（展示该条完工报送记录的全部配置字段）
+   */
+  showCompletedDetail(id) {
+    const r = this.state.completedProjects.find(x => x.id === id);
+    if (!r) {
+      Utils.toast('未找到该项目', 'error');
+      return;
+    }
+
+    const fields = (this.state.reportFields && this.state.reportFields.length > 0)
+      ? this.state.reportFields
+      : Utils.normalizeReportFields([]);
+
+    const itemHTML = (f) => `
+      <div class="detail-item">
+        <div class="detail-label">${Utils.escapeHtml(f.label)}</div>
+        <div class="detail-value">${this.formatFieldValue(r, f)}</div>
+      </div>
+    `;
+
+    const modalHTML = `
+      <div class="modal-overlay" id="completed-detail-modal" onclick="Admin.closeCompletedDetail()">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h2>完工项目详情：${Utils.escapeHtml(r.project_name)}</h2>
+            <button class="modal-close" onclick="Admin.closeCompletedDetail()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="detail-grid">
+              ${fields.map(itemHTML).join('')}
+              <div class="detail-item col-span-2 form-section-divider">报送信息</div>
+              <div class="detail-item">
+                <div class="detail-label">报送部门</div>
+                <div class="detail-value">${Utils.escapeHtml(r.departments ? r.departments.name : '-')}</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">完工报送月份</div>
+                <div class="detail-value">${r.reporting_year}年${r.reporting_month}月</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">报送时间</div>
+                <div class="detail-value">${Utils.formatDateTime(r.submitted_at)}</div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="Admin.closeCompletedDetail()">关闭</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const existing = document.getElementById('completed-detail-modal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+  },
+
+  closeCompletedDetail() {
+    const modal = document.getElementById('completed-detail-modal');
+    if (modal) modal.remove();
+  },
+
+  /**
+   * 导出完工项目表 CSV
+   */
+  exportCompletedCSV() {
+    const projects = this.state.completedProjects || [];
+    if (projects.length === 0) {
+      Utils.toast('暂无完工项目可导出', 'error');
+      return;
+    }
+
+    const columns = [
+      { key: 'index', label: '序号' },
+      { key: 'department_name', label: '报送部门' },
+      { key: 'project_name', label: '项目名称' },
+      { key: 'project_type', label: '项目类型' },
+      { key: 'construction_location', label: '施工地点' },
+      { key: 'contract_amount', label: '合同额(万元)' },
+      { key: 'completed_month', label: '完工报送月份' },
+      { key: 'submitted_at', label: '报送时间' },
+    ];
+
+    const exportData = projects.map((p, i) => ({
+      ...p,
+      index: i + 1,
+      department_name: p.departments ? p.departments.name : '',
+      completed_month: `${p.reporting_year}年${p.reporting_month}月`,
+      submitted_at: Utils.formatDateTime(p.submitted_at),
+    }));
+
+    const filename = `已完工项目汇总_${new Date().getFullYear()}.csv`;
+    Utils.exportCSV(exportData, filename, columns);
+    Utils.toast(`已导出 ${projects.length} 个完工项目`, 'success');
   },
 
   // ========================================================================
