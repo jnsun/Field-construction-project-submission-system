@@ -451,12 +451,39 @@ const Admin = {
    * - 短表头字段（工期/人数/车辆/安全自检/安全隐患/合同额）紧凑显示、表头 2 行
    */
   // 汇总表隐藏的内置字段（详情弹窗仍完整展示）
-  SUMMARY_HIDDEN_KEYS: new Set(['safety_hazard_detail']),
+  // 注：contact_info 已与 project_manager 合并为一列展示，故在此隐藏
+  SUMMARY_HIDDEN_KEYS: new Set(['safety_hazard_detail', 'contact_info']),
   // 紧凑列：表头短 + 值短 → 窄列、表头允许 2 行换行
   COMPACT_KEYS: new Set([
     'duration_months', 'contract_amount', 'on_site_personnel',
     'on_site_vehicles', 'safety_inspection', 'safety_hazards',
   ]),
+  // 单行列：长文本字段在汇总表中只显示一行（省略号），悬停看全文
+  SINGLE_LINE_KEYS: new Set([
+    'department_entity',
+  ]),
+  // 三行列：长文本字段最多显示三行（省略号），悬停看全文
+  THREE_LINE_KEYS: new Set([
+    'construction_location', 'overall_progress', 'monthly_construction_status',
+    'equipment_models', 'project_type',
+  ]),
+  // 固定宽度列：内容短，限定紧凑宽度避免占用过多空间（如项目负责人姓名）
+  FIXED_WIDTH_KEYS: new Set(['project_manager']),
+  // 窄列：内容较短（项目归属部门），限定更窄宽度，节省横向空间给项目名称
+  NARROW_KEYS: new Set(['department_entity']),
+  // 每行最多 N 个汉字的列：列宽按 em 精确控制（1em≈1 个全角汉字），配合三行截断
+  CH_PER_LINE: { construction_location: 6, project_type: 7, equipment_models: 8 },
+  // 汇总表表头改名（仅影响表头展示，不影响表单/详情）
+  LABEL_OVERRIDES: { department_entity: '项目归属部门' },
+  // 汇总表表头按指定位置换行（一行 N 个汉字），用 <br> 精确控制
+  HEADER_BREAKS: {
+    on_site_personnel: '现场<br>人数',
+    on_site_vehicles: '现场<br>车辆数',
+    project_manager: '负责人<br>联系方式',
+    department_entity: '项目归属<br>部门',
+  },
+  // 汇总表字段内容截断长度（超过该字数省略，悬停 title 看全文）
+  FIELD_MAXLEN: {},
 
   renderSummary() {
     const container = document.getElementById('admin-summary');
@@ -484,10 +511,28 @@ const Admin = {
 
     const thClass = (f) => {
       const cls = [];
-      if (f.field_key === 'project_name') cls.push('cell-project-name');
       if (Admin.COMPACT_KEYS.has(f.field_key)) cls.push('th-compact');
+      if (Admin.FIXED_WIDTH_KEYS.has(f.field_key)) cls.push('cell-fixed');
+      if (Admin.NARROW_KEYS.has(f.field_key)) cls.push('cell-narrow');
+      if (Admin.CH_PER_LINE[f.field_key]) cls.push('cell-ch' + Admin.CH_PER_LINE[f.field_key]);
       return cls.join(' ');
     };
+    const thLabel = (f) => {
+      if (Admin.HEADER_BREAKS[f.field_key]) return Admin.HEADER_BREAKS[f.field_key];
+      return Utils.escapeHtml(Admin.LABEL_OVERRIDES[f.field_key] || f.label);
+    };
+
+    // 部门底色分组：同一部门同色、相邻不同部门不同色，整表仅 2 种底色交替
+    const deptColorIndex = (() => {
+      const map = new Map();
+      let idx = 0;
+      return reports.map(r => {
+        const dept = (r.department_entity || '').trim();
+        if (!dept) return 0;
+        if (!map.has(dept)) map.set(dept, idx++ % 2);
+        return map.get(dept);
+      });
+    })();
 
     container.innerHTML = `
       <div class="card">
@@ -500,13 +545,12 @@ const Admin = {
               <thead>
                 <tr>
                   <th>序号</th>
-                  <th>报送部门</th>
-                  ${fields.map(f => `<th class="${thClass(f)}">${Utils.escapeHtml(f.label)}</th>`).join('')}
+                  ${fields.map(f => `<th class="${thClass(f)}">${thLabel(f)}</th>`).join('')}
                   <th>报送时间</th>
                 </tr>
               </thead>
               <tbody>
-                ${reports.map((r, i) => this.renderSummaryRow(r, i, fields)).join('')}
+                ${reports.map((r, i) => this.renderSummaryRow(r, i, fields, deptColorIndex[i])).join('')}
               </tbody>
             </table>
           </div>
@@ -515,23 +559,49 @@ const Admin = {
     `;
   },
 
-  renderSummaryRow(r, index, fields) {
-    const deptName = r.departments ? r.departments.name : '-';
+  renderSummaryRow(r, index, fields, deptColor = 0) {
     fields = fields || (this.state.reportFields || []).filter(f => !Admin.SUMMARY_HIDDEN_KEYS.has(f.field_key));
-    // 汇总明细表中：项目名称限定宽度（2-3 行显示）；进度/施工情况仅显示前 8 个汉字（悬停看全文）
-    const TRUNCATE_KEYS = { overall_progress: 8, monthly_construction_status: 8 };
     return `
-      <tr>
+      <tr class="row-dept-${deptColor}">
         <td>${index + 1}</td>
-        <td>${Utils.escapeHtml(deptName)}</td>
         ${fields.map(f => {
           const isProjectName = f.field_key === 'project_name';
           const isCompact = Admin.COMPACT_KEYS.has(f.field_key);
-          const maxLen = TRUNCATE_KEYS[f.field_key] || 0;
+          const isSingleLine = Admin.SINGLE_LINE_KEYS.has(f.field_key);
+          const isThreeLine = Admin.THREE_LINE_KEYS.has(f.field_key);
+          const isFixed = Admin.FIXED_WIDTH_KEYS.has(f.field_key);
+          const isNarrow = Admin.NARROW_KEYS.has(f.field_key);
+          const chPerLine = Admin.CH_PER_LINE[f.field_key];
+          // 单行/三行/固定窄列字段由 CSS 省略号控制显示；title 悬停看全文
           const rawVal = f.is_builtin ? r[f.field_key] : (r.custom_data || {})[f.field_key];
-          const titleAttr = maxLen > 0 && rawVal ? ` title="${Utils.escapeHtml(String(rawVal))}"` : '';
-          const tdClass = [isProjectName ? 'cell-project-name' : '', isCompact ? 'cell-compact' : ''].filter(Boolean).join(' ');
-          return `<td class="${tdClass}"${titleAttr}>${this.formatFieldValue(r, f, maxLen)}</td>`;
+          const titleAttr = (isSingleLine || isThreeLine || isFixed) && rawVal ? ` title="${Utils.escapeHtml(String(rawVal))}"` : '';
+          const maxLen = Admin.FIELD_MAXLEN[f.field_key] || 0;
+          const tdClass = [
+            isProjectName ? 'cell-project-name' : '',
+            isCompact ? 'cell-compact' : '',
+            isSingleLine ? 'cell-oneline' : '',
+            isThreeLine ? 'cell-three-line' : '',
+            isFixed ? 'cell-fixed' : '',
+            isNarrow ? 'cell-narrow' : '',
+            chPerLine ? 'cell-ch' + chPerLine : '',
+          ].filter(Boolean).join(' ');
+          if (isProjectName) {
+            return `<td class="${tdClass}" onclick="Admin.showReportDetail('${r.id}')" title="点击查看项目详情"><span class="project-name-clamp">${this.formatFieldValue(r, f)}</span></td>`;
+          }
+          // 三行字段：td 保持 table-cell，内层 span 负责最多三行截断（避免 display 变更盖住相邻列）
+          if (isThreeLine) {
+            return `<td class="${tdClass}"${titleAttr}><span class="three-line-clamp">${this.formatFieldValue(r, f)}</span></td>`;
+          }
+          // 项目负责人与联系方式合并为一列：负责人上一行、联系方式下一行
+          if (f.field_key === 'project_manager') {
+            const mgr = r.project_manager != null ? String(r.project_manager) : '';
+            const ct = r.contact_info != null ? String(r.contact_info) : '';
+            const full = [mgr, ct].filter(Boolean).join(' ');
+            const title = full ? ` title="${Utils.escapeHtml(full)}"` : '';
+            const body = `${Utils.escapeHtml(mgr)}<br>${Utils.escapeHtml(ct)}`;
+            return `<td class="${tdClass}"${title}>${body}</td>`;
+          }
+          return `<td class="${tdClass}"${titleAttr}>${this.formatFieldValue(r, f, maxLen, { omitUnit: true })}</td>`;
         }).join('')}
         <td style="white-space:nowrap;">${Utils.formatDateTime(r.submitted_at)}</td>
       </tr>
@@ -543,7 +613,7 @@ const Admin = {
    * @param {number} maxLen 文本字段最大显示字数（0 = 不截断）；用于汇总明细表精简长文本
    * @returns {string} 展示用 HTML（已转义）
    */
-  formatFieldValue(r, f, maxLen = 0) {
+  formatFieldValue(r, f, maxLen = 0, opts = {}) {
     let v;
     if (f.is_builtin) {
       v = r[f.field_key];
@@ -554,8 +624,11 @@ const Admin = {
       if (f.field_key === 'safety_hazards') {
         return v ? '<span class="badge badge-danger">是</span>' : '<span class="badge badge-success">否</span>';
       }
-      // 合同额带万元格式化
+      // 合同额：汇总表传 omitUnit=true 时只显示数字（不带"万元"）
       if (f.field_key === 'contract_amount' && v != null && v !== '') {
+        if (opts && opts.omitUnit) {
+          return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
         return Utils.formatAmount(v);
       }
       return this.truncateText(v, maxLen);
@@ -845,6 +918,77 @@ const Admin = {
 
   closeCompletedDetail() {
     const modal = document.getElementById('completed-detail-modal');
+    if (modal) modal.remove();
+  },
+
+  /**
+   * 汇总明细表：点击「项目名称」查看该报送项目的具体信息（完整字段，不截断）
+   * @param {string} id project_reports.id
+   */
+  showReportDetail(id) {
+    const r = (this.state.reports || []).find(x => x.id === id);
+    if (!r) {
+      Utils.toast('未找到该项目', 'error');
+      return;
+    }
+
+    const fields = this.state.reportFields || [];
+    const itemHTML = (f) => `
+      <div class="detail-item">
+        <div class="detail-label">${Utils.escapeHtml(Admin.LABEL_OVERRIDES[f.field_key] || f.label)}</div>
+        <div class="detail-value">${this.formatFieldValue(r, f)}</div>
+      </div>
+    `;
+
+    const modalHTML = `
+      <div class="modal-overlay" id="report-detail-modal" onclick="Admin.onReportDetailOverlayClick(event)">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h2>项目详情：${Utils.escapeHtml(r.project_name || '')}</h2>
+            <button class="modal-close" onclick="Admin.closeReportDetail()">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="detail-grid">
+              ${fields.map(itemHTML).join('')}
+              <div class="detail-item col-span-2 form-section-divider">报送信息</div>
+              <div class="detail-item">
+                <div class="detail-label">报送部门</div>
+                <div class="detail-value">${Utils.escapeHtml(r.departments ? r.departments.name : '-')}</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">报送月份</div>
+                <div class="detail-value">${r.reporting_year}年${r.reporting_month}月</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">报送时间</div>
+                <div class="detail-value">${Utils.formatDateTime(r.submitted_at)}</div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="Admin.closeReportDetail()">关闭</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const existing = document.getElementById('report-detail-modal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+  },
+
+  /**
+   * 项目详情弹窗：遮罩点击关闭（需 mousedown 起点也在遮罩，避免框选划出误关）
+   */
+  onReportDetailOverlayClick(event) {
+    const overlay = event.currentTarget;
+    if (event.target === overlay && overlay.dataset.dismissArmed === '1') {
+      this.closeReportDetail();
+    }
+  },
+
+  closeReportDetail() {
+    const modal = document.getElementById('report-detail-modal');
     if (modal) modal.remove();
   },
 

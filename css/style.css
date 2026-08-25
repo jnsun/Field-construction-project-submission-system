@@ -957,12 +957,32 @@ input[disabled] {
   text-overflow: ellipsis;
 }
 
-/* 汇总明细表：项目名称限定宽度，长名称自动换行为 2-3 行（不截断） */
+/* 汇总明细表：项目名称列每行最多 15 个汉字，最多三行；
+   td 保持 table-cell，内层 span 宽度 100% 填满单元格（避免固定宽度溢出盖住相邻列） */
 .cell-project-name {
-  width: 200px;
-  max-width: 220px;
-  min-width: 180px;
-  overflow-wrap: anywhere;
+  width: 300px; /* 项目名称列继续调宽，展示更多内容 */
+  vertical-align: top;
+}
+
+/* 项目名称内层：填满单元格，最多三行、每行约 15 汉字，超出省略（长名称点击 td 看详情） */
+.project-name-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* 汇总表：项目名称单元格可点击 */
+.summary-table .cell-project-name {
+  cursor: pointer;
+  color: var(--color-primary);
+}
+.summary-table .cell-project-name:hover {
+  text-decoration: underline;
 }
 
 /* 汇总明细表：紧凑布局（无横向滚动条） */
@@ -993,6 +1013,76 @@ input[disabled] {
   padding: 6px 4px;
 }
 
+/* 单行列：长文本只显示一行（省略号），悬停 title 看全文 */
+.summary-table .cell-oneline {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 固定宽度窄列（项目负责人+联系方式合并列）：紧凑宽度，两行显示，过长省略 */
+.summary-table .cell-fixed {
+  width: 104px;
+  max-width: 108px;
+  padding: 6px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 更窄列（项目归属部门）：紧凑宽度，过长省略 */
+.summary-table .cell-narrow {
+  width: 76px;
+  max-width: 80px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 三行列（施工地点/项目整体进度/本月施工情况）：td 保持 table-cell，仅标记内层截断 */
+.summary-table .cell-three-line {
+  vertical-align: top;
+}
+
+/* 三行内容内层：最多三行，超出省略（悬停 title 看全文）；显式 white-space 覆盖窄列 nowrap */
+.three-line-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  white-space: normal;
+}
+
+/* 每行最多 N 汉字列（施工地点6 / 项目类型7 / 设备型号及数量8）：
+   列宽 = N em 内容 + 左右内边距 16px；
+   表头/单元格都加 cell-chN，配合 table-layout:fixed 让列宽真正生效 */
+.summary-table .cell-ch6 {
+  width: calc(6em + 16px);
+  max-width: calc(6em + 16px);
+}
+.cell-ch6 .three-line-clamp {
+  width: 6em;
+  max-width: 6em;
+}
+.summary-table .cell-ch7 {
+  width: calc(7em + 16px);
+  max-width: calc(7em + 16px);
+}
+.cell-ch7 .three-line-clamp {
+  width: 7em;
+  max-width: 7em;
+}
+.summary-table .cell-ch8 {
+  width: calc(8em + 16px);
+  max-width: calc(8em + 16px);
+}
+.cell-ch8 .three-line-clamp {
+  width: 8em;
+  max-width: 8em;
+}
+
 /* 汇总表全局紧凑：减少内边距 */
 .summary-table th,
 .summary-table td {
@@ -1000,6 +1090,17 @@ input[disabled] {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* 汇总表：表头各列统一居中显示 */
+.summary-table th {
+  text-align: center;
+}
+
+/* 汇总表：按部门交替底色（同一部门同色、相邻部门异色，整表仅 2 种底色） */
+.summary-table tbody tr.row-dept-0 td { background-color: #f0f6ff; }
+.summary-table tbody tr.row-dept-1 td { background-color: #ffffff; }
+.summary-table tbody tr.row-dept-0:hover td,
+.summary-table tbody tr.row-dept-1:hover td { background-color: #fef3c7; }
 
 /* 汇总表：报送部门/报送时间列窄一些 */
 .summary-table th:first-child,
