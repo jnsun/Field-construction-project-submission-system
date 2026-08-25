@@ -447,11 +447,23 @@ const Admin = {
 
   /**
    * 汇总明细表（列完全由报送字段配置驱动，停用的字段自动不显示）
+   * - safety_hazard_detail（安全隐患详情）仅在详情弹窗中展示，汇总表不单独列
+   * - 短表头字段（工期/人数/车辆/安全自检/安全隐患/合同额）紧凑显示、表头 2 行
    */
+  // 汇总表隐藏的内置字段（详情弹窗仍完整展示）
+  SUMMARY_HIDDEN_KEYS: new Set(['safety_hazard_detail']),
+  // 紧凑列：表头短 + 值短 → 窄列、表头允许 2 行换行
+  COMPACT_KEYS: new Set([
+    'duration_months', 'contract_amount', 'on_site_personnel',
+    'on_site_vehicles', 'safety_inspection', 'safety_hazards',
+  ]),
+
   renderSummary() {
     const container = document.getElementById('admin-summary');
     const reports = this.state.reports;
-    const fields = this.state.reportFields || [];
+    const allFields = this.state.reportFields || [];
+    // 汇总明细表隐藏字段
+    const fields = allFields.filter(f => !Admin.SUMMARY_HIDDEN_KEYS.has(f.field_key));
 
     if (reports.length === 0) {
       container.innerHTML = `
@@ -470,24 +482,31 @@ const Admin = {
       return;
     }
 
+    const thClass = (f) => {
+      const cls = [];
+      if (f.field_key === 'project_name') cls.push('cell-project-name');
+      if (Admin.COMPACT_KEYS.has(f.field_key)) cls.push('th-compact');
+      return cls.join(' ');
+    };
+
     container.innerHTML = `
       <div class="card">
         <div class="card-header">
           <h2>汇总明细表（${this.state.year}年${this.state.month}月，共 ${reports.length} 条记录）</h2>
         </div>
         <div class="card-body">
-          <div class="table-wrapper">
-            <table class="data-table">
+          <div class="table-wrapper summary-wrapper">
+            <table class="data-table summary-table">
               <thead>
                 <tr>
                   <th>序号</th>
                   <th>报送部门</th>
-                  ${fields.map(f => `<th class="${f.field_key === 'project_name' ? 'cell-project-name' : ''}">${Utils.escapeHtml(f.label)}</th>`).join('')}
+                  ${fields.map(f => `<th class="${thClass(f)}">${Utils.escapeHtml(f.label)}</th>`).join('')}
                   <th>报送时间</th>
                 </tr>
               </thead>
               <tbody>
-                ${reports.map((r, i) => this.renderSummaryRow(r, i)).join('')}
+                ${reports.map((r, i) => this.renderSummaryRow(r, i, fields)).join('')}
               </tbody>
             </table>
           </div>
@@ -496,9 +515,9 @@ const Admin = {
     `;
   },
 
-  renderSummaryRow(r, index) {
+  renderSummaryRow(r, index, fields) {
     const deptName = r.departments ? r.departments.name : '-';
-    const fields = this.state.reportFields || [];
+    fields = fields || (this.state.reportFields || []).filter(f => !Admin.SUMMARY_HIDDEN_KEYS.has(f.field_key));
     // 汇总明细表中：项目名称限定宽度（2-3 行显示）；进度/施工情况仅显示前 8 个汉字（悬停看全文）
     const TRUNCATE_KEYS = { overall_progress: 8, monthly_construction_status: 8 };
     return `
@@ -507,10 +526,12 @@ const Admin = {
         <td>${Utils.escapeHtml(deptName)}</td>
         ${fields.map(f => {
           const isProjectName = f.field_key === 'project_name';
+          const isCompact = Admin.COMPACT_KEYS.has(f.field_key);
           const maxLen = TRUNCATE_KEYS[f.field_key] || 0;
           const rawVal = f.is_builtin ? r[f.field_key] : (r.custom_data || {})[f.field_key];
           const titleAttr = maxLen > 0 && rawVal ? ` title="${Utils.escapeHtml(String(rawVal))}"` : '';
-          return `<td class="${isProjectName ? 'cell-project-name' : ''}"${titleAttr}>${this.formatFieldValue(r, f, maxLen)}</td>`;
+          const tdClass = [isProjectName ? 'cell-project-name' : '', isCompact ? 'cell-compact' : ''].filter(Boolean).join(' ');
+          return `<td class="${tdClass}"${titleAttr}>${this.formatFieldValue(r, f, maxLen)}</td>`;
         }).join('')}
         <td style="white-space:nowrap;">${Utils.formatDateTime(r.submitted_at)}</td>
       </tr>
