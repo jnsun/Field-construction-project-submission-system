@@ -18,6 +18,8 @@ const Reporter = {
     formFields: [],     // 报送字段配置（内置字段 + 自定义字段，来自 report_fields 表）
     hasStatusColumn: false,   // 数据库是否支持 project_status 列（旧库未执行 SQL 时降级）
     projectTab: 'active',     // 项目视角下的列表：'active' 在建 | 'completed' 已完工
+    noFieldConfirmed: false,  // 当前月本部门是否已确认"无野外施工项目"（视同 0 填报）
+    noFieldInfo: null,        // 确认记录详情（confirmed_at 等）
   },
 
   /**
@@ -68,7 +70,9 @@ const Reporter = {
     this.state.departmentId = profile.department_id;
     this.state.departmentName = profile.departments ? profile.departments.name : '';
     this.state.fullName = profile.full_name || '';
-    this.state.email = profile.email || '';
+    const rawEmail = profile.email || '';
+    // 占位邮箱（以手机号登录）不展示，避免暴露系统内部地址
+    this.state.email = (typeof rawEmail === 'string' && rawEmail.endsWith('@login.local')) ? '' : rawEmail;
 
     const ym = Utils.getCurrentYearMonth();
     this.state.year = ym.year;
@@ -80,6 +84,7 @@ const Reporter = {
     this.bindEvents(container);
     await this.loadFormConfig();
     await this.loadReports();
+    await this.loadNoFieldStatus();
   },
 
   /**
@@ -98,6 +103,7 @@ const Reporter = {
         ${this.buildHeader()}
         <div class="dashboard-content">
           ${this.buildToolbar()}
+          <div id="no-field-banner"></div>
           <div id="reports-section"></div>
         </div>
       </div>
@@ -212,6 +218,108 @@ const Reporter = {
 
     this.state.reports = data || [];
     this.renderReports();
+  },
+
+  /**
+   * 加载当前月本部门「无野外施工项目」确认状态
+   * 读取当前年/月本部门在 department_month_status 中的记录（RLS 仅可见本部门）
+   */
+  async loadNoFieldStatus() {
+    const ym = Utils.getCurrentYearMonth();
+    try {
+      const { data, error } = await sb
+        .from('department_month_status')
+        .select('*')
+        .eq('department_id', this.state.departmentId)
+        .eq('reporting_year', ym.year)
+        .eq('reporting_month', ym.month)
+        .limit(1);
+      if (!error && data && data.length) {
+        this.state.noFieldInfo = data[0];
+        this.state.noFieldConfirmed = !!data[0].no_field_projects;
+      } else {
+        this.state.noFieldInfo = null;
+        this.state.noFieldConfirmed = false;
+      }
+    } catch (e) {
+      // 旧库未执行 no-field-projects.sql 时降级：不展示该功能
+      this.state.noFieldInfo = null;
+      this.state.noFieldConfirmed = false;
+    }
+    this.renderNoFieldBanner();
+  },
+
+  /**
+   * 渲染「无野外施工项目」横幅（按钮 / 已确认提示）
+   */
+  renderNoFieldBanner() {
+    const el = document.getElementById('no-field-banner');
+    if (!el) return;
+    const ym = Utils.getCurrentYearMonth();
+
+    if (this.state.noFieldConfirmed) {
+      const time = this.state.noFieldInfo && this.state.noFieldInfo.confirmed_at
+        ? Utils.formatDateTime(this.state.noFieldInfo.confirmed_at)
+        : '';
+      el.innerHTML = `
+        <div class="alert alert-info no-field-banner-confirmed">
+          <span class="nfb-icon">✅</span>
+          <span class="nfb-text">已确认：<strong>${ym.year}年${ym.month}月</strong>无正在野外施工的项目，视同 0 填报。管理员可同步查看。${time ? `（确认时间：${Utils.escapeHtml(time)}）` : ''}</span>
+          <button class="btn btn-sm btn-secondary nfb-btn" onclick="Reporter.clearNoField()">撤销确认</button>
+        </div>
+      `;
+    } else {
+      el.innerHTML = `
+        <div class="no-field-banner">
+          <span class="nfb-hint">本月（${ym.year}年${ym.month}月）如确实没有正在野外施工的项目，可一键确认，视同 0 填报：</span>
+          <button class="btn btn-sm btn-primary nfb-btn" onclick="Reporter.confirmNoField()">本月无野外施工项目</button>
+        </div>
+      `;
+    }
+  },
+
+  /**
+   * 确认本月无野外施工项目
+   */
+  async confirmNoField() {
+    const ym = Utils.getCurrentYearMonth();
+    if (!confirm(`确认 ${ym.year}年${ym.month}月 无正在野外施工的项目？\n提交后将视同 0 填报，管理员可在报送状态中同步查看。\n后续如有项目，可随时重新报送并撤销此确认。`)) {
+      return;
+    }
+    const { error } = await sb.rpc('upsert_dept_no_field_status', {
+      p_department_id: this.state.departmentId,
+      p_year: ym.year,
+      p_month: ym.month,
+      p_no_field: true,
+    });
+    if (error) {
+      Utils.toast('确认失败: ' + error.message, 'error');
+      return;
+    }
+    Utils.toast('已确认本月无野外施工项目（视同 0 填报）', 'success');
+    await this.loadNoFieldStatus();
+  },
+
+  /**
+   * 撤销"无野外施工项目"确认
+   */
+  async clearNoField() {
+    const ym = Utils.getCurrentYearMonth();
+    if (!confirm(`撤销 ${ym.year}年${ym.month}月 的"无野外施工项目"确认？\n撤销后该月将重新视为"未报送"，直到提交实际项目报送。`)) {
+      return;
+    }
+    const { error } = await sb.rpc('upsert_dept_no_field_status', {
+      p_department_id: this.state.departmentId,
+      p_year: ym.year,
+      p_month: ym.month,
+      p_no_field: false,
+    });
+    if (error) {
+      Utils.toast('撤销失败: ' + error.message, 'error');
+      return;
+    }
+    Utils.toast('已撤销确认', 'success');
+    await this.loadNoFieldStatus();
   },
 
   /**
@@ -833,6 +941,11 @@ const Reporter = {
       val = (v.custom_data && v.custom_data[f.field_key] != null) ? v.custom_data[f.field_key] : '';
     }
 
+    // 项目归属部门或实体：新建时默认填充登录部门（账号可手动修改）；编辑时保留已填值，空值兜底
+    if (f.field_key === 'department_entity' && (!report || !val)) {
+      val = this.state.departmentName || '';
+    }
+
     const name = isBuiltin ? f.field_key : `cf_${f.field_key}`;
     const reqMark = f.is_required ? ' <span class="required">*</span>' : '';
     const requiredAttr = f.is_required ? ' required' : '';
@@ -913,7 +1026,8 @@ const Reporter = {
    * 模态框遮罩点击关闭（区分表单弹窗 / 详情弹窗 / 历史对比弹窗）
    */
   onModalOverlayClick(event, modalId) {
-    if (event.target === event.currentTarget) {
+    const overlay = event.currentTarget;
+    if (event.target === overlay && overlay.dataset.dismissArmed === '1') {
       if (modalId === 'report-detail-modal') {
         this.closeDetailModal();
       } else if (modalId === 'history-modal') {
@@ -1176,6 +1290,19 @@ const Reporter = {
       }
 
       Utils.toast('报送成功', 'success');
+
+      // 提交真实项目后，若此前确认过"无野外施工"，自动撤销该确认（视同 0 填报失效）
+      const ymNf = Utils.getCurrentYearMonth();
+      if (this.state.noFieldConfirmed
+          && data.reporting_year === ymNf.year
+          && data.reporting_month === ymNf.month) {
+        await sb.rpc('upsert_dept_no_field_status', {
+          p_department_id: this.state.departmentId,
+          p_year: ymNf.year,
+          p_month: ymNf.month,
+          p_no_field: false,
+        }).catch(() => {});
+      }
     }
 
     // closeModal 会清空 editingId，先记录当前是否为编辑模式

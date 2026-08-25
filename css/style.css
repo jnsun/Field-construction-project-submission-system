@@ -255,6 +255,16 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
 }
 
+/* 禁用选项（如普通管理员视角下的"管理员"角色） */
+.radio-group label.disabled-option {
+  color: var(--color-text-muted, #999);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.radio-group label.disabled-option input[type="radio"] {
+  cursor: not-allowed;
+}
+
 /* 表格 */
 .data-table {
   width: 100%;
@@ -307,6 +317,7 @@ a:hover { text-decoration: underline; }
 .badge-warning { background: var(--color-warning-light); color: #92400e; }
 .badge-muted   { background: #f1f5f9; color: var(--color-text-muted); }
 .badge-info    { background: var(--color-primary-light); color: var(--color-primary-dark); }
+.text-muted    { color: var(--color-text-muted); }
 
 /* 表单控件禁用状态（内置字段类型锁定） */
 select[disabled] {
@@ -533,7 +544,8 @@ input[disabled] {
 /* 统计卡片 */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -549,6 +561,7 @@ input[disabled] {
 .stat-card.success { border-left-color: var(--color-success); }
 .stat-card.danger  { border-left-color: var(--color-danger); }
 .stat-card.warning { border-left-color: var(--color-warning); }
+.stat-card.info    { border-left-color: var(--color-primary); }
 
 .stat-card .stat-label {
   font-size: 0.75rem;
@@ -656,7 +669,7 @@ input[disabled] {
 
 .dept-status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -687,6 +700,11 @@ input[disabled] {
   background: #fffbfb;
 }
 
+.dept-chip.confirmed {
+  border-left-color: var(--color-primary);
+  background: #f4f8ff;
+}
+
 .dept-chip-name {
   font-size: 0.8125rem;
   font-weight: 600;
@@ -700,6 +718,7 @@ input[disabled] {
 
 .dept-chip.submitted .dept-chip-status { color: var(--color-success); }
 .dept-chip.pending .dept-chip-status { color: var(--color-danger); }
+.dept-chip.confirmed .dept-chip-status { color: var(--color-primary-dark); }
 
 .dept-chip-time {
   font-size: 0.6875rem;
@@ -751,6 +770,41 @@ input[disabled] {
 .alert-info { background: var(--color-primary-light); color: var(--color-primary-dark); }
 .alert-warning { background: var(--color-warning-light); color: #92400e; }
 .alert-danger { background: var(--color-danger-light); color: var(--color-danger); }
+
+/* 无野外施工项目 确认横幅（部门端） */
+.no-field-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px dashed var(--color-border-dark);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.no-field-banner .nfb-hint { flex: 1 1 260px; line-height: 1.5; }
+
+.no-field-banner-confirmed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.no-field-banner-confirmed .nfb-icon { font-size: 1.1rem; line-height: 1; }
+
+.no-field-banner-confirmed .nfb-text {
+  flex: 1 1 280px;
+  line-height: 1.5;
+  color: var(--color-primary-dark);
+}
+
+.nfb-btn { flex-shrink: 0; }
 
 /* 表单网格 */
 .form-grid {
@@ -901,6 +955,14 @@ input[disabled] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 汇总明细表：项目名称限定宽度，长名称自动换行为 2-3 行（不截断） */
+.cell-project-name {
+  width: 200px;
+  max-width: 220px;
+  min-width: 180px;
+  overflow-wrap: anywhere;
 }
 
 /* 大尺寸弹窗（历史对比） */

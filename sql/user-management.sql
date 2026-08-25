@@ -83,9 +83,17 @@ BEGIN
   )
   RETURNING id INTO v_user_id;
 
-  -- 创建对应 profile（触发器也会做，此处显式写入部门/角色/姓名）
+  -- 创建/补全对应 profile：
+  -- 触发器 on_auth_user_created 在插入 auth.users 后会自动建一条 profile（仅 id+email），
+  -- 此处用 ON CONFLICT (id) DO UPDATE 覆盖字段，避免与触发器重复插入同 id 触发主键冲突
+  -- （否则会被 unique_violation 通用异常误报"邮箱已被其他账号使用"）。
   INSERT INTO public.profiles (id, email, department_id, role, full_name)
-  VALUES (v_user_id, lower(trim(p_email)), p_department_id, p_role, p_full_name);
+  VALUES (v_user_id, lower(trim(p_email)), p_department_id, p_role, p_full_name)
+  ON CONFLICT (id) DO UPDATE SET
+    email         = EXCLUDED.email,
+    department_id = EXCLUDED.department_id,
+    role          = EXCLUDED.role,
+    full_name     = EXCLUDED.full_name;
 
   RETURN jsonb_build_object('success', true, 'user_id', v_user_id);
 

@@ -50,8 +50,8 @@ const Auth = {
   },
 
   /**
-   * 登录（支持邮箱 / 部门名称 / 部门编码）
-   * @param {string} identifier 邮箱、部门名称或部门编码
+   * 登录（支持邮箱 / 手机号 / 部门名称 / 部门编码）
+   * @param {string} identifier 邮箱、手机号、部门名称或部门编码
    * @param {string} password
    * @returns {Promise<{success: boolean, error?: string}>}
    */
@@ -100,7 +100,9 @@ const Auth = {
 
   /**
    * 将用户输入的标识符解析为登录邮箱
-   * 支持：邮箱 / 部门名称 / 部门编码
+   * 支持：邮箱 / 手机号 / 部门名称 / 部门编码
+   * 邮箱在前端直接识别；手机号、部门名称/编码由 RPC 解析
+   * （需执行 sql/phone-login.sql 后手机号解析才生效，旧库提示未找到）
    * @param {string} identifier
    * @returns {Promise<string|null>} 解析失败返回 null，RPC 出错抛出异常
    */
@@ -113,7 +115,7 @@ const Auth = {
       return id.toLowerCase();
     }
 
-    // 部门名称 / 部门编码 → 调用 RPC 解析为邮箱
+    // 手机号 / 部门名称 / 部门编码 → 调用 RPC 解析为邮箱
     const { data, error } = await sb.rpc('resolve_login_identifier', { p_identifier: id });
     if (error) {
       throw new Error(this.extractRpcMessage(error));
@@ -154,6 +156,27 @@ const Auth = {
       return { success: false, error: this.extractRpcMessage(error) };
     }
     return { success: true, email: (data && data.email) || email };
+  },
+
+  /**
+   * 修改当前用户手机号（自助，仅改 profiles.phone，无需重新登录）
+   * @param {string} newPhone 新手机号（空串表示清空）
+   * @returns {Promise<{success: boolean, error?: string, phone?: string|null}>}
+   */
+  async changePhone(newPhone) {
+    const phone = String(newPhone || '').trim();
+    if (phone && !/^1[0-9]{10}$/.test(phone)) {
+      return { success: false, error: '请输入有效的手机号（1 开头的 11 位数字）' };
+    }
+    const { data, error } = await sb.rpc('change_own_phone', { p_new_phone: phone });
+    if (error) {
+      return { success: false, error: this.extractRpcMessage(error) };
+    }
+    // 同步本地缓存
+    if (this.currentProfile) {
+      this.currentProfile.phone = (data && data.phone) || null;
+    }
+    return { success: true, phone: (data && data.phone) || null, cleared: !!(data && data.cleared) };
   },
 
   /**
@@ -237,6 +260,15 @@ const Auth = {
    */
   isAdmin() {
     return this.currentProfile && this.currentProfile.role === 'admin';
+  },
+
+  /**
+   * 判断当前用户是否为超级管理员
+   * 超级管理员 = 管理员角色 + is_super_admin 标记（可创建/删除管理员账号）
+   * 旧库未执行 super-admin.sql 时该字段不存在，返回 false（不报错）
+   */
+  isSuperAdmin() {
+    return this.isAdmin() && this.currentProfile.is_super_admin === true;
   },
 
   /**

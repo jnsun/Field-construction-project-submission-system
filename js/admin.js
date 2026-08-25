@@ -14,6 +14,7 @@ const Admin = {
     completedProjects: [],    // 已完工项目（按项目归并，取最近一次完工报送）
     users: [],
     usersLoaded: false,
+    hasPhoneColumn: false,    // profiles 是否有 phone 列（未执行 sql/phone-login.sql 时为 false，自动隐藏手机号功能）
     departmentsLoaded: false,
     deptUserCounts: {},       // department_id -> 账号数
     deptReportCounts: {},     // department_id -> 报送记录数
@@ -26,7 +27,8 @@ const Admin = {
     formConfigLoaded: false,
     editingTypeId: null,
     editingFieldId: null,
-    statusFilter: 'all',      // 部门报送状态筛选：all | submitted | pending
+    statusFilter: 'all',      // 部门报送状态筛选：all | submitted | pending | confirmed
+    noFieldStatus: {},        // department_id -> department_month_status 行（无野外施工确认，含全部状态）
   },
 
   /**
@@ -150,6 +152,7 @@ const Admin = {
         <div class="header-left">
           <h1>施工项目月报管理系统</h1>
           <span class="badge badge-success">管理员</span>
+          ${Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
         </div>
         <div class="header-right">
           <div class="user-info">
@@ -200,8 +203,8 @@ const Admin = {
     this.state.loading = true;
     this.renderLoading();
 
-    // 并行查询部门、报送记录、表单配置（自定义字段）
-    const [deptRes, reportRes, fieldsRes] = await Promise.all([
+    // 并行查询部门、报送记录、表单配置（自定义字段）、无野外施工确认状态
+    const [deptRes, reportRes, fieldsRes, dmsRes] = await Promise.all([
       sb.from('departments').select('*').order('sort_order'),
       sb.from('project_reports')
         .select('*, departments(name, code)')
@@ -209,7 +212,12 @@ const Admin = {
         .eq('reporting_month', this.state.month)
         .order('department_id', { ascending: true })
         .order('submitted_at', { ascending: false }),
-      sb.from('report_fields').select('*').order('sort_order')
+      sb.from('report_fields').select('*').order('sort_order'),
+      // 无野外施工确认状态（旧库未执行 no-field-projects.sql 时该表不存在，自动降级）
+      sb.from('department_month_status')
+        .select('*')
+        .eq('reporting_year', this.state.year)
+        .eq('reporting_month', this.state.month)
     ]);
 
     if (deptRes.error) {
@@ -228,6 +236,12 @@ const Admin = {
     this.state.reportFields = Utils.normalizeReportFields(
       (fieldsRes && !fieldsRes.error) ? (fieldsRes.data || []) : []
     );
+    // 无野外施工确认状态：旧库未执行 no-field-projects.sql 时该表不存在，自动降级（忽略错误）
+    const dmsMap = {};
+    if (dmsRes && !dmsRes.error && dmsRes.data) {
+      for (const s of dmsRes.data) dmsMap[s.department_id] = s;
+    }
+    this.state.noFieldStatus = dmsMap;
     this.state.loading = false;
 
     this.renderStats();
@@ -248,19 +262,34 @@ const Admin = {
   },
 
   /**
+   * 参与月度报送的部门（管理部门如「安全生产部」无需报送，从报送统计中排除）
+   */
+  reportingDepts() {
+    return (this.state.departments || []).filter(d => d.name !== '安全生产部');
+  },
+
+  /**
    * 统计卡片
    */
   renderStats() {
     const container = document.getElementById('admin-stats');
-    const depts = this.state.departments;
+    // 仅统计需要报送的部门（安全生产部为管理部门，无需报送）
+    const depts = this.reportingDepts();
     const reports = this.state.reports;
 
-    // 已报送的部门集合
+    // 已报送的部门集合（含已确认"无野外施工"视同 0 填报的部门）
+    const noFieldMap = this.state.noFieldStatus || {};
     const submittedDeptIds = new Set(reports.map(r => r.department_id));
-    const submittedCount = depts.filter(d => submittedDeptIds.has(d.id)).length;
+    // 已确认无野外施工、且无实际报送记录的部门（与有实际报送的部门互斥计数）
+    const noFieldDeptIds = new Set(
+      Object.keys(noFieldMap)
+        .filter(id => noFieldMap[id] && noFieldMap[id].no_field_projects && !submittedDeptIds.has(id))
+    );
+    const reportedSet = new Set([...submittedDeptIds, ...noFieldDeptIds]);
+    const submittedCount = depts.filter(d => reportedSet.has(d.id)).length;
+    const noFieldCount = noFieldDeptIds.size;
     const notSubmittedCount = depts.length - submittedCount;
 
-    const totalAmount = reports.reduce((sum, r) => sum + Number(r.contract_amount || 0), 0);
     const totalPersonnel = reports.reduce((sum, r) => sum + (r.on_site_personnel || 0), 0);
     const totalVehicles = reports.reduce((sum, r) => sum + (r.on_site_vehicles || 0), 0);
     const hazardCount = reports.filter(r => r.safety_hazards).length;
@@ -278,6 +307,10 @@ const Admin = {
           <div class="stat-label">已报送部门</div>
           <div class="stat-value">${submittedCount}</div>
         </div>
+        <div class="stat-card info">
+          <div class="stat-label">已确认无野外</div>
+          <div class="stat-value">${noFieldCount}</div>
+        </div>
         <div class="stat-card danger">
           <div class="stat-label">未报送部门</div>
           <div class="stat-value">${notSubmittedCount}</div>
@@ -285,10 +318,6 @@ const Admin = {
         <div class="stat-card">
           <div class="stat-label">报送项目总数</div>
           <div class="stat-value">${reports.length}</div>
-        </div>
-        <div class="stat-card success">
-          <div class="stat-label">合同总额（万元）</div>
-          <div class="stat-value">${totalAmount.toLocaleString('zh-CN', {maximumFractionDigits: 2})}</div>
         </div>
         <div class="stat-card warning">
           <div class="stat-label">现场总人数</div>
@@ -315,7 +344,8 @@ const Admin = {
    */
   renderStatus() {
     const container = document.getElementById('admin-status');
-    const depts = this.state.departments;
+    // 仅展示需要报送的部门（安全生产部为管理部门，无需报送，从报送状态中排除）
+    const depts = this.reportingDepts();
     const reports = this.state.reports;
 
     // 按部门分组报送记录
@@ -325,7 +355,15 @@ const Admin = {
       reportsByDept[r.department_id].push(r);
     }
 
-    const submittedCount = Object.keys(reportsByDept).length;
+    const noFieldMap = this.state.noFieldStatus || {};
+    // 已报送部门 = 有实际报送 或 已确认无野外施工（互斥计数，避免重复）
+    const reportedSet = new Set([
+      ...Object.keys(reportsByDept),
+      ...Object.keys(noFieldMap).filter(id => noFieldMap[id] && noFieldMap[id].no_field_projects && !reportsByDept[id])
+    ]);
+    const submittedCount = reportedSet.size;
+    const noFieldCount = Object.keys(noFieldMap)
+      .filter(id => noFieldMap[id] && noFieldMap[id].no_field_projects && !reportsByDept[id]).length;
     const pendingCount = depts.length - submittedCount;
     const filter = this.state.statusFilter;
 
@@ -341,6 +379,7 @@ const Admin = {
           <div class="status-filter">
             ${chip('all', '全部', depts.length)}
             ${chip('submitted', '已报送', submittedCount)}
+            ${chip('confirmed', '已确认无野外', noFieldCount)}
             ${chip('pending', '未报送', pendingCount)}
           </div>
         </div>
@@ -357,26 +396,43 @@ const Admin = {
    * 单个部门状态卡片
    */
   buildStatusChip(d, deptReports) {
+    const nf = this.state.noFieldStatus ? this.state.noFieldStatus[d.id] : null;
+    const confirmedNoField = !!(nf && nf.no_field_projects);
     const submitted = deptReports.length > 0;
-    const lastTime = submitted ? deptReports[0].submitted_at : null;
-    const title = submitted && lastTime
-      ? `最近报送：${Utils.formatDateTime(lastTime)}`
-      : `${Utils.escapeHtml(d.name)} 尚未报送`;
+
+    let cls, statusText, title, timeHtml;
+    if (submitted) {
+      cls = 'submitted';
+      const lastTime = deptReports[0].submitted_at;
+      statusText = `已报送 ${deptReports.length} 项`;
+      title = lastTime ? `最近报送：${Utils.formatDateTime(lastTime)}` : `${Utils.escapeHtml(d.name)} 已报送`;
+      timeHtml = lastTime ? `<div class="dept-chip-time">${Utils.formatDateTime(lastTime).slice(5)}</div>` : '';
+    } else if (confirmedNoField) {
+      cls = 'confirmed';
+      statusText = '已确认无野外施工';
+      title = `${Utils.escapeHtml(d.name)} 已确认本月无正在野外施工的项目（视同 0 填报）`;
+      timeHtml = nf.confirmed_at
+        ? `<div class="dept-chip-time">确认于 ${Utils.formatDateTime(nf.confirmed_at).slice(5)}</div>`
+        : '';
+    } else {
+      cls = 'pending';
+      statusText = '未报送';
+      title = `${Utils.escapeHtml(d.name)} 尚未报送`;
+      timeHtml = '';
+    }
+
     return `
-      <div class="dept-chip ${submitted ? 'submitted' : 'pending'}"
-        data-status="${submitted ? 'submitted' : 'pending'}" title="${title}">
+      <div class="dept-chip ${cls}" data-status="${cls}" title="${title}">
         <div class="dept-chip-name">${Utils.escapeHtml(d.name)}</div>
-        <div class="dept-chip-status">${submitted ? `已报送 ${deptReports.length} 项` : '未报送'}</div>
-        ${submitted && lastTime
-          ? `<div class="dept-chip-time">${Utils.formatDateTime(lastTime).slice(5)}</div>`
-          : ''}
+        <div class="dept-chip-status">${statusText}</div>
+        ${timeHtml}
       </div>
     `;
   },
 
   /**
    * 切换部门报送状态筛选
-   * @param {'all'|'submitted'|'pending'} filter
+   * @param {'all'|'submitted'|'confirmed'|'pending'} filter
    */
   filterStatus(filter) {
     this.state.statusFilter = filter;
@@ -426,7 +482,7 @@ const Admin = {
                 <tr>
                   <th>序号</th>
                   <th>报送部门</th>
-                  ${fields.map(f => `<th>${Utils.escapeHtml(f.label)}</th>`).join('')}
+                  ${fields.map(f => `<th class="${f.field_key === 'project_name' ? 'cell-project-name' : ''}">${Utils.escapeHtml(f.label)}</th>`).join('')}
                   <th>报送时间</th>
                 </tr>
               </thead>
@@ -443,11 +499,19 @@ const Admin = {
   renderSummaryRow(r, index) {
     const deptName = r.departments ? r.departments.name : '-';
     const fields = this.state.reportFields || [];
+    // 汇总明细表中：项目名称限定宽度（2-3 行显示）；进度/施工情况仅显示前 8 个汉字（悬停看全文）
+    const TRUNCATE_KEYS = { overall_progress: 8, monthly_construction_status: 8 };
     return `
       <tr>
         <td>${index + 1}</td>
         <td>${Utils.escapeHtml(deptName)}</td>
-        ${fields.map(f => `<td>${this.formatFieldValue(r, f)}</td>`).join('')}
+        ${fields.map(f => {
+          const isProjectName = f.field_key === 'project_name';
+          const maxLen = TRUNCATE_KEYS[f.field_key] || 0;
+          const rawVal = f.is_builtin ? r[f.field_key] : (r.custom_data || {})[f.field_key];
+          const titleAttr = maxLen > 0 && rawVal ? ` title="${Utils.escapeHtml(String(rawVal))}"` : '';
+          return `<td class="${isProjectName ? 'cell-project-name' : ''}"${titleAttr}>${this.formatFieldValue(r, f, maxLen)}</td>`;
+        }).join('')}
         <td style="white-space:nowrap;">${Utils.formatDateTime(r.submitted_at)}</td>
       </tr>
     `;
@@ -455,9 +519,10 @@ const Admin = {
 
   /**
    * 读取字段在记录中的值并格式化展示（内置字段读列、自定义字段读 custom_data）
+   * @param {number} maxLen 文本字段最大显示字数（0 = 不截断）；用于汇总明细表精简长文本
    * @returns {string} 展示用 HTML（已转义）
    */
-  formatFieldValue(r, f) {
+  formatFieldValue(r, f, maxLen = 0) {
     let v;
     if (f.is_builtin) {
       v = r[f.field_key];
@@ -472,11 +537,26 @@ const Admin = {
       if (f.field_key === 'contract_amount' && v != null && v !== '') {
         return Utils.formatAmount(v);
       }
-      return (v == null || v === '') ? '-' : Utils.escapeHtml(v);
+      return this.truncateText(v, maxLen);
     }
     const cd = r.custom_data || {};
     v = cd[f.field_key];
-    return (v == null || v === '') ? '-' : Utils.escapeHtml(v);
+    return this.truncateText(v, maxLen);
+  },
+
+  /**
+   * 文本截断（超出 maxLen 个汉字时省略，保留悬停全文由调用方加 title）
+   * @param {*} v 原始值
+   * @param {number} maxLen 最大字数（0 = 不截断）
+   * @returns {string} 已转义的展示 HTML
+   */
+  truncateText(v, maxLen) {
+    if (v == null || v === '') return '-';
+    const s = String(v);
+    if (maxLen > 0 && s.length > maxLen) {
+      return Utils.escapeHtml(s.slice(0, maxLen)) + '…';
+    }
+    return Utils.escapeHtml(s);
   },
 
   /**
@@ -696,7 +776,7 @@ const Admin = {
     `;
 
     const modalHTML = `
-      <div class="modal-overlay" id="completed-detail-modal" onclick="Admin.closeCompletedDetail()">
+      <div class="modal-overlay" id="completed-detail-modal" onclick="Admin.onCompletedDetailOverlayClick(event)">
         <div class="modal-card">
           <div class="modal-header">
             <h2>完工项目详情：${Utils.escapeHtml(r.project_name)}</h2>
@@ -730,6 +810,16 @@ const Admin = {
     const existing = document.getElementById('completed-detail-modal');
     if (existing) existing.remove();
     document.body.insertAdjacentHTML('beforeend', modalHTML);
+  },
+
+  /**
+   * 完工详情弹窗：遮罩点击关闭（需 mousedown 起点也在遮罩，避免框选划出误关）
+   */
+  onCompletedDetailOverlayClick(event) {
+    const overlay = event.currentTarget;
+    if (event.target === overlay && overlay.dataset.dismissArmed === '1') {
+      this.closeCompletedDetail();
+    }
   },
 
   closeCompletedDetail() {
@@ -791,6 +881,10 @@ const Admin = {
       </div>
     `;
 
+    // 探测 profiles 是否有 phone 列（未执行 sql/phone-login.sql 的旧库自动隐藏手机号功能）
+    const phoneProbe = await sb.from('profiles').select('phone').limit(1);
+    this.state.hasPhoneColumn = !phoneProbe.error;
+
     const { data, error } = await sb
       .from('profiles')
       .select('*, departments(name)')
@@ -821,17 +915,27 @@ const Admin = {
 
     const users = this.state.users;
     const currentUserId = Auth.currentUser ? Auth.currentUser.id : null;
+    const isSuper = Auth.isSuperAdmin();
+
+    const adminCount = users.filter(u => u.role === 'admin').length;
+    const superCount = users.filter(u => u.role === 'admin' && u.is_super_admin).length;
 
     container.innerHTML = `
       <div class="toolbar">
         <div class="toolbar-left">
-          <span class="toolbar-hint">共 ${users.length} 个账号</span>
+          <span class="toolbar-hint">共 ${users.length} 个账号（管理员 ${adminCount} · 超级管理员 ${superCount}）</span>
         </div>
         <div class="toolbar-right">
           <button class="btn btn-primary" onclick="Admin.openUserModal()">+ 新增账号</button>
           <button class="btn btn-secondary" onclick="Admin.loadUsers()">刷新</button>
         </div>
       </div>
+      ${isSuper ? '' : `
+        <div class="alert alert-info" style="margin-bottom:12px;">
+          ⚠️ 您是<strong>普通管理员</strong>：可以管理<strong>部门账号</strong>（新增/编辑/删除）。
+          创建、修改或删除<strong>管理员账号</strong>需要<strong>超级管理员</strong>权限，请联系超级管理员操作。
+        </div>
+      `}
       <div class="card">
         <div class="card-header">
           <h2>部门账号管理</h2>
@@ -843,6 +947,7 @@ const Admin = {
                 <tr>
                   <th>序号</th>
                   <th>登录邮箱</th>
+                  <th>手机号</th>
                   <th>账号名称</th>
                   <th>角色</th>
                   <th>所属部门</th>
@@ -852,8 +957,8 @@ const Admin = {
               </thead>
               <tbody>
                 ${users.length === 0 ? `
-                  <tr class="empty-row"><td colspan="7">暂无账号，点击右上角"新增账号"创建</td></tr>
-                ` : users.map((u, i) => this.renderUserRow(u, i, currentUserId)).join('')}
+                  <tr class="empty-row"><td colspan="8">暂无账号，点击右上角"新增账号"创建</td></tr>
+                ` : users.map((u, i) => this.renderUserRow(u, i, currentUserId, isSuper)).join('')}
               </tbody>
             </table>
           </div>
@@ -862,31 +967,58 @@ const Admin = {
     `;
   },
 
-  renderUserRow(u, index, currentUserId) {
+  renderUserRow(u, index, currentUserId, isSuper) {
     const isSelf = u.id === currentUserId;
     const roleBadge = u.role === 'admin'
-      ? '<span class="badge badge-warning">管理员</span>'
+      ? (u.is_super_admin
+          ? '<span class="badge badge-danger">超级管理员</span>'
+          : '<span class="badge badge-warning">管理员</span>')
       : '<span class="badge badge-muted">部门账号</span>';
     const deptName = u.departments ? u.departments.name : (u.role === 'admin' ? '-' : '<span class="badge badge-danger">未分配</span>');
+
+    // 操作按钮：当前账号不可操作；管理员账号仅超级管理员可编辑/删除
+    const canManage = !isSelf && (u.role !== 'admin' || isSuper);
+
+    const actions = isSelf
+      ? '<span class="dept-meta" title="当前登录的账号不能在页面中修改">当前账号</span>'
+      : canManage
+        ? `
+          <button class="btn btn-secondary btn-sm" onclick="Admin.openUserModal('${u.id}')">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="Admin.handleDeleteUser('${u.id}')">删除</button>
+        `
+        : '<span class="dept-meta" title="仅超级管理员可编辑/删除管理员账号">仅超管可操作</span>';
 
     return `
       <tr>
         <td>${index + 1}</td>
-        <td>${Utils.escapeHtml(u.email || '-')}</td>
+        <td>${Utils.escapeHtml(this._loginEmailText(u))}</td>
+        <td>${this.state.hasPhoneColumn ? (u.phone ? Utils.escapeHtml(u.phone) : '<span class="text-muted">-</span>') : '<span class="text-muted" title="未启用手机号功能，请执行 sql/phone-login.sql">未启用</span>'}</td>
         <td>${Utils.escapeHtml(u.full_name || '-')}</td>
         <td>${roleBadge}</td>
         <td>${deptName}</td>
         <td style="white-space:nowrap;">${Utils.formatDateTime(u.created_at)}</td>
-        <td style="white-space:nowrap;">
-          ${isSelf
-            ? '<span class="dept-meta" title="当前登录的账号不能在页面中修改">当前账号</span>'
-            : `
-              <button class="btn btn-secondary btn-sm" onclick="Admin.openUserModal('${u.id}')">编辑</button>
-              <button class="btn btn-danger btn-sm" onclick="Admin.handleDeleteUser('${u.id}')">删除</button>
-            `}
-        </td>
+        <td style="white-space:nowrap;">${actions}</td>
       </tr>
     `;
+  },
+
+  /**
+   * 列表中"登录邮箱"列显示：无真实邮箱（以手机号登录）的账号显示手机号登录提示
+   */
+  _loginEmailText(u) {
+    const e = u && u.email;
+    if (e && typeof e === 'string' && e.endsWith('@login.local')) {
+      return (u.phone ? u.phone : '') + '（手机号登录）';
+    }
+    return e || '-';
+  },
+
+  /**
+   * 表单中邮箱输入框显示值：占位邮箱（以手机号登录）留空，避免暴露系统内部地址
+   */
+  _displayEmail(email) {
+    if (email && typeof email === 'string' && email.endsWith('@login.local')) return '';
+    return email || '';
   },
 
   /**
@@ -909,12 +1041,30 @@ const Admin = {
       return;
     }
 
+    const isSuper = Auth.isSuperAdmin();
+
+    // 普通管理员不能编辑管理员账号
+    if (userId && user && user.role === 'admin' && !isSuper) {
+      Utils.toast('只有超级管理员才能修改管理员账号', 'error');
+      return;
+    }
+
     this.state.editingUserId = userId;
 
     const v = user || {};
     const isEdit = !!userId;
     const role = v.role || 'reporter';
     const deptId = v.department_id || '';
+
+    const roleOptions = isSuper
+      ? `
+        <label><input type="radio" name="role" value="reporter" ${role === 'reporter' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
+        <label><input type="radio" name="role" value="admin" ${role === 'admin' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 管理员</label>
+      `
+      : `
+        <label><input type="radio" name="role" value="reporter" checked onchange="Admin.onRoleChange()"> 部门账号</label>
+        <label class="disabled-option" title="只有超级管理员才能创建管理员账号"><input type="radio" name="role" value="admin" disabled> 管理员（仅超管）</label>
+      `;
 
     const modalHTML = `
       <div class="modal-overlay" id="user-modal" onclick="Admin.onUserModalOverlayClick(event)">
@@ -928,13 +1078,21 @@ const Admin = {
             <form id="user-form" onsubmit="return false">
               <div class="form-grid">
                 <div class="form-group col-span-2">
-                  <label>登录邮箱 <span class="required">*</span></label>
-                  <input type="email" name="email" value="${Utils.escapeHtml(v.email || '')}" required
-                    placeholder="用于登录的邮箱地址" ${isEdit ? '' : 'autocomplete="off"'}>
+                  <label>登录邮箱（选填）</label>
+                  <input type="email" name="email" value="${Utils.escapeHtml(this._displayEmail(v.email))}"
+                    placeholder="用于登录的邮箱地址，可留空改用手机号登录" ${isEdit ? '' : 'autocomplete="off"'}>
                 </div>
+                ${this.state.hasPhoneColumn ? `
                 <div class="form-group col-span-2">
-                  <label>账号名称</label>
-                  <input type="text" name="full_name" value="${Utils.escapeHtml(v.full_name || '')}"
+                  <label>手机号</label>
+                  <input type="tel" name="phone" value="${Utils.escapeHtml(v.phone || '')}"
+                    placeholder="选填，1 开头 11 位手机号，可用于登录" maxlength="11">
+                  ${isEdit ? '<p class="hint">留空保存将清除该账号的手机号</p>' : ''}
+                </div>
+                ` : ''}
+                <div class="form-group col-span-2">
+                  <label>账号名称 <span class="required">*</span></label>
+                  <input type="text" name="full_name" value="${Utils.escapeHtml(v.full_name || '')}" required
                     placeholder="如：张三 / 工程一部报送员">
                 </div>
                 <div class="form-group">
@@ -947,9 +1105,9 @@ const Admin = {
                 <div class="form-group">
                   <label>账号角色 <span class="required">*</span></label>
                   <div class="radio-group">
-                    <label><input type="radio" name="role" value="reporter" ${role === 'reporter' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
-                    <label><input type="radio" name="role" value="admin" ${role === 'admin' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 管理员</label>
+                    ${roleOptions}
                   </div>
+                  ${isSuper ? '<p class="hint">提示：管理员账号创建后默认为普通管理员；如需设为超级管理员，请用 SQL 设置 is_super_admin。</p>' : ''}
                 </div>
                 <div class="form-group col-span-2">
                   <label>${isEdit ? '重置密码' : '初始密码'} <span class="required">${isEdit ? '' : '*'}</span></label>
@@ -991,7 +1149,8 @@ const Admin = {
   },
 
   onUserModalOverlayClick(event) {
-    if (event.target === event.currentTarget) {
+    const overlay = event.currentTarget;
+    if (event.target === overlay && overlay.dataset.dismissArmed === '1') {
       this.closeUserModal();
     }
   },
@@ -1010,17 +1169,34 @@ const Admin = {
     if (!form) return;
 
     const fd = new FormData(form);
+    const isEdit = !!this.state.editingUserId;
     const email = (fd.get('email') || '').trim();
     const fullName = (fd.get('full_name') || '').trim();
     const deptId = fd.get('department_id');
     const role = fd.get('role');
     const password = fd.get('password') || '';
+    const phone = (fd.get('phone') || '').trim();
 
     // 前端校验
-    if (!email) { Utils.toast('请填写登录邮箱', 'error'); return; }
+    if (!fullName) { Utils.toast('请填写账号名称', 'error'); return; }
     if (role === 'reporter' && !deptId) { Utils.toast('部门账号必须分配部门', 'error'); return; }
+    if (!isEdit && !email && !phone) { Utils.toast('请至少填写登录邮箱或手机号，以便账号登录', 'error'); return; }
+    if (phone && !/^1[0-9]{10}$/.test(phone)) { Utils.toast('请输入有效的手机号（1 开头的 11 位数字）', 'error'); return; }
 
-    const isEdit = !!this.state.editingUserId;
+    // 权限校验：普通管理员不能创建/提升管理员账号
+    if (role === 'admin' && !Auth.isSuperAdmin()) {
+      Utils.toast('只有超级管理员才能创建管理员账号', 'error');
+      return;
+    }
+
+    // 编辑时校验：目标账号是管理员时，普通管理员不能操作（前端双保险）
+    if (isEdit && !Auth.isSuperAdmin()) {
+      const target = this.state.users.find(u => u.id === this.state.editingUserId);
+      if (target && target.role === 'admin') {
+        Utils.toast('只有超级管理员才能修改管理员账号', 'error');
+        return;
+      }
+    }
 
     if (isEdit) {
       if (password && password.length < 6) { Utils.toast('新密码长度至少 6 位', 'error'); return; }
@@ -1037,22 +1213,27 @@ const Admin = {
     try {
       let result;
       if (isEdit) {
-        result = await sb.rpc('update_dept_user', {
+        const params = {
           p_user_id: this.state.editingUserId,
           p_email: email,
           p_full_name: fullName || null,
           p_department_id: role === 'admin' && !deptId ? null : deptId,
           p_role: role,
           p_password: password || null,
-        });
+        };
+        // 仅新库（有 phone 列）才传 p_phone，避免旧函数签名匹配失败
+        if (this.state.hasPhoneColumn) params.p_phone = phone;
+        result = await sb.rpc('update_dept_user', params);
       } else {
-        result = await sb.rpc('create_dept_user', {
+        const params = {
           p_email: email,
           p_password: password,
           p_full_name: fullName || null,
           p_department_id: role === 'admin' && !deptId ? null : deptId,
           p_role: role,
-        });
+        };
+        if (this.state.hasPhoneColumn) params.p_phone = phone || null;
+        result = await sb.rpc('create_dept_user', params);
       }
 
       if (result.error) {
@@ -1099,8 +1280,18 @@ const Admin = {
     const user = this.state.users.find(u => u.id === userId);
     if (!user) return;
 
+    // 权限校验：删除管理员账号仅超级管理员
+    if (user.role === 'admin' && !Auth.isSuperAdmin()) {
+      Utils.toast('只有超级管理员才能删除管理员账号', 'error');
+      return;
+    }
+
     const name = user.full_name || user.email || '该账号';
-    if (!confirm(`确定要删除账号「${name}」吗？\n\n删除后该账号将无法登录，其历史报送记录会保留（报送人显示为空）。\n此操作不可撤销！`)) return;
+    const isAdminTarget = user.role === 'admin';
+    const tip = isAdminTarget
+      ? `\n\n⚠️ 这是一个管理员账号，删除后系统将少一个管理员。\n此操作不可撤销！`
+      : `\n\n删除后该账号将无法登录，其历史报送记录会保留（报送人显示为空）。\n此操作不可撤销！`;
+    if (!confirm(`确定要删除账号「${name}」吗？${tip}`)) return;
 
     try {
       const result = await sb.rpc('delete_dept_user', { p_user_id: userId });
@@ -1302,7 +1493,8 @@ const Admin = {
   },
 
   onDeptModalOverlayClick(event) {
-    if (event.target === event.currentTarget) {
+    const overlay = event.currentTarget;
+    if (event.target === overlay && overlay.dataset.dismissArmed === '1') {
       this.closeDeptModal();
     }
   },
@@ -1634,7 +1826,8 @@ const Admin = {
   },
 
   onTypeModalOverlayClick(event) {
-    if (event.target === event.currentTarget) this.closeTypeModal();
+    const overlay = event.currentTarget;
+    if (event.target === overlay && overlay.dataset.dismissArmed === '1') this.closeTypeModal();
   },
 
   closeTypeModal() {
@@ -1825,7 +2018,8 @@ const Admin = {
   },
 
   onFieldModalOverlayClick(event) {
-    if (event.target === event.currentTarget) this.closeFieldModal();
+    const overlay = event.currentTarget;
+    if (event.target === overlay && overlay.dataset.dismissArmed === '1') this.closeFieldModal();
   },
 
   closeFieldModal() {

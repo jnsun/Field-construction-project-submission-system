@@ -199,3 +199,23 @@ const Utils = {
     return active;
   },
 };
+
+/**
+ * 修复「在弹窗内框选文本并划出弹窗后松开鼠标，弹窗被误关闭」的问题。
+ * 原理：只有 mousedown 与 松开(mouseup 触发的 click) 都发生在遮罩 .modal-overlay 本身时，
+ *       才视为「点击遮罩关闭」。在卡片内按下、拖动到遮罩上松开时，mousedown 起点不在遮罩，
+ *       因此不会被判定为点击遮罩，弹窗保持打开。
+ * 用法：各弹窗的 onXxxOverlayClick 需额外判断 event.currentTarget.dataset.dismissArmed === '1'
+ */
+(function setupModalOverlayDismiss() {
+  if (window.__modalOverlayDismissReady) return;
+  window.__modalOverlayDismissReady = true;
+  document.addEventListener('mousedown', (e) => {
+    const overlays = document.querySelectorAll('.modal-overlay');
+    overlays.forEach((o) => { o.dataset.dismissArmed = ''; });
+    const overlay = e.target && e.target.closest ? e.target.closest('.modal-overlay') : null;
+    if (overlay && e.target === overlay) {
+      overlay.dataset.dismissArmed = '1';
+    }
+  });
+})();
