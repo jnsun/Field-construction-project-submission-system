@@ -34,8 +34,10 @@ const Admin = {
   /**
    * 渲染管理员仪表盘
    * @param {HTMLElement} container
+   * @param {{readOnly?: boolean}} [opts] readOnly=true 时为只读模式（不可修改）
    */
-  async render(container) {
+  async render(container, opts = {}) {
+    this.state.readOnly = !!(opts && opts.readOnly);
     const ym = Utils.getCurrentYearMonth();
     this.state.year = ym.year;
     this.state.month = ym.month;
@@ -46,11 +48,22 @@ const Admin = {
   },
 
   /**
+   * 只读模式守卫：返回 true 表示当前为只读，应中止写操作
+   */
+  assertWritable() {
+    if (this.state.readOnly) {
+      Utils.toast('当前为只读模式，无权修改数据', 'error');
+      return true;
+    }
+    return false;
+  },
+
+  /**
    * 构建 HTML
    */
   buildHTML() {
     return `
-      <div class="dashboard">
+      <div class="dashboard${this.state.readOnly ? ' admin-readonly' : ''}">
         ${this.buildHeader()}
         <div class="dashboard-content">
           ${this.buildTabs()}
@@ -86,10 +99,15 @@ const Admin = {
     const views = [
       { key: 'reports',     label: '报送管理' },
       { key: 'completed',   label: '完工项目' },
-      { key: 'users',       label: '账号管理' },
-      { key: 'departments', label: '部门管理' },
-      { key: 'config',      label: '报送配置' },
     ];
+    // 仅管理员可见：账号管理、部门管理、报送配置（内设机构等无报送部门不可见）
+    if (Auth.isAdmin()) {
+      views.push(
+        { key: 'users',       label: '账号管理' },
+        { key: 'departments', label: '部门管理' },
+        { key: 'config',      label: '报送配置' },
+      );
+    }
     return `
       <div class="dashboard-tabs">
         ${views.map(v => `
@@ -105,6 +123,10 @@ const Admin = {
    * @param {'reports'|'users'|'departments'} view
    */
   async switchView(view) {
+    // 非管理员不能进入账号/部门/配置三个后台管理页（仅管理员可见）
+    const adminOnlyViews = ['users', 'departments', 'config'];
+    if (adminOnlyViews.includes(view) && !Auth.isAdmin()) return;
+
     this.state.view = view;
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     const btn = document.querySelector(`.dashboard-tabs .tab-btn[data-view="${view}"]`);
@@ -149,18 +171,20 @@ const Admin = {
   buildHeader() {
     return `
       <div class="dashboard-header">
-        <div class="header-left">
-          <h1>野外施工项目报送</h1>
-          <span class="badge badge-success">管理员</span>
-          ${Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
-        </div>
-        <div class="header-right">
-          <div class="user-info">
-            <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
+        <div class="dashboard-header-inner">
+          <div class="header-left">
+            <h1>野外施工项目报送</h1>
+            <span class="badge ${this.state.readOnly ? 'badge-muted' : 'badge-success'}">${this.state.readOnly ? '只读查看' : '管理员'}</span>
+            ${!this.state.readOnly && Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
-          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          <div class="header-right">
+            <div class="user-info">
+              <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
+            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          </div>
         </div>
       </div>
     `;
@@ -1229,6 +1253,7 @@ const Admin = {
    * @param {string|null} userId
    */
   openUserModal(userId = null) {
+    if (this.assertWritable()) return;
     const user = userId ? this.state.users.find(u => u.id === userId) : null;
     if (userId && !user) {
       Utils.toast('未找到该账号', 'error');
@@ -1359,6 +1384,7 @@ const Admin = {
    * 提交账号表单（新增或编辑）
    */
   async submitUser() {
+    if (this.assertWritable()) return;
     const form = document.getElementById('user-form');
     if (!form) return;
 
@@ -1471,6 +1497,7 @@ const Admin = {
    * @param {string} userId
    */
   async handleDeleteUser(userId) {
+    if (this.assertWritable()) return;
     const user = this.state.users.find(u => u.id === userId);
     if (!user) return;
 
@@ -1588,12 +1615,13 @@ const Admin = {
                   <th>账号数</th>
                   <th>报送记录数</th>
                   <th>报送月报</th>
+                  <th>可看管理界面</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
                 ${depts.length === 0 ? `
-                  <tr class="empty-row"><td colspan="8">暂无部门，点击右上角"新增部门"创建</td></tr>
+                  <tr class="empty-row"><td colspan="9">暂无部门，点击右上角"新增部门"创建</td></tr>
                 ` : depts.map((d, i) => this.renderDeptRow(d, i)).join('')}
               </tbody>
             </table>
@@ -1613,6 +1641,17 @@ const Admin = {
     const reportBadge = needReport
       ? '<span class="badge badge-success">需报送</span>'
       : '<span class="badge badge-muted">不报送</span>';
+    // 可看管理员界面：显式优先；否则按 needs_report 反推（不报送默认可看）
+    let viewBadge;
+    if (d.can_view_admin === true) {
+      viewBadge = '<span class="badge badge-success">允许（显式）</span>';
+    } else if (d.can_view_admin === false) {
+      viewBadge = '<span class="badge badge-muted">禁止（显式）</span>';
+    } else {
+      viewBadge = needReport
+        ? '<span class="badge badge-muted">禁止（默认）</span>'
+        : '<span class="badge badge-info">允许（默认）</span>';
+    }
     return `
       <tr>
         <td>${index + 1}</td>
@@ -1622,6 +1661,7 @@ const Admin = {
         <td>${userCount > 0 ? `<span class="badge badge-warning">${userCount}</span>` : userCount}</td>
         <td>${reportCount > 0 ? `<span class="badge badge-warning">${reportCount}</span>` : reportCount}</td>
         <td>${reportBadge}</td>
+        <td>${viewBadge}</td>
         <td style="white-space:nowrap;">
           <button class="btn btn-secondary btn-sm" onclick="Admin.openDeptModal('${d.id}')">编辑</button>
           <button class="btn btn-danger btn-sm" onclick="Admin.handleDeleteDept('${d.id}')">删除</button>
@@ -1635,6 +1675,7 @@ const Admin = {
    * @param {string|null} deptId
    */
   openDeptModal(deptId = null) {
+    if (this.assertWritable()) return;
     const dept = deptId ? this.state.departments.find(d => d.id === deptId) : null;
     if (deptId && !dept) {
       Utils.toast('未找到该部门', 'error');
@@ -1677,6 +1718,13 @@ const Admin = {
                     <span>需要报送（取消则不参与月度报送统计，如子公司 / 职能部门）</span>
                   </label>
                 </div>
+                <div class="form-group">
+                  <label>可查看管理员界面</label>
+                  <label class="switch-row">
+                    <input type="checkbox" name="can_view_admin" value="1" ${v.can_view_admin === true || (v.can_view_admin !== false && v.needs_report === false) ? 'checked' : ''}>
+                    <span>允许该部门查看管理员（后台）界面；不勾选则按「是否报送月报」自动决定（不报送默认可看）</span>
+                  </label>
+                </div>
                 ${isEdit ? `
                 <div class="form-group">
                   <label>部门编码</label>
@@ -1716,6 +1764,7 @@ const Admin = {
    * 提交部门表单（新增或编辑）
    */
   async submitDept() {
+    if (this.assertWritable()) return;
     const form = document.getElementById('dept-form');
     if (!form) return;
 
@@ -1723,6 +1772,7 @@ const Admin = {
     const name = (fd.get('name') || '').trim();
     const sortOrder = parseInt(fd.get('sort_order'), 10);
     const needsReport = fd.get('needs_report') === '1';
+    const canViewAdmin = fd.get('can_view_admin') === '1';
 
     if (!name) { Utils.toast('请填写部门名称', 'error'); return; }
     if (isNaN(sortOrder) || sortOrder < 0) { Utils.toast('排序号必须为非负整数', 'error'); return; }
@@ -1741,11 +1791,13 @@ const Admin = {
             p_name: name,
             p_sort_order: sortOrder,
             p_needs_report: needsReport,
+            p_can_view_admin: canViewAdmin,
           })
         : await sb.rpc('create_department', {
             p_name: name,
             p_sort_order: sortOrder,
             p_needs_report: needsReport,
+            p_can_view_admin: canViewAdmin,
           });
 
       if (result.error) {
@@ -1769,6 +1821,7 @@ const Admin = {
    * @param {string} deptId
    */
   async handleDeleteDept(deptId) {
+    if (this.assertWritable()) return;
     const dept = this.state.departments.find(d => d.id === deptId);
     if (!dept) return;
 
@@ -1973,6 +2026,7 @@ const Admin = {
   // ---------- 项目类型：新增 / 编辑 / 删除 ----------
 
   openTypeModal(typeId = null) {
+    if (this.assertWritable()) return;
     const type = typeId ? this.state.projectTypes.find(t => t.id === typeId) : null;
     if (typeId && !type) {
       Utils.toast('未找到该项目类型', 'error');
@@ -2047,6 +2101,7 @@ const Admin = {
   },
 
   async submitType() {
+    if (this.assertWritable()) return;
     const form = document.getElementById('type-form');
     if (!form) return;
 
@@ -2094,6 +2149,7 @@ const Admin = {
   },
 
   async handleDeleteType(typeId) {
+    if (this.assertWritable()) return;
     const type = this.state.projectTypes.find(t => t.id === typeId);
     if (!type) return;
 
@@ -2117,6 +2173,7 @@ const Admin = {
   // ---------- 自定义字段：新增 / 编辑 / 删除 ----------
 
   openFieldModal(fieldId = null) {
+    if (this.assertWritable()) return;
     const field = fieldId ? this.state.reportFields.find(f => f.id === fieldId) : null;
     if (fieldId && !field) {
       Utils.toast('未找到该字段', 'error');
@@ -2239,6 +2296,7 @@ const Admin = {
   },
 
   async submitField() {
+    if (this.assertWritable()) return;
     const form = document.getElementById('field-form');
     if (!form) return;
 
@@ -2308,6 +2366,7 @@ const Admin = {
   },
 
   async handleDeleteField(fieldId) {
+    if (this.assertWritable()) return;
     const field = this.state.reportFields.find(f => f.id === fieldId);
     if (!field) return;
 

@@ -263,6 +263,26 @@ const Auth = {
   },
 
   /**
+   * 判断当前用户能否查看「管理员界面」（后台）
+   * 规则：管理员始终可看；非管理员部门用户根据部门权限决定。
+   * 部门权限 can_view_admin 为 null 时，按 needs_report 反推：
+   *   - 需要报送月报（needs_report=true）→ 不可看
+   *   - 不需要报送（needs_report=false）→ 可看（只读）
+   * 显式 true/false 优先于默认规则。
+   * @returns {boolean}
+   */
+  canViewAdmin() {
+    if (this.isAdmin()) return true;
+    if (!this.currentProfile) return false;
+    const d = this.currentProfile.departments;
+    if (!d) return false;
+    if (d.can_view_admin === true) return true;
+    if (  d.can_view_admin === false) return false;
+    // 默认跟随 needs_report 反向：不报送的部门默认可看（只读）
+    return d.needs_report === false;
+  },
+
+  /**
    * 判断当前用户是否为超级管理员
    * 超级管理员 = 管理员角色 + is_super_admin 标记（可创建/删除管理员账号）
    * 旧库未执行 super-admin.sql 时该字段不存在，返回 false（不报错）

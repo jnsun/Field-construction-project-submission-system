@@ -516,14 +516,23 @@ input[disabled] {
 .dashboard-header {
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+  padding: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* 顶栏横条背景整页满宽，内部内容居中收拢到舒适宽度 */
+.dashboard-header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
   padding: 0 24px;
   height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 100;
+  gap: 16px;
 }
 
 .dashboard-header .header-left {
@@ -552,6 +561,14 @@ input[disabled] {
 }
 
 .dashboard-header .user-info .user-name { font-weight: 600; color: var(--color-text); }
+
+/* 只读模式：禁用后台的写入类按钮（新增 / 保存 / 删除），但不影响刷新、导航、退出等操作 */
+.admin-readonly .btn-primary,
+.admin-readonly .btn-danger {
+  pointer-events: none;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* Tab 导航 */
 .dashboard-tabs {
@@ -593,7 +610,7 @@ input[disabled] {
 
 .dashboard-content {
   padding: 24px;
-  max-width: 1600px;
+  max-width: 1200px;
   margin: 0 auto;
   width: 100%;
   flex: 1;
@@ -903,7 +920,7 @@ input[disabled] {
   .form-grid { grid-template-columns: 1fr; }
   .form-grid .form-group.col-span-2 { grid-column: span 1; }
   .dashboard-content { padding: 16px; }
-  .dashboard-header { padding: 0 16px; }
+  .dashboard-header-inner { padding: 0 16px; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .modal-card { margin: 0; }
   .modal-overlay { padding: 0; }
@@ -1214,7 +1231,7 @@ input[disabled] {
 }
 
 /* ===== 工作台首页 ===== */
-.dashboard-home { max-width: 1080px; margin: 0 auto; }
+.dashboard-home { max-width: none; }
 
 .home-section { margin-bottom: 28px; }
 .section-title {
@@ -1310,6 +1327,12 @@ input[disabled] {
   font-size: 2rem;
   margin-bottom: 10px;
   line-height: 1;
+}
+.module-icon svg {
+  width: 44px;
+  height: 44px;
+  display: inline-block;
+  vertical-align: middle;
 }
 .module-name {
   font-size: 0.95rem;

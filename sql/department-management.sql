@@ -7,6 +7,11 @@
 -- --------------------------------------------------------------------------
 ALTER TABLE public.departments ADD COLUMN IF NOT EXISTS needs_report BOOLEAN NOT NULL DEFAULT TRUE;
 
+-- 0.1 部门表新增「可否查看管理员界面」字段
+--     NULL = 跟随默认规则（需要报送的部门看不到；不需要报送的部门默认可看）
+--     显式 TRUE/FALSE 可覆盖默认规则
+ALTER TABLE public.departments ADD COLUMN IF NOT EXISTS can_view_admin BOOLEAN DEFAULT NULL;
+
 -- 已有数据中，非报送部门置为 false（子公司 / 管理部门）
 UPDATE public.departments
 SET needs_report = FALSE
@@ -38,9 +43,10 @@ WHERE name IN ('安全生产部', '物化院有限公司', '六勘院有限公�
 --    返回：{"success": true, "department_id": "..."} 或抛出中文异常
 -- --------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.create_department(
-  p_name         TEXT,
-  p_sort_order   INTEGER DEFAULT NULL,
-  p_needs_report BOOLEAN DEFAULT TRUE
+  p_name           TEXT,
+  p_sort_order     INTEGER DEFAULT NULL,
+  p_needs_report   BOOLEAN DEFAULT TRUE,
+  p_can_view_admin BOOLEAN DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -71,11 +77,11 @@ BEGIN
     SELECT COALESCE(MAX(sort_order), 0) + 1 INTO v_sort FROM public.departments;
   END IF;
 
-  -- 部门编码自动生成（保证唯一）：DEPT- 前缀 + 随机 6 位大写十六进制
+  -- 部门编码自动生成（保证唯一）：DEPT- , 前缀 + 随机 6 位大写十六进制
   v_code := 'DEPT-' || upper(substr(md5(gen_random_uuid()::text), 1, 6));
 
-  INSERT INTO public.departments (name, code, sort_order, needs_report)
-  VALUES (p_name, v_code, v_sort, p_needs_report)
+  INSERT INTO public.departments (name, code, sort_order, needs_report, can_view_admin)
+  VALUES (p_name, v_code, v_sort, p_needs_report, p_can_view_admin)
   RETURNING id INTO v_dept_id;
 
   RETURN jsonb_build_object('success', true, 'department_id', v_dept_id);
@@ -95,10 +101,11 @@ $$;
 --    返回：{"success": true} 或抛出中文异常
 -- --------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.update_department(
-  p_department_id  UUID,
-  p_name           TEXT,
-  p_sort_order     INTEGER DEFAULT NULL,
-  p_needs_report   BOOLEAN DEFAULT NULL
+  p_department_id   UUID,
+  p_name            TEXT,
+  p_sort_order      INTEGER DEFAULT NULL,
+  p_needs_report    BOOLEAN DEFAULT NULL,
+  p_can_view_admin  BOOLEAN DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -122,7 +129,8 @@ BEGIN
   UPDATE public.departments
   SET name = trim(p_name),
       sort_order = COALESCE(p_sort_order, sort_order),
-      needs_report = COALESCE(p_needs_report, needs_report)
+      needs_report = COALESCE(p_needs_report, needs_report),
+      can_view_admin = COALESCE(p_can_view_admin, can_view_admin)
   WHERE id = p_department_id;
 
   IF NOT FOUND THEN
@@ -195,8 +203,8 @@ $$;
 -- 4. 授权：允许已登录用户（authenticated）调用 RPC
 --    实际权限由函数体内的 is_admin() 校验控制
 -- --------------------------------------------------------------------------
-GRANT EXECUTE ON FUNCTION public.create_department(TEXT, INTEGER, BOOLEAN) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.update_department(UUID,  TEXT, INTEGER, BOOLEAN) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_department(TEXT, INTEGER, BOOLEAN, BOOLEAN) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_department(UUID, TEXT, INTEGER, BOOLEAN, BOOLEAN) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_department(UUID) TO authenticated;
 
 -- ==========================================================================

@@ -17,17 +17,19 @@ const Dashboard = {
     container.innerHTML = `
       <div class="dashboard dashboard-home">
         <div class="dashboard-header">
-          <div class="header-left">
-            <h1>安全生产管理系统</h1>
-            <span class="badge badge-muted">${Utils.escapeHtml(dept)}</span>
-          </div>
-          <div class="header-right">
-            <div class="user-info">
-              <span class="user-name">${Utils.escapeHtml(name)}</span>
-              <span class="badge badge-muted">${roleLabel}</span>
+          <div class="dashboard-header-inner">
+            <div class="header-left">
+              <h1>安全生产管理系统</h1>
+              <span class="badge badge-muted">${Utils.escapeHtml(dept)}</span>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+            <div class="header-right">
+              <div class="user-info">
+                <span class="user-name">${Utils.escapeHtml(name)}</span>
+                <span class="badge badge-muted">${roleLabel}</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+              <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+            </div>
           </div>
         </div>
 
@@ -129,33 +131,45 @@ const Dashboard = {
             </div>`;
         }
       } else {
-        // 普通部门用户：本月是否已填报
-        const deptId = profile && profile.department_id;
-        let done = false;
-        if (deptId) {
-          const { data } = await sb
-            .from('project_reports')
-            .select('id')
-            .eq('department_id', deptId)
-            .eq('reporting_year', year)
-            .eq('reporting_month', month);
-          done = (data || []).length > 0;
-        }
-        if (done) {
+        // 普通部门用户：区分「需要报送」与「无需报送（内设机构）」
+        const myDept = Auth.currentProfile && Auth.currentProfile.departments;
+        const needsReport = myDept ? (myDept.needs_report !== false) : true;
+
+        if (!needsReport) {
+          // 内设机构等无需报送的部门：不提示填报
           el.innerHTML = `
             <div class="todo-item todo-ok">
               <span class="todo-dot"></span>
-              <span>您本月（${year}年${month}月）施工月报已报送 ✓</span>
+              <span>您的部门（${Utils.escapeHtml(myDept ? myDept.name : '未分配')}）无需报送月度施工月报</span>
             </div>`;
         } else {
-          el.innerHTML = `
-            <div class="todo-item todo-warn">
-              <span class="todo-dot"></span>
-              <span>您本月施工月报尚未报送，请尽快完成</span>
-            </div>
-            <div class="todo-actions">
-              <button class="btn btn-primary btn-sm" onclick="App.openModule('report')">去填报</button>
-            </div>`;
+          const deptId = profile && profile.department_id;
+          let done = false;
+          if (deptId) {
+            const { data } = await sb
+              .from('project_reports')
+              .select('*')
+              .eq('department_id', deptId)
+              .eq('reporting_year', year)
+              .eq('reporting_month', month);
+            done = (data || []).length > 0;
+          }
+          if (done) {
+            el.innerHTML = `
+              <div class="todo-item todo-ok">
+                <span class="todo-dot"></span>
+                <span>您本月（${year}年${month}月）施工月报已报送 ✓</span>
+              </div>`;
+          } else {
+            el.innerHTML = `
+              <div class="todo-item todo-warn">
+                <span class="todo-dot"></span>
+                <span>您本月施工月报尚未报送，请尽快完成</span>
+              </div>
+              <div class="todo-actions">
+                <button class="btn btn-primary btn-sm" onclick="App.openModule('report')">去填报</button>
+              </div>`;
+          }
         }
       }
     } catch (e) {
