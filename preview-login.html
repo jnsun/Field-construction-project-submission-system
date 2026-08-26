@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录页预览 - 安全生产管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* 预览页专用：与正式登录页完全一致，仅去掉回车提交行为 */
+    body { margin: 0; }
+    .preview-wrap { position: relative; }
+    .preview-tag {
+      position: fixed; top: 12px; right: 12px; z-index: 10;
+      background: rgba(31,122,107,0.92); color: #fff;
+      padding: 6px 12px; border-radius: 999px; font-size: 12px;
+      letter-spacing: 1px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-wrap">
+    <div class="preview-tag">登录页预览</div>
+    <div class="login-page">
+      <div class="login-card">
+        <div class="logo">
+          <h1>安全生产管理系统</h1>
+          <p class="logo-en">Safety Production Management System</p>
+          <p class="logo-hint">请使用部门账号登录</p>
+        </div>
+        <div class="login-error" id="login-error"></div>
+        <form id="login-form" onsubmit="return false">
+          <div class="form-group">
+            <label for="login-email">邮箱 / 手机号 / 部门名称 / 部门编码</label>
+            <input type="text" id="login-email" placeholder="如：13800138000 或 工程一部" autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="login-password">密码</label>
+            <input type="password" id="login-password" placeholder="请输入密码" autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="login-btn">
+            登 录
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

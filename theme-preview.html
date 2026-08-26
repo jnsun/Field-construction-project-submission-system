@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>主题配色预览 - 安全生产管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .preview-body { max-width: 980px; margin: 0 auto; padding: 32px 24px 60px; }
+    .preview-block { margin-bottom: 36px; }
+    .preview-block h3 { font-size: 1rem; margin-bottom: 14px; color: var(--color-neutral); }
+    .palette-row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .swatch { flex: 1 1 150px; border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; }
+    .swatch .c { height: 72px; }
+    .swatch .meta { padding: 10px 12px; font-size: 0.75rem; }
+    .swatch .meta b { display: block; font-size: 0.875rem; }
+    .demo-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .chips-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .table-sample { max-width: 520px; }
+  </style>
+</head>
+<body>
+  <div class="preview-body">
+
+    <div class="preview-block">
+      <h3>① 品牌色板</h3>
+      <div class="palette-row">
+        <div class="swatch"><div class="c" style="background:#2A9D8F"></div><div class="meta"><b>青绿 #2A9D8F</b>主色 / Primary</div></div>
+        <div class="swatch"><div class="c" style="background:#2D5A8B"></div><div class="meta"><b>蓝 #2D5A8B</b>已确认 / Secondary</div></div>
+        <div class="swatch"><div class="c" style="background:#E87A3D"></div><div class="meta"><b>橙 #E87A3D</b>警告 / Accent</div></div>
+        <div class="swatch"><div class="c" style="background:#B5D44B"></div><div class="meta"><b>黄绿 #B5D44B</b>已报送 / Lime</div></div>
+        <div class="swatch"><div class="c" style="background:#4A4A4A"></div><div class="meta"><b>深灰 #4A4A4A</b>中性 / Neutral</div></div>
+      </div>
+    </div>
+
+    <div class="preview-block">
+      <h3>② 按钮</h3>
+      <div class="demo-row">
+        <button class="btn btn-primary">主操作</button>
+        <button class="btn btn-secondary">次操作</button>
+        <button class="btn btn-danger">删除</button>
+      </div>
+    </div>
+
+    <div class="preview-block">
+      <h3>③ 状态标签</h3>
+      <div class="demo-row">
+        <span class="badge badge-success">已报送</span>
+        <span class="badge badge-info">已确认</span>
+        <span class="badge badge-warning">待处理</span>
+        <span class="badge badge-danger">未报送</span>
+        <span class="badge badge-muted">草稿</span>
+      </div>
+    </div>
+
+    <div class="preview-block">
+      <h3>④ 统计卡片（左侧色条）</h3>
+      <div class="chips-row">
+        <div class="stat-card"><div class="stat-label">本月已报送</div><div class="stat-value">128</div></div>
+        <div class="stat-card success"><div class="stat-label">已报送（黄绿）</div><div class="stat-value">128</div></div>
+        <div class="stat-card warning"><div class="stat-label">待处理（橙）</div><div class="stat-value">6</div></div>
+        <div class="stat-card info"><div class="stat-label">已确认（蓝）</div><div class="stat-value">96</div></div>
+        <div class="stat-card danger"><div class="stat-label">异常（红）</div><div class="stat-value">2</div></div>
+      </div>
+    </div>
+
+    <div class="preview-block">
+      <h3>⑤ 部门报送状态卡片</h3>
+      <div class="chips-row">
+        <div class="dept-chip submitted"><div class="dept-chip-name">工程一部</div><div class="dept-chip-status">已报送 · 14:20</div></div>
+        <div class="dept-chip pending"><div class="dept-chip-name">工程二部</div><div class="dept-chip-status">未报送</div></div>
+        <div class="dept-chip confirmed"><div class="dept-chip-name">工程三部</div><div class="dept-chip-status">已确认</div></div>
+      </div>
+    </div>
+
+    <div class="preview-block">
+      <h3>⑥ 提示框</h3>
+      <div class="alert alert-info">这是一条信息提示（蓝）。</div>
+      <div class="alert alert-warning">这是一条警告提示（橙）。</div>
+      <div class="alert alert-danger">这是一条错误提示（红）。</div>
+    </div>
+
+    <div class="preview-block">
+      <h3>⑦ 汇总明细表（项目归属部门按部门着色 + 悬停）</h3>
+      <div class="card"><div class="card-body">
+        <table class="data-table summary-table table-sample">
+          <thead><tr>
+            <th>序号</th><th class="cell-narrow">项目归属<br>部门</th><th>项目名称</th><th>状态</th>
+          </tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="cell-narrow"><span class="dept-tag" style="background:#E6F4F1;">工程一部</span></td><td>某桥梁施工项目</td><td><span class="badge badge-success">已报送</span></td></tr>
+            <tr><td>2</td><td class="cell-narrow"><span class="dept-tag" style="background:#FCEEE3;">工程二部</span></td><td>某隧道施工项目</td><td><span class="badge badge-danger">未报送</span></td></tr>
+            <tr><td>3</td><td class="cell-narrow"><span class="dept-tag" style="background:#EAF0F6;">工程三部</span></td><td>某道路养护项目</td><td><span class="badge badge-info">已确认</span></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="preview-block">
+      <h3>⑧ 分区标题</h3>
+      <div class="section-title">施工台账 · 本月汇总</div>
+    </div>
+
+  </div>
+</body>
+</html>

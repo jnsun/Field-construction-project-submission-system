@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>模块导航预览 - 安全生产管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { background: var(--color-bg); }
+    .preview-wrap { max-width: 960px; margin: 0 auto; padding: 28px 20px; }
+    .preview-title { color: var(--color-text); font-size: 1.2rem; font-weight: 600; margin-bottom: 4px; }
+    .preview-sub { color: var(--color-text-muted); font-size: 0.85rem; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <div class="preview-wrap">
+    <div class="preview-title">安全生产管理系统 · 模块导航（预览）</div>
+    <div class="preview-sub">九宫格从 modules/registry.js 读取，单击卡片进入对应模块（此处为只读预览，不触发真实跳转）</div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <!-- 仅加载注册表以提供模块数据；不加载 auth/业务模块，避免依赖 -->
+  <script src="js/modules/registry.js"></script>
+  <script>
+    const grid = document.getElementById('grid');
+    grid.innerHTML = ModuleRegistry.list.map((m) => {
+      const ph = !m.ready;
+      return `
+        <div class="module-card ${ph ? 'module-placeholder' : 'module-ready'}">
+          <div class="module-icon">${m.icon}</div>
+          <div class="module-name">${m.name}</div>
+          <div class="module-desc">${m.desc}</div>
+          <span class="module-badge ${ph ? 'badge-dev' : 'badge-ready'}">${ph ? '建设中' : '可使用'}</span>
+        </div>`;
+    }).join('');
+  </script>
+</body>
+</html>

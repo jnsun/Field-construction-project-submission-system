@@ -1,6 +1,16 @@
 -- ==========================================================================
 -- 施工项目月报管理系统 - 部门管理 RPC 函数
 -- ==========================================================================
+
+-- --------------------------------------------------------------------------
+-- 0. 部门表新增「是否报送野外施工月报」字段（默认报送；非报送部门如子公司/职能部）
+-- --------------------------------------------------------------------------
+ALTER TABLE public.departments ADD COLUMN IF NOT EXISTS needs_report BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- 已有数据中，非报送部门置为 false（子公司 / 管理部门）
+UPDATE public.departments
+SET needs_report = FALSE
+WHERE name IN ('安全生产部', '物化院有限公司', '六勘院有限公司');
 -- 功能：管理员在页面上 增/改/删 公司部门
 --   create_department()  新增部门（名称 + 排序，编码自动生成）
 --   update_department()  修改部门（名称 / 排序）
@@ -29,7 +39,8 @@
 -- --------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.create_department(
   p_name         TEXT,
-  p_sort_order   INTEGER DEFAULT NULL
+  p_sort_order   INTEGER DEFAULT NULL,
+  p_needs_report BOOLEAN DEFAULT TRUE
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -63,8 +74,8 @@ BEGIN
   -- 部门编码自动生成（保证唯一）：DEPT- 前缀 + 随机 6 位大写十六进制
   v_code := 'DEPT-' || upper(substr(md5(gen_random_uuid()::text), 1, 6));
 
-  INSERT INTO public.departments (name, code, sort_order)
-  VALUES (p_name, v_code, v_sort)
+  INSERT INTO public.departments (name, code, sort_order, needs_report)
+  VALUES (p_name, v_code, v_sort, p_needs_report)
   RETURNING id INTO v_dept_id;
 
   RETURN jsonb_build_object('success', true, 'department_id', v_dept_id);
@@ -86,7 +97,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.update_department(
   p_department_id  UUID,
   p_name           TEXT,
-  p_sort_order     INTEGER DEFAULT NULL
+  p_sort_order     INTEGER DEFAULT NULL,
+  p_needs_report   BOOLEAN DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -109,7 +121,8 @@ BEGIN
 
   UPDATE public.departments
   SET name = trim(p_name),
-      sort_order = COALESCE(p_sort_order, sort_order)
+      sort_order = COALESCE(p_sort_order, sort_order),
+      needs_report = COALESCE(p_needs_report, needs_report)
   WHERE id = p_department_id;
 
   IF NOT FOUND THEN
@@ -182,8 +195,8 @@ $$;
 -- 4. 授权：允许已登录用户（authenticated）调用 RPC
 --    实际权限由函数体内的 is_admin() 校验控制
 -- --------------------------------------------------------------------------
-GRANT EXECUTE ON FUNCTION public.create_department(TEXT, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.update_department(UUID, TEXT, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_department(TEXT, INTEGER, BOOLEAN) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_department(UUID,  TEXT, INTEGER, BOOLEAN) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_department(UUID) TO authenticated;
 
 -- ==========================================================================

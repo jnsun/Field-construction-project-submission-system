@@ -1,19 +1,40 @@
 /* ==========================================================================
-   施工项目月报管理系统 - 样式表
+   安全生产管理系统 - 样式表
    ========================================================================== */
 
-/* ----- CSS 变量 ----- */
+/* ----- CSS 变量（品牌色板：青绿主色 / 蓝 / 橙 / 黄绿 / 深灰） ----- */
 :root {
-  --color-primary: #2563eb;
-  --color-primary-dark: #1d4ed8;
-  --color-primary-light: #dbeafe;
+  /* 主色：青绿 */
+  --color-primary: #2A9D8F;
+  --color-primary-dark: #1F7A6B;
+  --color-primary-light: #E6F4F1;
+
+  /* 蓝（已确认 / 信息） */
+  --color-secondary: #2D5A8B;
+  --color-secondary-dark: #234C73;
+  --color-secondary-light: #EAF0F6;
+
+  /* 橙（警告 / 待办强调） */
+  --color-accent: #E87A3D;
+  --color-accent-dark: #9C4F1D;
+  --color-accent-light: #FCEEE3;
+
+  /* 黄绿（已报送 / 成功强调） */
+  --color-lime: #B5D44B;
+  --color-lime-dark: #5E7A1A;
+  --color-lime-light: #F2F8E0;
+
+  /* 深灰（中性强调） */
+  --color-neutral: #4A4A4A;
+
+  /* 功能色：保留错误红，正向用品牌黄绿呼应 */
   --color-success: #16a34a;
   --color-success-light: #dcfce7;
   --color-danger: #dc2626;
   --color-danger-light: #fee2e2;
-  --color-warning: #f59e0b;
-  --color-warning-light: #fef3c7;
-  --color-bg: #f1f5f9;
+  --color-warning: #E87A3D;
+  --color-warning-light: #FCEEE3;
+  --color-bg: #F4F6F7;
   --color-surface: #ffffff;
   --color-text: #1e293b;
   --color-text-muted: #64748b;
@@ -68,44 +89,82 @@ a:hover { text-decoration: underline; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ==========================================================================
-   登录页
+   登录页 - 采用公司 logo 5 配色（青绿/黄绿/橙/深灰/蓝），专业简洁
    ========================================================================== */
 .login-page {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  padding: 20px;
-  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+  padding: 24px;
+  background:
+    radial-gradient(ellipse 900px 520px at 50% -10%, rgba(42,157,143,0.10), transparent 60%),
+    #f4f7f9;
 }
 
 .login-card {
+  position: relative;
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px -12px rgba(15, 23, 42, 0.12), 0 4px 12px -4px rgba(15, 23, 42, 0.06);
+  padding: 48px 40px 40px;
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
+  overflow: hidden;
 }
 
+/* 卡片顶部 5 色彩条（呼应 logo 环形 5 色：绿-橙-灰-蓝-青） */
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(to right,
+    #B5D44B 0 20%,
+    #E87A3D 20% 40%,
+    #4A4A4A 40% 60%,
+    #2D5A8B 60% 80%,
+    #2A9D8F 80% 100%);
+}
+
+/* logo 区域 */
 .login-card .logo {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
+}
+
+.login-card .brand-mark {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 18px;
 }
 
 .login-card .logo h1 {
-  font-size: 1.5rem;
-  color: var(--color-text);
-  margin-bottom: 4px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1f7a6b;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
 }
 
-.login-card .logo p {
+.login-card .logo-en {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  margin: 0 0 4px;
+}
+
+.login-card .logo-hint {
   color: var(--color-text-muted);
   font-size: 0.875rem;
+  margin: 0;
 }
 
+/* 表单 */
 .login-card .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .login-card .form-group label {
@@ -118,20 +177,45 @@ a:hover { text-decoration: underline; }
 
 .login-card .form-group input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 11px 14px;
   border: 1px solid var(--color-border-dark);
   border-radius: var(--radius);
   font-size: 0.9rem;
   font-family: var(--font-sans);
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #fafbfc;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
 }
 
 .login-card .form-group input:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-light);
+  border-color: #2A9D8F;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(42, 157, 143, 0.15);
 }
 
+/* 登录按钮：teal 品牌色（仅覆盖登录作用域，不影响其它页面） */
+.login-card .btn-primary,
+.login-page > .login-card .btn-primary {
+  background: #2A9D8F;
+  border-color: #2A9D8F;
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 2px;
+  box-shadow: 0 4px 12px -2px rgba(42, 157, 143, 0.35);
+  transition: background-color 0.2s, box-shadow 0.2s, transform 0.05s;
+}
+.login-card .btn-primary:hover,
+.login-page > .login-card .btn-primary:hover {
+  background: #238A7C;
+  border-color: #238A7C;
+  box-shadow: 0 6px 16px -2px rgba(42, 157, 143, 0.45);
+}
+.login-card .btn-primary:active,
+.login-page > .login-card .btn-primary:active {
+  transform: translateY(1px);
+}
+
+/* 错误提示 */
 .login-card .login-error {
   background: var(--color-danger-light);
   color: var(--color-danger);
@@ -141,7 +225,6 @@ a:hover { text-decoration: underline; }
   margin-bottom: 16px;
   display: none;
 }
-
 .login-card .login-error.show { display: block; }
 
 /* ==========================================================================
@@ -312,11 +395,11 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
-.badge-success { background: var(--color-success-light); color: var(--color-success); }
+.badge-success { background: var(--color-lime-light); color: var(--color-lime-dark); }
 .badge-danger  { background: var(--color-danger-light);  color: var(--color-danger);  }
-.badge-warning { background: var(--color-warning-light); color: #92400e; }
+.badge-warning { background: var(--color-accent-light); color: var(--color-accent-dark); }
 .badge-muted   { background: #f1f5f9; color: var(--color-text-muted); }
-.badge-info    { background: var(--color-primary-light); color: var(--color-primary-dark); }
+.badge-info    { background: var(--color-secondary-light); color: var(--color-secondary); }
 .text-muted    { color: var(--color-text-muted); }
 
 /* 表单控件禁用状态（内置字段类型锁定） */
@@ -359,7 +442,7 @@ input[disabled] {
 
 .toast-success { background: var(--color-success); }
 .toast-error   { background: var(--color-danger); }
-.toast-info    { background: var(--color-primary); }
+.toast-info    { background: var(--color-secondary); }
 
 /* 模态框 */
 .modal-overlay {
@@ -558,10 +641,10 @@ input[disabled] {
   border-left: 4px solid var(--color-primary);
 }
 
-.stat-card.success { border-left-color: var(--color-success); }
+.stat-card.success { border-left-color: var(--color-lime); }
 .stat-card.danger  { border-left-color: var(--color-danger); }
-.stat-card.warning { border-left-color: var(--color-warning); }
-.stat-card.info    { border-left-color: var(--color-primary); }
+.stat-card.warning { border-left-color: var(--color-accent); }
+.stat-card.info    { border-left-color: var(--color-secondary); }
 
 .stat-card .stat-label {
   font-size: 0.75rem;
@@ -691,8 +774,8 @@ input[disabled] {
 .dept-chip:hover { box-shadow: var(--shadow-sm); }
 
 .dept-chip.submitted {
-  border-left-color: var(--color-success);
-  background: #f8fdf9;
+  border-left-color: var(--color-lime);
+  background: var(--color-lime-light);
 }
 
 .dept-chip.pending {
@@ -701,8 +784,8 @@ input[disabled] {
 }
 
 .dept-chip.confirmed {
-  border-left-color: var(--color-primary);
-  background: #f4f8ff;
+  border-left-color: var(--color-secondary);
+  background: var(--color-secondary-light);
 }
 
 .dept-chip-name {
@@ -716,9 +799,9 @@ input[disabled] {
 
 .dept-chip-status { font-size: 0.75rem; line-height: 1.4; }
 
-.dept-chip.submitted .dept-chip-status { color: var(--color-success); }
+.dept-chip.submitted .dept-chip-status { color: var(--color-lime-dark); }
 .dept-chip.pending .dept-chip-status { color: var(--color-danger); }
-.dept-chip.confirmed .dept-chip-status { color: var(--color-primary-dark); }
+.dept-chip.confirmed .dept-chip-status { color: var(--color-secondary); }
 
 .dept-chip-time {
   font-size: 0.6875rem;
@@ -767,8 +850,8 @@ input[disabled] {
   margin-bottom: 16px;
 }
 
-.alert-info { background: var(--color-primary-light); color: var(--color-primary-dark); }
-.alert-warning { background: var(--color-warning-light); color: #92400e; }
+.alert-info { background: var(--color-secondary-light); color: var(--color-secondary-dark); }
+.alert-warning { background: var(--color-accent-light); color: var(--color-accent-dark); }
 .alert-danger { background: var(--color-danger-light); color: var(--color-danger); }
 
 /* 无野外施工项目 确认横幅（部门端） */
@@ -988,6 +1071,8 @@ input[disabled] {
 /* 汇总明细表：紧凑布局（无横向滚动条） */
 .summary-wrapper {
   overflow-x: hidden;
+  overflow-y: visible;
+  max-height: none;
 }
 
 .summary-table {
@@ -1096,11 +1181,20 @@ input[disabled] {
   text-align: center;
 }
 
-/* 汇总表：按部门交替底色（同一部门同色、相邻部门异色，整表仅 2 种底色） */
-.summary-table tbody tr.row-dept-0 td { background-color: #f0f6ff; }
-.summary-table tbody tr.row-dept-1 td { background-color: #ffffff; }
-.summary-table tbody tr.row-dept-0:hover td,
-.summary-table tbody tr.row-dept-1:hover td { background-color: #fef3c7; }
+/* 汇总表：保留鼠标悬停底色（去掉原先整行部门交替底色） */
+.summary-table tbody tr:hover td { background-color: #EFF4F6; }
+
+/* 「项目归属部门」单元格内的部门标签：按部门着色，便于区分不同部门项目 */
+.dept-tag {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #1e3350;
+  white-space: nowrap;
+}
 
 /* 汇总表：报送部门/报送时间列窄一些 */
 .summary-table th:first-child,
@@ -1118,6 +1212,152 @@ input[disabled] {
   padding: 7px 10px;
   font-size: 0.8125rem;
 }
+
+/* ===== 工作台首页 ===== */
+.dashboard-home { max-width: 1080px; margin: 0 auto; }
+
+.home-section { margin-bottom: 28px; }
+.section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 14px;
+  padding-left: 10px;
+  border-left: 3px solid var(--color-primary);
+}
+
+/* 个人待办 */
+.todo-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 20px;
+}
+.todo-loading { color: var(--color-text-muted); font-size: 0.875rem; }
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.todo-item + .todo-item { margin-top: 10px; }
+.todo-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+}
+.todo-warn .todo-dot { background: var(--color-accent); }
+.todo-ok .todo-dot { background: var(--color-lime); }
+.todo-warn span:last-child { color: var(--color-text); }
+.todo-ok span:last-child { color: var(--color-lime-dark); }
+.todo-actions { margin-top: 12px; }
+
+/* 九宫格 */
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+/* 部门编辑弹窗中的「是否报送」开关行 */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.switch-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+@media (max-width: 768px) {
+  .module-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.module-card {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 20px 18px;
+  text-align: center;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.module-card.module-ready {
+  cursor: pointer;
+  border-color: var(--color-primary-light);
+}
+.module-card.module-ready:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-primary);
+}
+.module-card.module-placeholder {
+  cursor: pointer;
+  border-style: dashed;
+  border-color: var(--color-border-dark);
+  background: #fbfdff;
+}
+.module-card.module-placeholder:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-secondary);
+}
+.module-icon {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+.module-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+.module-desc {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+  min-height: 2.2em;
+}
+.module-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+.badge-ready {
+  background: var(--color-success-light);
+  color: var(--color-success);
+  font-weight: 600;
+}
+.badge-dev {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+/* 通用模块页面容器（占位模块及后续模块统一使用） */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 22px 24px;
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.page-header h1 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
 
 .compare-table td:first-child { white-space: nowrap; }
 

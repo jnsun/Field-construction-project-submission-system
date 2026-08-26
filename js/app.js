@@ -62,6 +62,17 @@ const App = {
   },
 
   /**
+   * 品牌标志（5 段彩色环形 logo，取自公司 logo 配色）
+   */
+  BRAND_LOGO_SVG: `<svg class="brand-mark" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M60 4 A56 56 0 0 1 110.3 35.5 L92.4 44.2 A36 36 0 0 0 60 24 Z" fill="#B5D44B"/>
+    <path d="M113.3 42.7 A56 56 0 0 1 98.9 100.3 L85.0 83.9 A36 36 0 0 0 94.2 48.9 Z" fill="#E87A3D"/>
+    <path d="M92.9 105.3 A56 56 0 0 1 33.7 109.4 L43.1 91.8 A36 36 0 0 0 81.2 89.1 Z" fill="#4A4A4A"/>
+    <path d="M27.1 105.3 A56 56 0 0 1 4.8 50.3 L24.5 53.8 A36 36 0 0 0 38.8 89.1 Z" fill="#2D5A8B"/>
+    <path d="M6.7 42.7 A56 56 0 0 1 52.2 4.5 L55.0 24.4 A36 36 0 0 0 25.8 48.9 Z" fill="#2A9D8F"/>
+  </svg>`,
+
+  /**
    * 渲染 Supabase 配置提醒
    */
   renderConfigWarning() {
@@ -71,8 +82,9 @@ const App = {
       <div class="login-page">
         <div class="login-card">
           <div class="logo">
-            <h1>施工项目月报管理系统</h1>
-            <p>系统未配置</p>
+            <h1>安全生产管理系统</h1>
+            <p class="logo-en">Safety Production Management System</p>
+            <p class="logo-hint">系统未配置</p>
           </div>
           <div class="alert alert-warning">
             <p style="font-weight:600;margin-bottom:8px;">请先配置 Supabase 连接信息</p>
@@ -94,8 +106,9 @@ const App = {
       <div class="login-page">
         <div class="login-card">
           <div class="logo">
-            <h1>施工项目月报管理系统</h1>
-            <p>系统提示</p>
+            <h1>安全生产管理系统</h1>
+            <p class="logo-en">Safety Production Management System</p>
+            <p class="logo-hint">系统提示</p>
           </div>
           <div class="alert alert-danger">
             <p>${Utils.escapeHtml(message)}</p>
@@ -117,8 +130,9 @@ const App = {
       <div class="login-page">
         <div class="login-card">
           <div class="logo">
-            <h1>施工项目月报管理系统</h1>
-            <p>请使用部门账号登录</p>
+            <h1>安全生产管理系统</h1>
+            <p class="logo-en">Safety Production Management System</p>
+            <p class="logo-hint">请使用部门账号登录</p>
           </div>
           <div class="login-error" id="login-error"></div>
           <form id="login-form" onsubmit="return false">
@@ -195,18 +209,36 @@ const App = {
   },
 
   /**
-   * 根据用户角色路由到对应仪表盘
+   * 登录成功后进入工作台首页
    */
   routeTo(profile) {
     this.hideLoading();
+    this.openDashboard();
+  },
+
+  /**
+   * 渲染工作台首页（个人待办 + 九宫格导航）
+   */
+  openDashboard() {
     const app = document.getElementById('app');
     app.innerHTML = '';
+    Dashboard.render(app);
+  },
 
-    if (profile.role === 'admin') {
-      Admin.render(app);
-    } else {
-      Reporter.render(app);
+  /**
+   * 进入指定模块（按模块 id 查注册表渲染），无 id 时默认进入「野外施工项目报送」
+   */
+  openModule(moduleId) {
+    const app = document.getElementById('app');
+    if (!moduleId) moduleId = 'report';
+    const mod = ModuleRegistry.get(moduleId);
+    if (!mod) {
+      Utils.toast && Utils.toast('模块不存在');
+      this.openDashboard();
+      return;
     }
+    app.innerHTML = '';
+    mod.renderer(app);
   },
 };
 
@@ -229,8 +261,9 @@ window.addEventListener('DOMContentLoaded', () => {
           <div class="login-page">
             <div class="login-card">
               <div class="logo">
-                <h1>施工项目月报管理系统</h1>
-                <p>系统提示</p>
+                <h1>安全生产管理系统</h1>
+                <p class="logo-en">Safety Production Management System</p>
+                <p class="logo-hint">系统提示</p>
               </div>
               <div class="alert alert-danger">
                 <p>系统加载超时，请尝试刷新页面。</p>
