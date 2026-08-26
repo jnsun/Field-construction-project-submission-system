@@ -1,0 +1,13 @@
+# 本地项目配置/数据（含 MCP、项目级 skills、自动化等）—— 不进版本库
+.workbuddy/
+
+# 第三方 SDK（supabase 等），可按需保留或排除
+vendor/
+
+# 通用忽略
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
