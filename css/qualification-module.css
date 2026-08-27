@@ -1,0 +1,453 @@
+/* ==========================================================================
+   资质证照管理模块 - 专属样式（合并自 license-management/css/style.css）
+   仅包含本项目 style.css 中缺失的证照模块专用类；
+   共享类（.badge / .toolbar / .card / .data-table / .modal-overlay 等）沿用主表。
+   ========================================================================== */
+
+/* 类型彩色标签 */
+
+.type-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+
+/* 批量选择列：紧凑对齐复选框 */
+.data-table th.col-select,
+.data-table td.col-select {
+  width: 40px;
+  text-align: center;
+  padding-left: 8px;
+  padding-right: 8px;
+  vertical-align: middle;
+}
+.data-table th.col-select input,
+.data-table td.col-select input {
+  cursor: pointer;
+}
+
+
+/* 工具栏两行布局：大类胶囊选项卡 + 下方筛选行 */
+.toolbar-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.toolbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+
+/* 大类筛选：胶囊选项卡 */
+.cat-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cat-tab {
+  padding: 6px 18px;
+  border: 1px solid var(--color-border-dark);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.cat-tab:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.cat-tab.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+
+/* 中性徽章（培训状态：无需培训） */
+.badge-secondary { background: #e2e8f0; color: #475569; }
+
+
+/* ==========================================================================
+   资质证照管理系统 - 模块专属样式（追加于月报系统基础样式之上）
+   ========================================================================== */
+/* ==========================================================================
+   资质证照管理系统 - 模块专属样式（追加于月报系统基础样式之上）
+   ========================================================================== */
+
+/* ----- 预警行高亮（列表置顶标色） ----- */
+.data-table tbody tr.row-danger {
+  background: var(--color-danger-light);
+}
+.data-table tbody tr.row-danger:hover {
+  background: #fecaca;
+}
+.data-table tbody tr.row-warning {
+  background: var(--color-warning-light);
+}
+.data-table tbody tr.row-warning:hover {
+  background: #fde68a;
+}
+
+/* ----- 表单：长期有效复选框 ----- */
+.cert-longterm-group {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 16px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+}
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+/* ----- 卡片头部操作区（标题 + 按钮同行） ----- */
+.card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ----- 统计卡片次级数值 ----- */
+.stat-card .stat-sub {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+/* ----- 详情弹窗：分区标题 ----- */
+.detail-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+.detail-section h3 {
+  font-size: 0.95rem;
+  color: var(--color-text);
+  margin-bottom: 12px;
+}
+
+/* ----- 历年培训情况 ----- */
+.trainings-list { margin-bottom: 12px; }
+.trainings-actions { margin-top: 8px; }
+.training-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.training-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.training-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.training-year-badge {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-light);
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+.training-card-ops {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.training-content {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  margin-bottom: 6px;
+}
+.training-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.training-remark {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ----- 换证历史链 ----- */
+.renewal-chain {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.renewal-chain li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+}
+.renewal-chain li.current {
+  background: var(--color-primary-light);
+}
+
+/* ----- 附件列表 ----- */
+.cert-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cert-file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.cert-file-item:hover {
+  border-color: var(--color-border-dark);
+}
+.cert-file-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.cert-file-info {
+  flex: 1;
+  min-width: 0;
+}
+.cert-file-name {
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cert-file-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+.cert-file-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ----- 附件上传区 ----- */
+.cert-files-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+/* ----- 图片预览弹窗 ----- */
+.file-preview-card {
+  max-width: 900px;
+}
+.file-preview-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a0d;
+  min-height: 200px;
+}
+.file-preview-body img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius);
+  display: block;
+}
+
+/* ==========================================================================
+   批量导入证照（Excel）- import.js 专属样式
+   ========================================================================== */
+
+/* ----- 步骤说明 ----- */
+.import-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.import-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+.import-step-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+.import-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+/* ----- 预览 ----- */
+.import-file-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  word-break: break-all;
+}
+.import-preview-wrap {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-top: 12px;
+}
+.import-preview-wrap .data-table {
+  font-size: 0.78rem;
+}
+.import-preview-wrap .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.data-table tbody tr.import-row-error td {
+  background: var(--color-danger-light);
+}
+.data-table tbody tr.import-row-error:hover td {
+  background: #fecaca;
+}
+.import-err-text {
+  color: var(--color-danger);
+  font-size: 0.75rem;
+}
+
+/* ----- 导入进度 ----- */
+.import-progress {
+  height: 10px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 24px 0 12px;
+}
+.import-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-primary);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.import-progress-text {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* ----- 导入结果 ----- */
+.import-result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.import-result-item {
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+}
+.import-result-item .num {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.import-result-item .lbl {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+.import-result-ok   { background: var(--color-success-light); }
+.import-result-ok .num   { color: var(--color-success); }
+.import-result-fail { background: var(--color-danger-light); }
+.import-result-fail .num { color: var(--color-danger); }
+.import-result-skip { background: #f1f5f9; }
+.import-result-skip .num { color: var(--color-text-muted); }
+
+/* ---- 去重清理弹窗 ---- */
+.dedupe-group {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.dedupe-group-title {
+  background: #f8fafc;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.dedupe-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid #eef2f7;
+}
+.dedupe-item:last-child { border-bottom: none; }
+.dedupe-keep   { background: #f0fdf4; }
+.dedupe-remove { background: #fef2f2; }
+

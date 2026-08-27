@@ -198,6 +198,203 @@ const Utils = {
     }
     return active;
   },
+
+  // ==========================================================================
+  // 资质证照模块专用工具（由 license-management 合并而来）
+  // ==========================================================================
+
+  /**
+   * 转义单引号与反斜杠（用于拼接到 HTML 内联 onclick 参数中）
+   */
+  esc(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  },
+
+  /**
+   * 证件号脱敏（保留前 4 后 4 位）
+   * @returns {string} 如 "3301**********1234"
+   */
+  maskIdNumber(no) {
+    const s = String(no || '').trim();
+    if (!s) return '';
+    if (s.length <= 8) return s;
+    return s.slice(0, 4) + '*'.repeat(Math.max(s.length - 8, 0)) + s.slice(-4);
+  },
+
+  /**
+   * 计算距今天数（正数 = 未来，负数 = 已过去）
+   * @param {string} dateStr - 日期字符串（YYYY-MM-DD）
+   */
+  daysUntil(dateStr) {
+    if (!dateStr) return null;
+    const target = new Date(String(dateStr).slice(0, 10) + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((target - today) / 86400000);
+  },
+
+  /**
+   * 计算证照展示状态（综合生命周期标记 + 有效期）
+   * @param {Object} cert - certificates 表记录
+   * @param {number} warnDays - 预警天数阈值
+   * @returns {{key: string, label: string, badge: string}} badge 为 CSS 类名
+   */
+  certDisplayStatus(cert, warnDays = 90) {
+    if (!cert) return { key: 'unknown', label: '未知', badge: 'badge-muted' };
+    // 生命周期优先：已注销 / 已换证归档
+    if (cert.status === 'revoked') {
+      return { key: 'revoked', label: '已注销', badge: 'badge-muted' };
+    }
+    if (cert.status === 'replaced') {
+      return { key: 'replaced', label: '已换证', badge: 'badge-info' };
+    }
+    // 在用证照：按有效期计算
+    if (cert.is_long_term || !cert.valid_until) {
+      return { key: 'valid', label: '长期有效', badge: 'badge-success' };
+    }
+    const days = this.daysUntil(cert.valid_until);
+    if (days == null) return { key: 'valid', label: '有效', badge: 'badge-success' };
+    if (days < 0) {
+      return { key: 'expired', label: '已过期', badge: 'badge-danger' };
+    }
+    if (days <= warnDays) {
+      return { key: 'expiring', label: `即将到期(${days}天)`, badge: 'badge-warning' };
+    }
+    return { key: 'valid', label: '有效', badge: 'badge-success' };
+  },
+
+  /**
+   * 证照大类显示名（v1 旧值 enterprise/person 兼容映射）
+   */
+  categoryLabel(category) {
+    const map = {
+      company: '公司证照',
+      personal: '个人证照',
+      enterprise: '公司证照',
+      person: '个人证照',
+    };
+    return map[category] || '公司证照';
+  },
+
+  /**
+   * 证照子分类展示文本（sub1 / sub2 以「 / 」连接，如「主要负责人 / 太原」）
+   */
+  subText(cert) {
+    if (!cert) return '';
+    return [cert.sub1_value, cert.sub2_value].filter(Boolean).join(' / ');
+  },
+
+  /**
+   * 证照类型底色（按类型名称稳定映射一种柔和底色，便于人眼区分不同证照类型）
+   * 返回 { bg, fg }，bg 为底色、fg 为文字色（均为深底浅字对比）
+   */
+  typeColor(type) {
+    const t = String(type || '').trim();
+    const palette = {
+      '营业执照':                 { bg: '#dbeafe', fg: '#1e40af' },
+      '安全生产许可证':           { bg: '#dcfce7', fg: '#166534' },
+      '采矿许可证':               { bg: '#fef9c3', fg: '#854d0e' },
+      '爆破作业人员许可证':       { bg: '#fee2e2', fg: '#991b1b' },
+      '非煤矿山安全管理人员证书': { bg: '#ede9fe', fg: '#5b21b6' },
+      '特种作业人员资格证':       { bg: '#cffafe', fg: '#155e75' },
+      '安全生产考核合格证书':     { bg: '#fed7aa', fg: '#9a3412' },
+      '注册安全工程师':           { bg: '#fce7f3', fg: '#9d174d' },
+      '职业卫生许可证':           { bg: '#e0f2fe', fg: '#075985' },
+      '排污许可证':               { bg: '#d9f99d', fg: '#3f6212' },
+      '食品经营许可证':           { bg: '#fae8ff', fg: '#86198f' },
+      '危险化学品经营许可证':     { bg: '#ffedd5', fg: '#9a3412' },
+    };
+    if (palette[t]) return palette[t];
+    // 兜底：基于名称哈希生成稳定的柔色（HSL 高亮度低饱和，文字用同色系深色）
+    let h = 0;
+    for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+    const hue = h % 360;
+    return { bg: `hsl(${hue} 65% 90%)`, fg: `hsl(${hue} 55% 28%)` };
+  },
+
+  /**
+   * 生成「类型」单元格的彩色标签（仅改类型内容的底色，方便区分）
+   * @returns {string} HTML
+   */
+  typeChip(type) {
+    const c = this.typeColor(type);
+    return `<span class="type-chip" style="background:${c.bg};color:${c.fg};">${Utils.escapeHtml(type)}</span>`;
+  },
+
+  /**
+   * 子分类排序名次（用于「安全生产考核合格证书」按 A→B→C 排序）
+   * 取子分类首字母 A/B/C 映射为 0/1/2；无字母则排最后。
+   * @returns {number}
+   */
+  subCategoryRank(sub1) {
+    const s = String(sub1 || '').toUpperCase();
+    const m = s.match(/([A-Z])/);
+    if (m) return m[1].charCodeAt(0) - 65; // A=0, B=1, C=2, ...
+    return 999; // 无字母排最后
+  },
+
+  /**
+   * 当年培训状态徽章（已培训：绿 / 无需培训：灰 / 待培训：橙；空：—）
+   * @returns {string} HTML
+   */
+  trainingStatusBadge(status) {
+    const map = {
+      '已培训':   { cls: 'badge-success', text: '已培训' },
+      '无需培训': { cls: 'badge-secondary', text: '无需培训' },
+      '待培训':   { cls: 'badge-warning', text: '待培训' },
+    };
+    const m = map[status];
+    if (!m) return '<span class="text-muted">—</span>';
+    return `<span class="badge ${m.cls}">${m.text}</span>`;
+  },
+
+  /**
+   * 根据证照大类 / 类型 / 子分类判断是否需要「每年定期培训」
+   * @param {string} category 'company' | 'personal'
+   * @param {string} certType 证照类型名称
+   * @param {string} [sub1] 子分类1（如培训机构）
+   * @returns {'annual'|'none'|null} annual=需每年培训，none=无需培训，null=规则未覆盖
+   */
+  trainingRequirement(category, certType, sub1) {
+    if (category === 'company') return 'none';
+    if (category !== 'personal') return null;
+    const t = String(certType || '').trim();
+    if (t === '特种作业人员资格证') return 'none';
+    if (t === '安全生产考核合格证书') return 'none';
+    if (t === '非煤矿山安全管理人员证书') return 'annual';
+    if (t === '爆破作业人员许可证') return 'annual';
+    return 'annual';
+  },
+
+  /**
+   * 将培训需求映射为默认「当年培训状态」值
+   * @returns {'无需培训'|'待培训'|''}
+   */
+  trainingDefaultStatus(category, certType, sub1) {
+    const req = this.trainingRequirement(category, certType, sub1);
+    if (req === 'annual') return '待培训';
+    if (req === 'none') return '无需培训';
+    return '';
+  },
+
+  /**
+   * 附件文件大小格式化
+   */
+  formatFileSize(bytes) {
+    if (bytes == null) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+  },
+
+  /**
+   * 附件是否为可预览图片类型
+   */
+  isImageFile(contentType, fileName) {
+    const ct = String(contentType || '');
+    if (ct.startsWith('image/')) return true;
+    return /\.(png|jpe?g|webp|gif)$/i.test(String(fileName || ''));
+  },
 };
 
 /**

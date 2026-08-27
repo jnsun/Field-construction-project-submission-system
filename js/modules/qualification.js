@@ -1,16 +1,12 @@
-// js/modules/qualification.js —— 资质证照管理（占位模块）
-// 实现时替换 render 内的内容，保持 render(app) 签名不变即可。
+// js/modules/qualification.js —— 资质证照管理（入口模块）
+// 分发规则：管理员进入可写的管理后台（CertAdmin），其余账号进入只读台账（Certs）。
+// CertAdmin / Certs / CertImport 的定义见同目录下的 admin.js / certs.js / import.js。
 const QualificationModule = {
-  render(app) {
-    app.innerHTML = `
-      <div class="page">
-        <div class="page-header">
-          <button class="btn btn-sm" onclick="App.openDashboard()">← 返回工作台</button>
-          <h1>资质证照管理</h1>
-        </div>
-        <div class="card"><div class="card-body">
-          <p class="text-muted">该模块正在建设中，敬请期待。</p>
-        </div></div>
-      </div>`;
+  async render(app) {
+    if (Auth.isAdmin()) {
+      await CertAdmin.render(app);
+    } else {
+      await Certs.render(app);
+    }
   }
 };

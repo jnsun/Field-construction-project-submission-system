@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>安全生产管理系统</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/qualification-module.css">
 </head>
 <body>
   <!-- 应用根容器 -->
@@ -21,12 +22,17 @@
 
   <!-- Supabase JS SDK v2（本地引入，避免 CDN 加载失败） -->
   <script src="vendor/supabase.min.js"></script>
+  <!-- Excel 解析库（资质证照批量导入 CertImport 依赖 XLSX 全局） -->
+  <script src="vendor/xlsx.full.min.js"></script>
   <!-- 脚本按顺序加载：基础 → 各业务模块 → 注册表 → 应用入口 -->
   <script src="js/config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/modules/report/reporter.js"></script>
   <script src="js/modules/report/admin.js"></script>
+  <script src="js/modules/qualification/certs.js"></script>
+  <script src="js/modules/qualification/admin.js"></script>
+  <script src="js/modules/qualification/import.js"></script>
   <script src="js/modules/qualification.js"></script>
   <script src="js/modules/inspection.js"></script>
   <script src="js/modules/vehicle.js"></script>

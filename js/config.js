@@ -29,3 +29,10 @@ try {
   console.error('Supabase 客户端初始化失败:', e);
   sb = null;
 }
+
+// 资质证照模块：附件 Storage 桶名（sql/certificate-management.sql 中创建的私有桶）
+const CERT_STORAGE_BUCKET = 'certificates';
+
+// 附件限制：单文件最大 10MB，允许的类型
+const CERT_FILE_MAX_SIZE = 10 * 1024 * 1024;
+const CERT_FILE_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
