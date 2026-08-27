@@ -114,18 +114,20 @@ const CertAdmin = {
   buildHeader() {
     return `
       <div class="dashboard-header">
-        <div class="header-left">
-          <h1>资质证照管理</h1>
-          <span class="badge badge-success">管理员</span>
-          ${Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
-        </div>
-        <div class="header-right">
-          <div class="user-info">
-            <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
+        <div class="dashboard-header-inner">
+          <div class="header-left">
+            <h1>资质证照管理</h1>
+            <span class="badge badge-success">管理员</span>
+            ${Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
-          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          <div class="header-right">
+            <div class="user-info">
+              <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
+            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          </div>
         </div>
       </div>
     `;
@@ -173,19 +175,18 @@ const CertAdmin = {
   },
 
   /**
-   * 工具栏：大类胶囊选项卡 + 公司/类型/状态筛选 + 搜索/导出/新增
-   * 布局参考野外项目报送模块：筛选在左，搜索与操作在右，单行紧凑排列
+   * 工具栏：大类选项卡 + 筛选 + 搜索/导出/新增，全部放到一行
    */
   buildToolbar() {
     const cat = this.state.filters.category || '';
     return `
-      <div class="cat-tabs" id="admin-cat-tabs">
-        <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="CertAdmin.setCategory('')">全部</button>
-        <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="CertAdmin.setCategory('company')">公司证照</button>
-        <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="CertAdmin.setCategory('personal')">个人证照</button>
-      </div>
       <div class="toolbar cert-toolbar">
-        <div class="toolbar-left">
+        <div class="toolbar-left cert-toolbar-left">
+          <div class="cat-tabs" id="admin-cat-tabs">
+            <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="CertAdmin.setCategory('')">全部</button>
+            <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="CertAdmin.setCategory('company')">公司证照</button>
+            <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="CertAdmin.setCategory('personal')">个人证照</button>
+          </div>
           <label>公司：</label>
           <select id="admin-filter-company" class="filter-select-sm" onchange="CertAdmin.onFilterChange()">
             <option value="">全部公司</option>
@@ -204,13 +205,13 @@ const CertAdmin = {
             <option value="revoked">已注销</option>
           </select>
         </div>
-        <div class="toolbar-right">
-          <input type="search" id="admin-cert-search" class="toolbar-search" placeholder="搜索证照名称/编号/持证人/子分类" oninput="CertAdmin.onSearch()">
-          <button class="btn btn-secondary" onclick="CertAdmin.exportCSV()">导出台账 (CSV)</button>
+        <div class="toolbar-right cert-toolbar-right">
+          <input type="search" id="admin-cert-search" class="toolbar-search cert-search-sm" placeholder="搜索证照名称/编号/持证人/子分类" oninput="CertAdmin.onSearch()">
+          <button class="btn btn-secondary btn-sm" onclick="CertAdmin.exportCSV()">导出台账 (CSV)</button>
 
           <!-- 工具下拉菜单（批量导入 / 去重清理 / 培训状态操作） -->
           <div class="toolbar-dropdown" id="admin-toolbar-dropdown">
-            <button class="btn btn-secondary dropdown-toggle" onclick="CertAdmin.toggleToolbarDropdown(event)" title="批量导入、去重、培训状态等工具">工具 ▾</button>
+            <button class="btn btn-secondary btn-sm dropdown-toggle" onclick="CertAdmin.toggleToolbarDropdown(event)" title="批量导入、去重、培训状态等工具">工具 ▾</button>
             <ul class="dropdown-menu" id="admin-toolbar-menu">
               <li><a href="javascript:void(0)" onclick="CertAdmin.closeToolbarDropdown(); CertImport.openModal()" title="通过 Excel 批量登记公司证照与个人证照">📥 批量导入</a></li>
               <li><a href="javascript:void(0)" onclick="CertAdmin.closeToolbarDropdown(); CertAdmin.openDedupeModal()" title="查找信息完全相同的重复证照，仅保留最早的一条">🧹 去重清理</a></li>
@@ -220,7 +221,7 @@ const CertAdmin = {
           </div>
 
           <span id="admin-selected-count" class="toolbar-hint">已选 0 条</span>
-          <button class="btn btn-primary" onclick="CertAdmin.showCertForm()">+ 新增证照</button>
+          <button class="btn btn-primary btn-sm" onclick="CertAdmin.showCertForm()">+ 新增证照</button>
         </div>
       </div>
     `;

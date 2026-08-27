@@ -52,13 +52,12 @@
 .cat-tabs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
 }
 
 .cat-tab {
-  padding: 6px 18px;
+  padding: 5px 14px;
   border: 1px solid var(--color-border-dark);
   border-radius: 999px;
   background: var(--color-surface);
@@ -83,25 +82,52 @@
   color: #fff;
 }
 
-/* 证照模块顶部工具栏：参考野外项目报送，单行紧凑 */
+/* 证照模块顶部工具栏：全部内容放到一行 */
 .cert-toolbar {
   margin-bottom: 20px;
   gap: 12px;
+  flex-wrap: wrap;
 }
-.cert-toolbar .toolbar-left {
-  gap: 8px 12px;
+.cert-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
 }
-.cert-toolbar .toolbar-right {
+.cert-toolbar-right {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
 }
 
 /* 缩短筛选下拉宽度 */
 .filter-select-sm {
   min-width: 0;
   width: auto;
-  max-width: 140px;
-  padding: 5px 24px 5px 10px;
-  font-size: 0.875rem;
+  max-width: 120px;
+  padding: 5px 22px 5px 8px;
+  font-size: 0.8125rem;
+}
+
+/* 缩短证照搜索框宽度 */
+.cert-search-sm {
+  min-width: 0;
+  width: 180px;
+  max-width: 180px;
+}
+
+/* 资质证照台账容器：取消纵向滚动条，全部展开 */
+#admin-certs-content .table-wrapper,
+#certs-section .table-wrapper {
+  max-height: none;
+  overflow-y: visible;
+}
+#admin-certs-content .table-wrapper.has-scroll,
+#certs-section .table-wrapper.has-scroll {
+  max-height: none;
 }
 
 

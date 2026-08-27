@@ -155,37 +155,38 @@ const Certs = {
     const name = this.state.fullName || this.state.email || '用户';
     return `
       <div class="dashboard-header">
-        <div class="header-left">
-          <h1>资质证照管理</h1>
-          <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
-          <span class="badge badge-muted" title="证照登记与维护由管理员操作">只读</span>
-        </div>
-        <div class="header-right">
-          <div class="user-info">
-            <span class="user-name">${Utils.escapeHtml(name)}</span>
+        <div class="dashboard-header-inner">
+          <div class="header-left">
+            <h1>资质证照管理</h1>
+            <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
+            <span class="badge badge-muted" title="证照登记与维护由管理员操作">只读</span>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
-          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          <div class="header-right">
+            <div class="user-info">
+              <span class="user-name">${Utils.escapeHtml(name)}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
+            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          </div>
         </div>
       </div>
     `;
   },
 
   /**
-   * 工具栏：大类胶囊选项卡 + 状态筛选/搜索（只读视图，无新增入口）
-   * 布局参考野外项目报送模块：筛选在左，搜索在右，单行紧凑排列
+   * 工具栏：大类选项卡 + 状态筛选 + 搜索，全部放到一行（只读视图）
    */
   buildToolbar() {
     const cat = this.state.filters.category || '';
     return `
-      <div class="cat-tabs" id="cat-tabs">
-        <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="Certs.setCategory('')">全部</button>
-        <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="Certs.setCategory('company')">公司证照</button>
-        <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="Certs.setCategory('personal')">个人证照</button>
-      </div>
       <div class="toolbar cert-toolbar">
-        <div class="toolbar-left">
+        <div class="toolbar-left cert-toolbar-left">
+          <div class="cat-tabs" id="cat-tabs">
+            <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="Certs.setCategory('')">全部</button>
+            <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="Certs.setCategory('company')">公司证照</button>
+            <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="Certs.setCategory('personal')">个人证照</button>
+          </div>
           <label>状态：</label>
           <select id="filter-status" class="filter-select-sm" onchange="Certs.onFilterChange()">
             <option value="">全部</option>
@@ -196,8 +197,8 @@ const Certs = {
             <option value="revoked">已注销</option>
           </select>
         </div>
-        <div class="toolbar-right">
-          <input type="search" id="cert-search" class="toolbar-search" placeholder="搜索证照名称/编号/持证人/类型/子分类" oninput="Certs.onSearch()">
+        <div class="toolbar-right cert-toolbar-right">
+          <input type="search" id="cert-search" class="toolbar-search cert-search-sm" placeholder="搜索证照名称/编号/持证人/类型/子分类" oninput="Certs.onSearch()">
         </div>
       </div>
     `;
