@@ -82,6 +82,11 @@
   color: #fff;
 }
 
+/* 大类选项卡单独成行，与下方筛选工具栏拉开间距 */
+.cert-cat-row {
+  margin-bottom: 14px;
+}
+
 /* 证照模块顶部工具栏：全部内容放到一行 */
 .cert-toolbar {
   margin-bottom: 20px;
