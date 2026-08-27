@@ -595,16 +595,53 @@ const CertAdmin = {
         <td style="white-space:nowrap;">${validUntil}</td>
         <td><span class="badge ${st.badge}">${st.label}</span></td>
         ${compactCompanyView ? '' : `<td>${trainingCol}</td>`}
-        <td>
-          <div class="cert-row-actions">
-            <button class="btn btn-icon btn-sm" onclick="CertAdmin.showCertDetail('${cert.id}')" title="查看">👁</button>
-            <button class="btn btn-icon btn-sm" onclick="CertAdmin.showCertForm('${cert.id}')" title="编辑">✏</button>
-            ${cert.status === 'active' ? `<button class="btn btn-icon btn-sm" onclick="CertAdmin.showCertForm(null, '${cert.id}')" title="换证：归档旧证并生成新证记录">🔄</button>` : ''}
-            <button class="btn btn-icon btn-icon-danger btn-sm" onclick="CertAdmin.handleDelete('${cert.id}')" title="删除">🗑</button>
+        <td class="cert-actions-cell">
+          <div class="cert-actions-dropdown">
+            <button class="btn btn-secondary btn-sm cert-actions-toggle" onclick="CertAdmin.toggleRowMenu('${cert.id}', this)">操作 ▾</button>
+            <div class="cert-actions-menu" id="cert-menu-${cert.id}">
+              <button class="cert-menu-item" onclick="CertAdmin.showCertDetail('${cert.id}');CertAdmin.closeRowMenu('${cert.id}')">查看</button>
+              <button class="cert-menu-item" onclick="CertAdmin.showCertForm('${cert.id}');CertAdmin.closeRowMenu('${cert.id}')">编辑</button>
+              ${cert.status === 'active' ? `<button class="cert-menu-item" onclick="CertAdmin.showCertForm(null, '${cert.id}');CertAdmin.closeRowMenu('${cert.id}')">换证</button>` : ''}
+              <button class="cert-menu-item danger" onclick="CertAdmin.closeRowMenu('${cert.id}');CertAdmin.handleDelete('${cert.id}')">删除</button>
+            </div>
           </div>
         </td>
       </tr>
     `;
+  },
+
+  // 行内操作下拉菜单：打开/关闭单条证照的「操作」菜单（用 fixed 定位避免被台账容器裁切）
+  toggleRowMenu(id, btn) {
+    const menu = document.getElementById('cert-menu-' + id);
+    if (!menu) return;
+    // 先关闭其它已打开的菜单，并清理残留定位
+    document.querySelectorAll('.cert-actions-menu.open').forEach(m => {
+      if (m !== menu) { m.classList.remove('open'); m.style.removeProperty('top'); m.style.removeProperty('left'); }
+    });
+    const willOpen = !menu.classList.contains('open');
+    menu.classList.remove('open');
+    if (willOpen) {
+      const r = btn.getBoundingClientRect();
+      menu.style.position = 'fixed';
+      menu.style.top = (r.bottom + 4) + 'px';
+      menu.style.left = Math.max(8, r.right - 130) + 'px';
+      menu.style.zIndex = '1000';
+      menu.classList.add('open');
+    }
+    if (!CertAdmin._menuListenerAttached) {
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.cert-actions-dropdown')) {
+          document.querySelectorAll('.cert-actions-menu.open').forEach(m => m.classList.remove('open'));
+        }
+      });
+      CertAdmin._menuListenerAttached = true;
+    }
+  },
+
+  // 关闭指定证照的「操作」菜单
+  closeRowMenu(id) {
+    const menu = document.getElementById('cert-menu-' + id);
+    if (menu) menu.classList.remove('open');
   },
 
   // ========================================================================

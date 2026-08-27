@@ -481,9 +481,7 @@ const Certs = {
         <td><span class="badge ${st.badge}">${st.label}</span></td>
         ${compactCompanyView ? '' : `<td>${trainingCol}</td>`}
         <td>
-          <div class="cert-row-actions">
-            <button class="btn btn-icon btn-sm" onclick="Certs.showCertDetail('${cert.id}')" title="查看">👁</button>
-          </div>
+          <button class="btn btn-secondary btn-sm cert-actions-toggle" onclick="Certs.showCertDetail('${cert.id}')">查看</button>
         </td>
       </tr>
     `;

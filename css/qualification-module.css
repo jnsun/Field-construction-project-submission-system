@@ -575,53 +575,46 @@
   padding-left: 10px;
   border-left: 4px solid var(--color-primary);
 }
-/* 每板块内统计改为紧凑内联胶囊：一行排列，显著减少纵向占用 */
+/* 每板块内卡片网格：公司 4 张 → 2 列；个人 6 张 → 3 列 */
 .cert-stats-section .stats-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   margin-bottom: 0;
 }
-/* 紧凑统计胶囊（保留点击筛选台账） */
+.cert-stats-section:last-child .stats-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* 卡片（恢复之前大小：块级卡片，可点击筛选台账） */
 .cert-stats-block .stat-card {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 5px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--color-border);
   border-left-width: 3px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  min-width: 0;
 }
 .cert-stats-block .stat-card .stat-label {
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
-  margin-bottom: 0;
-  white-space: nowrap;
+  font-size: 0.7rem;
+  margin-bottom: 2px;
 }
 .cert-stats-block .stat-card .stat-value {
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: 1.3rem;
 }
-/* 可点击胶囊：悬浮 + 选中态 */
+/* 可点击卡片：悬浮 + 选中态 */
 .cert-stats-block .stat-card.clickable {
   cursor: pointer;
-  transition: background .12s ease, border-color .12s ease;
+  transition: transform .12s ease, box-shadow .12s ease;
 }
 .cert-stats-block .stat-card.clickable:hover {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
 }
 .cert-stats-block .stat-card.active {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 1px var(--color-primary);
+  border-left-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
-/* 窄屏下两板块改为上下排列，胶囊自动换行 */
+/* 窄屏下两板块改为上下排列 */
 @media (max-width: 720px) {
   .cert-stats-block { grid-template-columns: 1fr; }
+  .cert-stats-section:last-child .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* 返回上级菜单按钮：简洁醒目 */
@@ -658,28 +651,32 @@
 .cert-stats-block .stat-card.info { border-left-color: #3b82f6; background: #eff6ff; }
 .cert-stats-block .stat-card.info .stat-value { color: #3b82f6; }
 
-/* 表格行操作按钮：紧凑图标按钮 */
-.cert-row-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.cert-row-actions .btn-icon {
-  padding: 4px 7px;
-  font-size: 1rem;
-  line-height: 1;
-  min-width: 28px;
-  text-align: center;
+/* 表格行操作：合并为单个“操作”下拉按钮 */
+.cert-actions-dropdown { position: relative; display: inline-block; }
+.cert-actions-toggle { white-space: nowrap; }
+.cert-actions-menu {
+  display: none;
+  min-width: 120px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  padding: 4px;
 }
-.cert-row-actions .btn-icon-danger {
-  color: #dc2626;
-  background: #fef2f2;
-  border-color: #fecaca;
+.cert-actions-menu.open { display: block; }
+.cert-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  border-radius: var(--radius);
+  cursor: pointer;
 }
-.cert-row-actions .btn-icon-danger:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-}
+.cert-menu-item:hover { background: #eff6ff; }
+.cert-menu-item.danger { color: var(--color-danger); }
+.cert-menu-item.danger:hover { background: #fee2e2; }
 
