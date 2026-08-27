@@ -484,7 +484,7 @@ const Admin = {
    */
   // 汇总表隐藏的内置字段（详情弹窗仍完整展示）
   // 注：contact_info 已与 project_manager 合并为一列展示，故在此隐藏
-  SUMMARY_HIDDEN_KEYS: new Set(['safety_hazard_detail', 'contact_info']),
+  SUMMARY_HIDDEN_KEYS: new Set(['safety_hazard_detail', 'contact_info', 'equipment_models']),
   // 「项目归属部门」按部门着色的浅色板（每个部门一个固定底色，便于区分不同部门项目）
   DEPT_PALETTE: ['#E6F4F1', '#FCEEE3', '#EAF0F6', '#F2F8E0', '#F3E8F7', '#FDE8EF', '#EAEFE6', '#FFF4CC', '#E9E4F0', '#F0E6DD'],
   // 紧凑列：表头短 + 值短 → 窄列、表头允许 2 行换行
@@ -499,14 +499,15 @@ const Admin = {
   // 三行列：长文本字段最多显示三行（省略号），悬停看全文
   THREE_LINE_KEYS: new Set([
     'construction_location', 'overall_progress', 'monthly_construction_status',
-    'equipment_models', 'project_type',
+    'project_type',
   ]),
   // 固定宽度列：内容短，限定紧凑宽度避免占用过多空间（如项目负责人姓名）
   FIXED_WIDTH_KEYS: new Set(['project_manager']),
   // 窄列：内容较短（项目归属部门），限定更窄宽度，节省横向空间给项目名称
   NARROW_KEYS: new Set(['department_entity']),
   // 每行最多 N 个汉字的列：列宽按 em 精确控制（1em≈1 个全角汉字），配合三行截断
-  CH_PER_LINE: { construction_location: 6, project_type: 7, equipment_models: 8 },
+  // 项目名称：每行 10 个汉字（完整换行，不截断，点击 td 看详情）
+  CH_PER_LINE: { construction_location: 6, project_type: 7, project_name: 10 },
   // 汇总表表头改名（仅影响表头展示，不影响表单/详情）
   LABEL_OVERRIDES: { department_entity: '项目归属部门' },
   // 汇总表表头按指定位置换行（一行 N 个汉字），用 <br> 精确控制
@@ -515,6 +516,8 @@ const Admin = {
     on_site_vehicles: '现场<br>车辆数',
     project_manager: '负责人<br>联系方式',
     department_entity: '项目归属<br>部门',
+    overall_progress: '项目整体<br>进度情况',
+    monthly_construction_status: '本月项目<br>施工情况',
   },
   // 汇总表字段内容截断长度（超过该字数省略，悬停 title 看全文）
   FIELD_MAXLEN: {},

@@ -1064,16 +1064,17 @@ input[disabled] {
   vertical-align: top;
 }
 
-/* 项目名称内层：填满单元格，最多三行、每行约 15 汉字，超出省略（长名称点击 td 看详情） */
+/* 项目名称内层：按列宽（cell-ch10≈10 个全角汉字/行）换行，最多显示 3 行，超出省略（长名称点击 td 看详情） */
 .project-name-clamp {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  word-break: break-all;
+  word-break: break-word;
   width: 100%;
   max-width: 100%;
+  line-height: 1.4;
 }
 
 /* 汇总表：项目名称单元格可点击 */
@@ -1141,9 +1142,9 @@ input[disabled] {
   text-overflow: ellipsis;
 }
 
-/* 三行列（施工地点/项目整体进度/本月施工情况）：td 保持 table-cell，仅标记内层截断 */
+/* 三行列（施工地点/项目整体进度/本月施工情况/项目类型）：td 标记内层截断，整体随行垂直居中 */
 .summary-table .cell-three-line {
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 /* 三行内容内层：最多三行，超出省略（悬停 title 看全文）；显式 white-space 覆盖窄列 nowrap */
@@ -1157,7 +1158,7 @@ input[disabled] {
   white-space: normal;
 }
 
-/* 每行最多 N 汉字列（施工地点6 / 项目类型7 / 设备型号及数量8）：
+/* 每行最多 N 汉字列（施工地点6 / 项目类型7 / 项目名称10）：
    列宽 = N em 内容 + 左右内边距 16px；
    表头/单元格都加 cell-chN，配合 table-layout:fixed 让列宽真正生效 */
 .summary-table .cell-ch6 {
@@ -1184,13 +1185,22 @@ input[disabled] {
   width: 8em;
   max-width: 8em;
 }
+.summary-table .cell-ch10 {
+  width: calc(10em + 16px);
+  max-width: calc(10em + 16px);
+}
+.cell-ch10 .project-name-clamp {
+  width: 10em;
+  max-width: 10em;
+}
 
-/* 汇总表全局紧凑：减少内边距 */
+/* 汇总表全局紧凑：减少内边距、记录垂直居中 */
 .summary-table th,
 .summary-table td {
   padding: 6px 8px;
   overflow-wrap: anywhere;
   word-break: break-word;
+  vertical-align: middle;
 }
 
 /* 汇总表：表头各列统一居中显示 */
