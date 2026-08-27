@@ -115,22 +115,26 @@ const CertAdmin = {
    * 顶部导航栏
    */
   buildHeader() {
+    const isSuper = Auth.isSuperAdmin();
+    const username = Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员');
     return `
       <div class="dashboard-header">
         <div class="dashboard-header-inner">
-        <div class="header-left">
-          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
-        </div>
-        <div class="header-right">
-          <h1>资质证照管理</h1>
-          <span class="badge badge-success">管理员</span>
-          ${Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
-          <div class="user-info">
-            <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
+          <div class="header-left">
+            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
-        </div>
+          <div class="header-center">
+            <h1 class="page-title">资质证照管理</h1>
+          </div>
+          <div class="header-right">
+            <span class="badge badge-success">管理员</span>
+            ${isSuper ? '<span class="badge badge-danger">超级管理员</span>' : ''}
+            <div class="user-info">
+              <span class="user-name">${username}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          </div>
         </div>
       </div>
     `;
@@ -559,12 +563,10 @@ const CertAdmin = {
                 <tr>
                   <th class="col-select"><input type="checkbox" id="admin-select-all" onchange="CertAdmin.toggleSelectAll(this.checked)" title="全选当前列表"></th>
                   <th>公司</th>
-                  <th>证照名称</th>
-                  ${category ? '' : '<th>大类</th>'}
                   <th>类型</th>
+                  ${category ? '' : '<th>大类</th>'}
                   ${category === 'company' ? '' : '<th>子分类</th>'}
                   ${category === 'company' ? '' : '<th>持证人</th>'}
-                  ${category === 'personal' ? '<th>备注</th>' : ''}
                   <th>有效期至</th>
                   <th>状态</th>
                   ${category === 'company' ? '' : '<th>培训情况</th>'}
@@ -590,7 +592,6 @@ const CertAdmin = {
     const selected = this.state.selectedIds.includes(cert.id);
     const compactCompanyView = cat === 'company';
     const hideCategoryCol = !!cat;            // 公司/个人视图均隐藏「大类」，仅「全部」显示
-    const showRemarkCol = cat === 'personal'; // 仅个人证照视图显示「备注」
     const rowCls = st.key === 'expired' ? 'row-danger'
       : st.key === 'expiring' ? 'row-warning' : '';
     const companyName = cert.departments ? Utils.shortCompany(cert.departments.name) : '未分配';
@@ -603,20 +604,15 @@ const CertAdmin = {
     const validUntil = cert.is_long_term
       ? '<span class="text-muted">长期</span>'
       : Utils.formatDate(cert.valid_until);
-    const remarkCol = cert.remark
-      ? `<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${Utils.escapeHtml(cert.remark)}">${Utils.escapeHtml(cert.remark)}</td>`
-      : '<td><span class="text-muted">—</span></td>';
     const trainingCol = Utils.trainingColHTML(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []);
     return `
       <tr class="${rowCls}">
         <td class="col-select"><input type="checkbox" class="admin-row-select" data-id="${cert.id}" ${selected ? 'checked' : ''} onchange="CertAdmin.toggleRowSelect('${cert.id}', this.checked)"></td>
         <td>${Utils.escapeHtml(companyName)}</td>
-        <td><strong><a href="javascript:void(0)" class="cert-name-link" onclick="CertAdmin.showCertDetail('${cert.id}')" title="点击查看证照详情">${Utils.escapeHtml(cert.cert_name)}</a></strong></td>
+        <td><a href="javascript:void(0)" class="cert-cell-link" onclick="CertAdmin.showCertDetail('${cert.id}')" title="点击查看证照详情">${Utils.typeChip(cert.cert_type)}</a></td>
         ${hideCategoryCol ? '' : `<td>${Utils.categoryLabel(cert.cert_category)}</td>`}
-        <td>${Utils.typeChip(cert.cert_type)}</td>
         ${compactCompanyView ? '' : `<td>${subCol}</td>`}
         ${compactCompanyView ? '' : `<td>${ownerCol}</td>`}
-        ${showRemarkCol ? remarkCol : ''}
         <td style="white-space:nowrap;">${validUntil}</td>
         <td><span class="badge ${st.badge}">${st.label}</span></td>
         ${compactCompanyView ? '' : `<td>${trainingCol}</td>`}

@@ -154,15 +154,22 @@
   max-width: 180px;
 }
 
-/* 资质证照台账容器：取消纵向滚动条，全部展开 */
+/* 资质证照台账容器：取消纵向滚动条，全部展开；表头滚动时冻结到页面顶部 */
 #admin-certs-content .table-wrapper,
 #certs-section .table-wrapper {
+  overflow: visible;
   max-height: none;
-  overflow-y: visible;
 }
 #admin-certs-content .table-wrapper.has-scroll,
 #certs-section .table-wrapper.has-scroll {
   max-height: none;
+}
+#admin-certs-content .table-wrapper thead th,
+#certs-section .table-wrapper thead th {
+  position: sticky;
+  top: 56px;
+  z-index: 5;
+  background: var(--color-surface);
 }
 
 
@@ -666,13 +673,20 @@
   color: var(--color-primary);
 }
 
-/* 资质证照模块顶部右侧：标题、角色徽章、用户信息、按钮紧凑排列 */
-.dashboard-header .header-right h1 {
+/* 资质证照模块顶部：标题居中、右侧信息紧凑排列 */
+.dashboard-header .header-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+.dashboard-header .header-center .page-title {
   font-size: 1.125rem;
+  font-weight: 600;
   color: var(--color-text);
-  white-space: nowrap;
   margin: 0;
-  line-height: 1;
+  white-space: nowrap;
 }
 .dashboard-header .header-right {
   gap: 10px;
@@ -682,10 +696,6 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 6px 10px;
-  }
-  .dashboard-header .header-right h1 {
-    width: 100%;
-    text-align: right;
   }
 }
 
@@ -762,6 +772,14 @@
   cursor: pointer;
 }
 .cert-name-link:hover { text-decoration: underline; }
+
+/* 台账「类型」可点击查看详情（与 cert-name-link 一致的交互样式） */
+.cert-cell-link {
+  color: var(--color-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+.cert-cell-link:hover { text-decoration: underline; }
 
 /* 注册安全工程师：有效期内培训进度提示 */
 .training-note {

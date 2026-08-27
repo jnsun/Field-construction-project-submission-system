@@ -174,19 +174,21 @@ const Certs = {
     return `
       <div class="dashboard-header">
         <div class="dashboard-header-inner">
-        <div class="header-left">
-          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
-        </div>
-        <div class="header-right">
-          <h1>资质证照管理</h1>
-          <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
-          <span class="badge badge-muted" title="证照登记与维护由管理员操作">只读</span>
-          <div class="user-info">
-            <span class="user-name">${Utils.escapeHtml(name)}</span>
+          <div class="header-left">
+            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
-        </div>
+          <div class="header-center">
+            <h1 class="page-title">资质证照管理</h1>
+          </div>
+          <div class="header-right">
+            <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
+            <span class="badge badge-muted" title="证照登记与维护由管理员操作">只读</span>
+            <div class="user-info">
+              <span class="user-name">${Utils.escapeHtml(name)}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          </div>
         </div>
       </div>
     `;
@@ -449,12 +451,10 @@ const Certs = {
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>证照名称</th>
                   ${category ? '' : '<th>大类</th>'}
                   <th>类型</th>
                   ${category === 'company' ? '' : '<th>子分类</th>'}
                   ${category === 'company' ? '' : '<th>持证人</th>'}
-                  ${category === 'personal' ? '<th>备注</th>' : ''}
                   <th>有效期至</th>
                   <th>状态</th>
                   ${category === 'company' ? '' : '<th>培训情况</th>'}
@@ -477,7 +477,6 @@ const Certs = {
     const cat = this.state.filters.category;
     const compactCompanyView = cat === 'company';
     const hideCategoryCol = !!cat;            // 公司/个人视图均隐藏「大类」，仅「全部」显示
-    const showRemarkCol = cat === 'personal'; // 仅个人证照视图显示「备注」
     const rowCls = st.key === 'expired' ? 'row-danger'
       : st.key === 'expiring' ? 'row-warning' : '';
     const subCol = Utils.subText(cert)
@@ -489,18 +488,13 @@ const Certs = {
     const validUntil = cert.is_long_term
       ? '<span class="text-muted">长期</span>'
       : Utils.formatDate(cert.valid_until);
-    const remarkCol = cert.remark
-      ? `<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${Utils.escapeHtml(cert.remark)}">${Utils.escapeHtml(cert.remark)}</td>`
-      : '<td><span class="text-muted">—</span></td>';
     const trainingCol = Utils.trainingColHTML(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []);
     return `
       <tr class="${rowCls}">
-        <td><strong><a href="javascript:void(0)" class="cert-name-link" onclick="Certs.showCertDetail('${cert.id}')" title="点击查看证照详情">${Utils.escapeHtml(cert.cert_name)}</a></strong></td>
         ${hideCategoryCol ? '' : `<td>${Utils.categoryLabel(cert.cert_category)}</td>`}
-        <td>${Utils.typeChip(cert.cert_type)}</td>
+        <td><a href="javascript:void(0)" class="cert-cell-link" onclick="Certs.showCertDetail('${cert.id}')" title="点击查看证照详情">${Utils.typeChip(cert.cert_type)}</a></td>
         ${compactCompanyView ? '' : `<td>${subCol}</td>`}
         ${compactCompanyView ? '' : `<td>${ownerCol}</td>`}
-        ${showRemarkCol ? remarkCol : ''}
         <td style="white-space:nowrap;">${validUntil}</td>
         <td><span class="badge ${st.badge}">${st.label}</span></td>
         ${compactCompanyView ? '' : `<td>${trainingCol}</td>`}
