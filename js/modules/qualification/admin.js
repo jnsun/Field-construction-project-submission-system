@@ -422,48 +422,12 @@ const CertAdmin = {
       `;
       return;
     }
-    if (filtered.length === 0) {
-      el.innerHTML = `
-        <div class="card">
-          <div class="card-header"><h2>证照台账</h2></div>
-          <div class="card-body">
-            <div class="empty-state">
-              <div class="empty-icon">🔍</div>
-              <p>未找到匹配的证照记录</p>
-            </div>
-          </div>
-        </div>
-      `;
-      return;
-    }
-
-    // 统计（按公司/类型范围，忽略「大类」与「状态」筛选）—— 拆分为公司资质 / 个人证书两大板块
+    // 统计（按公司/类型范围，忽略「大类」与「状态」筛选）—— 拆分为公司资质 / 个人证照两大板块
     const baseScope = enriched.filter(({ cert }) =>
       (!company || cert.department_id === company)
       && (!type || cert.cert_type === type));
     const companyListStats = baseScope.filter(e => e.cert.cert_category === 'company');
     const personalListStats = baseScope.filter(e => e.cert.cert_category === 'personal');
-
-    // 排序：过期 > 即将到期 > 其他在用（按到期日升序）> 已换证/已注销
-    // 「安全生产考核合格证书」默认按子分类 A→B→C 排序（子分类内再按到期日）
-    const priority = { expired: 0, expiring: 1, valid: 2, replaced: 3, revoked: 3 };
-    const SPECIAL_TYPE = '安全生产考核合格证书';
-    const cmpDate = (ca, cb) => {
-      const da = ca.valid_until || '9999-12-31';
-      const db = cb.valid_until || '9999-12-31';
-      return da < db ? -1 : da > db ? 1 : 0;
-    };
-    filtered.sort((a, b) => {
-      const p = (priority[a.st.key] ?? 2) - (priority[b.st.key] ?? 2);
-      if (p !== 0) return p;
-      const sa = a.cert.cert_type === SPECIAL_TYPE ? Utils.subCategoryRank(a.cert.sub1_value) : null;
-      const sb = b.cert.cert_type === SPECIAL_TYPE ? Utils.subCategoryRank(b.cert.sub1_value) : null;
-      if (sa !== null && sb !== null) {
-        if (sa !== sb) return sa - sb;
-        return cmpDate(a.cert, b.cert);
-      }
-      return cmpDate(a.cert, b.cert);
-    });
 
     const statCard = (label, value, mod = '', filterKey = '', active = false) => `
       <div class="stat-card ${mod} ${filterKey ? 'clickable' : ''} ${active ? 'active' : ''}" ${filterKey ? `onclick="CertAdmin.applyQuickFilter('${filterKey}')"` : ''} title="${filterKey ? '点击查看对应台账' : ''}">
@@ -495,29 +459,69 @@ const CertAdmin = {
       return false;
     };
 
-    el.innerHTML = `
+    const statsHTML = `
       <div class="cert-stats-block">
         <div class="cert-stats-section">
           <div class="cert-stats-section-title">公司资质</div>
           <div class="stats-grid">
             ${statCard('资质总计', c.total, '', 'company|all', isActive('company', 'all'))}
             ${statCard('有效资质', c.valid, c.valid > 0 ? 'success' : '', 'company|valid', isActive('company', 'valid'))}
-            ${statCard('临期资质', c.expiring, c.expiring > 0 ? 'warning' : '', 'company|expiring', isActive('company', 'expiring'))}
+            ${statCard('临期资质', c.expiring, c.expiring > 0 ? 'orange' : '', 'company|expiring', isActive('company', 'expiring'))}
             ${statCard('过期资质', c.expired, c.expired > 0 ? 'danger' : '', 'company|expired', isActive('company', 'expired'))}
           </div>
         </div>
         <div class="cert-stats-section">
-          <div class="cert-stats-section-title">个人证书</div>
+          <div class="cert-stats-section-title">个人证照</div>
           <div class="stats-grid">
-            ${statCard('证书总计', p.total, '', 'personal|all', isActive('personal', 'all'))}
-            ${statCard('有效证书', p.valid, p.valid > 0 ? 'success' : '', 'personal|valid', isActive('personal', 'valid'))}
-            ${statCard('临期证书', p.expiring, p.expiring > 0 ? 'warning' : '', 'personal|expiring', isActive('personal', 'expiring'))}
-            ${statCard('过期证书', p.expired, p.expired > 0 ? 'danger' : '', 'personal|expired', isActive('personal', 'expired'))}
+            ${statCard('证照总计', p.total, '', 'personal|all', isActive('personal', 'all'))}
+            ${statCard('有效证照', p.valid, p.valid > 0 ? 'success' : '', 'personal|valid', isActive('personal', 'valid'))}
+            ${statCard('临期证照', p.expiring, p.expiring > 0 ? 'warning' : '', 'personal|expiring', isActive('personal', 'expiring'))}
+            ${statCard('过期证照', p.expired, p.expired > 0 ? 'danger-deep' : '', 'personal|expired', isActive('personal', 'expired'))}
             ${statCard('本年度已培训', p.trained, p.trained > 0 ? 'success' : '', 'personal|trained', isActive('personal', 'trained'))}
-            ${statCard('本年度未培训', p.untrained, p.untrained > 0 ? 'warning' : '', 'personal|untrained', isActive('personal', 'untrained'))}
+            ${statCard('本年度未培训', p.untrained, p.untrained > 0 ? 'info' : '', 'personal|untrained', isActive('personal', 'untrained'))}
           </div>
         </div>
       </div>
+    `;
+
+    // 无匹配台账时，统计卡片仍需保留，仅下方显示空状态
+    if (filtered.length === 0) {
+      el.innerHTML = statsHTML + `
+        <div class="card">
+          <div class="card-header"><h2>全公司证照台账</h2></div>
+          <div class="card-body">
+            <div class="empty-state">
+              <div class="empty-icon">🔍</div>
+              <p>未找到匹配的证照记录</p>
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // 排序：过期 > 即将到期 > 其他在用（按到期日升序）> 已换证/已注销
+    // 「安全生产考核合格证书」默认按子分类 A→B→C 排序（子分类内再按到期日）
+    const priority = { expired: 0, expiring: 1, valid: 2, replaced: 3, revoked: 3 };
+    const SPECIAL_TYPE = '安全生产考核合格证书';
+    const cmpDate = (ca, cb) => {
+      const da = ca.valid_until || '9999-12-31';
+      const db = cb.valid_until || '9999-12-31';
+      return da < db ? -1 : da > db ? 1 : 0;
+    };
+    filtered.sort((a, b) => {
+      const p = (priority[a.st.key] ?? 2) - (priority[b.st.key] ?? 2);
+      if (p !== 0) return p;
+      const sa = a.cert.cert_type === SPECIAL_TYPE ? Utils.subCategoryRank(a.cert.sub1_value) : null;
+      const sb = b.cert.cert_type === SPECIAL_TYPE ? Utils.subCategoryRank(b.cert.sub1_value) : null;
+      if (sa !== null && sb !== null) {
+        if (sa !== sb) return sa - sb;
+        return cmpDate(a.cert, b.cert);
+      }
+      return cmpDate(a.cert, b.cert);
+    });
+
+    el.innerHTML = statsHTML + `
       <div class="card">
         <div class="card-header">
           <h2>全公司证照台账</h2>
@@ -591,11 +595,13 @@ const CertAdmin = {
         <td style="white-space:nowrap;">${validUntil}</td>
         <td><span class="badge ${st.badge}">${st.label}</span></td>
         ${compactCompanyView ? '' : `<td>${trainingCol}</td>`}
-        <td style="white-space:nowrap;">
-          <button class="btn btn-secondary btn-sm" onclick="CertAdmin.showCertDetail('${cert.id}')">查看</button>
-          <button class="btn btn-secondary btn-sm" onclick="CertAdmin.showCertForm('${cert.id}')">编辑</button>
-          ${cert.status === 'active' ? `<button class="btn btn-secondary btn-sm" onclick="CertAdmin.showCertForm(null, '${cert.id}')" title="归档旧证并生成新证记录">换证</button>` : ''}
-          <button class="btn btn-danger btn-sm" onclick="CertAdmin.handleDelete('${cert.id}')">删除</button>
+        <td>
+          <div class="cert-row-actions">
+            <button class="btn btn-icon btn-sm" onclick="CertAdmin.showCertDetail('${cert.id}')" title="查看">👁</button>
+            <button class="btn btn-icon btn-sm" onclick="CertAdmin.showCertForm('${cert.id}')" title="编辑">✏</button>
+            ${cert.status === 'active' ? `<button class="btn btn-icon btn-sm" onclick="CertAdmin.showCertForm(null, '${cert.id}')" title="换证：归档旧证并生成新证记录">🔄</button>` : ''}
+            <button class="btn btn-icon btn-icon-danger btn-sm" onclick="CertAdmin.handleDelete('${cert.id}')" title="删除">🗑</button>
+          </div>
         </td>
       </tr>
     `;
