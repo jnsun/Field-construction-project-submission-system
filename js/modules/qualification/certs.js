@@ -174,31 +174,30 @@ const Certs = {
 
   /**
    * 工具栏：大类胶囊选项卡 + 状态筛选/搜索（只读视图，无新增入口）
+   * 布局参考野外项目报送模块：筛选在左，搜索在右，单行紧凑排列
    */
   buildToolbar() {
     const cat = this.state.filters.category || '';
     return `
-      <div class="toolbar toolbar-stack">
-        <div class="cat-tabs" id="cat-tabs">
-          <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="Certs.setCategory('')">全部</button>
-          <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="Certs.setCategory('company')">公司证照</button>
-          <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="Certs.setCategory('personal')">个人证照</button>
+      <div class="cat-tabs" id="cat-tabs">
+        <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="Certs.setCategory('')">全部</button>
+        <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="Certs.setCategory('company')">公司证照</button>
+        <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="Certs.setCategory('personal')">个人证照</button>
+      </div>
+      <div class="toolbar cert-toolbar">
+        <div class="toolbar-left">
+          <label>状态：</label>
+          <select id="filter-status" class="filter-select-sm" onchange="Certs.onFilterChange()">
+            <option value="">全部</option>
+            <option value="valid">有效</option>
+            <option value="expiring">即将到期</option>
+            <option value="expired">已过期</option>
+            <option value="replaced">已换证</option>
+            <option value="revoked">已注销</option>
+          </select>
         </div>
-        <div class="toolbar-inner">
-          <div class="toolbar-left">
-            <label>状态：</label>
-            <select id="filter-status" onchange="Certs.onFilterChange()">
-              <option value="">全部</option>
-              <option value="valid">有效</option>
-              <option value="expiring">即将到期</option>
-              <option value="expired">已过期</option>
-              <option value="replaced">已换证</option>
-              <option value="revoked">已注销</option>
-            </select>
-          </div>
-          <div class="toolbar-right">
-            <input type="search" id="cert-search" class="toolbar-search" placeholder="搜索证照名称/编号/持证人/类型/子分类" oninput="Certs.onSearch()">
-          </div>
+        <div class="toolbar-right">
+          <input type="search" id="cert-search" class="toolbar-search" placeholder="搜索证照名称/编号/持证人/类型/子分类" oninput="Certs.onSearch()">
         </div>
       </div>
     `;

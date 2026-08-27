@@ -54,6 +54,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 
 .cat-tab {
@@ -80,6 +81,27 @@
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
+}
+
+/* 证照模块顶部工具栏：参考野外项目报送，单行紧凑 */
+.cert-toolbar {
+  margin-bottom: 20px;
+  gap: 12px;
+}
+.cert-toolbar .toolbar-left {
+  gap: 8px 12px;
+}
+.cert-toolbar .toolbar-right {
+  gap: 8px;
+}
+
+/* 缩短筛选下拉宽度 */
+.filter-select-sm {
+  min-width: 0;
+  width: auto;
+  max-width: 140px;
+  padding: 5px 24px 5px 10px;
+  font-size: 0.875rem;
 }
 
 
