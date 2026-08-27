@@ -117,6 +117,10 @@ const CertAdmin = {
   buildHeader() {
     const isSuper = Auth.isSuperAdmin();
     const username = Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员');
+    // 仅保留一种身份徽章：超级管理员时显示「超级管理员」，普通管理员时显示「管理员」
+    const roleBadge = isSuper
+      ? '<span class="badge badge-danger">超级管理员</span>'
+      : '<span class="badge badge-success">管理员</span>';
     return `
       <div class="dashboard-header">
         <div class="dashboard-header-inner">
@@ -127,8 +131,7 @@ const CertAdmin = {
             <h1 class="page-title">资质证照管理</h1>
           </div>
           <div class="header-right">
-            <span class="badge badge-success">管理员</span>
-            ${isSuper ? '<span class="badge badge-danger">超级管理员</span>' : ''}
+            ${roleBadge}
             <div class="user-info">
               <span class="user-name">${username}</span>
             </div>

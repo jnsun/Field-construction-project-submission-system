@@ -67,12 +67,14 @@ const Dashboard = {
 
     return modules.map((m) => {
       const isPlaceholder = !m.ready;
+      const badgeText = isPlaceholder ? '建设中' : (m.trial ? '试运行' : '可使用');
+      const badgeCls = isPlaceholder ? 'badge-dev' : (m.trial ? 'badge-trial' : 'badge-ready');
       return `
         <div class="module-card ${isPlaceholder ? 'module-placeholder' : 'module-ready'}" onclick="App.openModule('${m.id}')">
           <div class="module-icon">${m.icon}</div>
           <div class="module-name">${Utils.escapeHtml(m.name)}</div>
           <div class="module-desc">${Utils.escapeHtml(m.desc)}</div>
-          <span class="module-badge ${isPlaceholder ? 'badge-dev' : 'badge-ready'}">${isPlaceholder ? '建设中' : '可使用'}</span>
+          <span class="module-badge ${badgeCls}">${badgeText}</span>
         </div>`;
     }).join('');
   },

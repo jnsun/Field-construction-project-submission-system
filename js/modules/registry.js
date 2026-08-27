@@ -41,7 +41,8 @@ const ModuleRegistry = (() => {
         }
       } },
     { id: 'qualification', name: '资质证照管理', icon: ICON.qualification,
-      desc: '企业 / 人员资质证照台账', renderer: (app) => QualificationModule.render(app) },
+      desc: '企业 / 人员资质证照台账', ready: true, trial: true,
+      renderer: (app) => QualificationModule.render(app) },
     { id: 'inspection', name: '安全巡查记录', icon: ICON.inspection,
       desc: '现场安全巡检与隐患整改', renderer: (app) => InspectionModule.render(app) },
     { id: 'vehicle', name: '车辆管理', icon: ICON.vehicle,

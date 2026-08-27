@@ -1372,6 +1372,12 @@ input[disabled] {
   color: var(--color-text-muted);
   border: 1px solid var(--color-border);
 }
+.badge-trial {
+  background: #fff7ed;
+  color: #ea580c;
+  border: 1px solid #fed7aa;
+  font-weight: 600;
+}
 
 /* 通用模块页面容器（占位模块及后续模块统一使用） */
 .page {

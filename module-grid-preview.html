@@ -27,12 +27,14 @@
     const grid = document.getElementById('grid');
     grid.innerHTML = ModuleRegistry.list.map((m) => {
       const ph = !m.ready;
+      const badgeText = ph ? '建设中' : (m.trial ? '试运行' : '可使用');
+      const badgeCls = ph ? 'badge-dev' : (m.trial ? 'badge-trial' : 'badge-ready');
       return `
         <div class="module-card ${ph ? 'module-placeholder' : 'module-ready'}">
           <div class="module-icon">${m.icon}</div>
           <div class="module-name">${m.name}</div>
           <div class="module-desc">${m.desc}</div>
-          <span class="module-badge ${ph ? 'badge-dev' : 'badge-ready'}">${ph ? '建设中' : '可使用'}</span>
+          <span class="module-badge ${badgeCls}">${badgeText}</span>
         </div>`;
     }).join('');
   </script>
