@@ -156,7 +156,18 @@
   max-width: 180px;
 }
 
-/* 资质证照台账容器：取消纵向滚动条，全部展开；表头滚动时冻结到页面顶部 */
+/* 资质证照台账：表头冻结到页面顶部。
+   关键：.card 默认 overflow:hidden 会限定 sticky 滚动上下文到卡片内，导致表头粘不到视口；
+   因此覆盖为 overflow:visible，并给 card-header 补同款圆角以维持外观。 */
+#admin-certs-content .card,
+#certs-section .card {
+  overflow: visible;
+}
+#admin-certs-content .card-header,
+#certs-section .card-header {
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
 #admin-certs-content .table-wrapper,
 #certs-section .table-wrapper {
   overflow: visible;
