@@ -180,13 +180,13 @@ const Certs = {
   buildToolbar() {
     const cat = this.state.filters.category || '';
     return `
+      <div class="cat-tabs cert-cat-row" id="cat-tabs">
+        <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="Certs.setCategory('')">全部</button>
+        <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="Certs.setCategory('company')">公司证照</button>
+        <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="Certs.setCategory('personal')">个人证照</button>
+      </div>
       <div class="toolbar cert-toolbar">
         <div class="toolbar-left cert-toolbar-left">
-          <div class="cat-tabs" id="cat-tabs">
-            <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="Certs.setCategory('')">全部</button>
-            <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="Certs.setCategory('company')">公司证照</button>
-            <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="Certs.setCategory('personal')">个人证照</button>
-          </div>
           <label>状态：</label>
           <select id="filter-status" class="filter-select-sm" onchange="Certs.onFilterChange()">
             <option value="">全部</option>

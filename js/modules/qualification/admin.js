@@ -180,13 +180,13 @@ const CertAdmin = {
   buildToolbar() {
     const cat = this.state.filters.category || '';
     return `
+      <div class="cat-tabs cert-cat-row" id="admin-cat-tabs">
+        <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="CertAdmin.setCategory('')">全部</button>
+        <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="CertAdmin.setCategory('company')">公司证照</button>
+        <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="CertAdmin.setCategory('personal')">个人证照</button>
+      </div>
       <div class="toolbar cert-toolbar">
         <div class="toolbar-left cert-toolbar-left">
-          <div class="cat-tabs" id="admin-cat-tabs">
-            <button type="button" class="cat-tab${cat === '' ? ' active' : ''}" data-cat="" onclick="CertAdmin.setCategory('')">全部</button>
-            <button type="button" class="cat-tab${cat === 'company' ? ' active' : ''}" data-cat="company" onclick="CertAdmin.setCategory('company')">公司证照</button>
-            <button type="button" class="cat-tab${cat === 'personal' ? ' active' : ''}" data-cat="personal" onclick="CertAdmin.setCategory('personal')">个人证照</button>
-          </div>
           <label>公司：</label>
           <select id="admin-filter-company" class="filter-select-sm" onchange="CertAdmin.onFilterChange()">
             <option value="">全部公司</option>
