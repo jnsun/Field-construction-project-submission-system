@@ -108,13 +108,43 @@
   flex: 0 0 auto;
 }
 
-/* 缩短筛选下拉宽度 */
+/* 筛选区：三个筛选项等宽分组，标签置顶，下拉框占满 */
+.cert-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex: 1 1 auto;
+}
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 160px;
+  min-width: 120px;
+  max-width: 200px;
+  flex: 1 1 160px;
+}
+.filter-group label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  padding-left: 2px;
+  white-space: nowrap;
+}
 .filter-select-sm {
+  width: 100%;
   min-width: 0;
-  width: auto;
-  max-width: 120px;
-  padding: 5px 22px 5px 8px;
+  padding: 6px 24px 6px 10px;
   font-size: 0.8125rem;
+  border: 1px solid var(--color-border-dark);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.filter-select-sm:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary-light);
 }
 
 /* 缩短证照搜索框宽度 */
@@ -617,24 +647,46 @@
   .cert-stats-section:last-child .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* 返回上级菜单按钮：简洁醒目 */
+/* 返回上级菜单按钮：无框文字链式，仅保留在左上角 */
 .btn-back {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 14px;
-  border: 1px solid var(--color-primary);
+  padding: 0;
+  border: none;
   background: transparent;
-  color: var(--color-primary);
-  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  border-radius: 0;
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: color 0.15s;
 }
 .btn-back:hover {
-  background: var(--color-primary);
-  color: #fff;
+  color: var(--color-primary);
+}
+
+/* 资质证照模块顶部右侧：标题、角色徽章、用户信息、按钮紧凑排列 */
+.dashboard-header .header-right h1 {
+  font-size: 1.125rem;
+  color: var(--color-text);
+  white-space: nowrap;
+  margin: 0;
+  line-height: 1;
+}
+.dashboard-header .header-right {
+  gap: 10px;
+}
+@media (max-width: 768px) {
+  .dashboard-header .header-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px 10px;
+  }
+  .dashboard-header .header-right h1 {
+    width: 100%;
+    text-align: right;
+  }
 }
 
 /* 统一统计卡片配色：总计/有效/临期/过期/培训状态，左右两侧公司资质与个人证照完全统一 */

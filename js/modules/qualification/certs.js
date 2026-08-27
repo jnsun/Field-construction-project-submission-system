@@ -176,11 +176,11 @@ const Certs = {
         <div class="dashboard-header-inner">
         <div class="header-left">
           <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
+        </div>
+        <div class="header-right">
           <h1>资质证照管理</h1>
           <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
           <span class="badge badge-muted" title="证照登记与维护由管理员操作">只读</span>
-        </div>
-        <div class="header-right">
           <div class="user-info">
             <span class="user-name">${Utils.escapeHtml(name)}</span>
           </div>
