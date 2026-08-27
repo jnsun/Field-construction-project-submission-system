@@ -559,21 +559,61 @@
   line-height: 1.4;
 }
 
-/* 统计区：公司资质 / 个人证书 两大板块 */
-.cert-stats-block { margin-bottom: 20px; }
-.cert-stats-section { margin-bottom: 16px; }
+/* 统计区：公司资质 / 个人证书 两大板块 并排 */
+.cert-stats-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.cert-stats-section { margin-bottom: 0; }
 .cert-stats-section-title {
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   color: var(--color-text);
-  margin: 16px 0 10px;
+  margin: 0 0 10px;
   padding-left: 10px;
   border-left: 4px solid var(--color-primary);
 }
-/* 个人证书 6 张卡片时改为 4 列自动换行 */
+/* 每板块内卡片网格：公司 4 张 → 2 列；个人 6 张 → 3 列 */
 .cert-stats-section .stats-grid {
   grid-auto-flow: row;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 0;
+}
+.cert-stats-section:last-child .stats-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* 卡片更小巧 */
+.cert-stats-block .stat-card {
+  padding: 12px 14px;
+  border-left-width: 3px;
+}
+.cert-stats-block .stat-card .stat-label {
+  font-size: 0.7rem;
+  margin-bottom: 2px;
+}
+.cert-stats-block .stat-card .stat-value {
+  font-size: 1.3rem;
+}
+/* 可点击卡片：悬浮 + 选中态 */
+.cert-stats-block .stat-card.clickable {
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.cert-stats-block .stat-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.cert-stats-block .stat-card.active {
+  border-left-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+/* 窄屏下两板块改为上下排列 */
+@media (max-width: 720px) {
+  .cert-stats-block { grid-template-columns: 1fr; }
+  .cert-stats-section:last-child .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* 返回上级菜单按钮：简洁醒目 */

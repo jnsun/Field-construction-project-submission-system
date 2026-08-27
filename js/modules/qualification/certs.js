@@ -69,7 +69,7 @@ const Certs = {
     // 占位邮箱（以手机号登录）不展示，避免暴露系统内部地址
     this.state.email = (typeof rawEmail === 'string' && rawEmail.endsWith('@login.local')) ? '' : rawEmail;
 
-    this.state.filters = { keyword: '', category: '', status: '' };
+    this.state.filters = { keyword: '', category: '', status: '', training: '' };
 
     container.innerHTML = this.buildHTML();
     await this.loadConfig();
@@ -221,6 +221,28 @@ const Certs = {
    */
   onFilterChange() {
     this.state.filters.status = document.getElementById('filter-status').value;
+    this.state.filters.training = '';
+    this.renderCerts();
+  },
+
+  /**
+   * 点击统计卡片：按 大类+状态/培训 快速筛选台账
+   * filterKey 形如 'company|expired' / 'personal|trained' / 'company|all'
+   */
+  applyQuickFilter(key) {
+    const [cat, kind] = (key || '|').split('|');
+    const f = this.state.filters;
+    f.category = cat;
+    f.status = ['valid', 'expiring', 'expired'].includes(kind) ? kind : '';
+    f.training = ['trained', 'untrained'].includes(kind) ? kind : '';
+    // 同步大类选项卡高亮
+    const tabs = document.getElementById('cat-tabs');
+    if (tabs) {
+      tabs.querySelectorAll('.cat-tab').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+    }
+    // 同步状态下拉
+    const sel = document.getElementById('filter-status');
+    if (sel) sel.value = f.status;
     this.renderCerts();
   },
 
@@ -266,7 +288,7 @@ const Certs = {
     if (!section) return;
 
     const kw = this.getSearchKeyword();
-    const { category, status } = this.state.filters;
+    const { category, status, training } = this.state.filters;
     const all = this.state.certs;
 
     // 计算每条状态并过滤
@@ -274,6 +296,7 @@ const Certs = {
     const filtered = enriched.filter(({ cert, st }) =>
       (!category || cert.cert_category === category)
       && (!status || st.key === status)
+      && (!training || (cert.cert_category === 'personal' && (training === 'trained' ? cert.training_status === '已培训' : cert.training_status === '待培训')))
       && this.matchKeyword(cert, kw)
     );
 
@@ -335,8 +358,8 @@ const Certs = {
 
     const warnHint = this.state.warnDays;
 
-    const statCard = (label, value, mod = '') => `
-      <div class="stat-card ${mod}">
+    const statCard = (label, value, mod = '', filterKey = '', active = false) => `
+      <div class="stat-card ${mod} ${filterKey ? 'clickable' : ''} ${active ? 'active' : ''}" ${filterKey ? `onclick="Certs.applyQuickFilter('${filterKey}')"` : ''} title="${filterKey ? '点击查看对应台账' : ''}">
         <div class="stat-label">${label}</div>
         <div class="stat-value">${value}</div>
       </div>`;
@@ -356,27 +379,35 @@ const Certs = {
     };
     const c = calcStats(companyListStats);
     const p = calcStats(personalListStats);
+    const cur = this.state.filters;
+    const isActive = (cat, kind) => {
+      if (cur.category !== cat) return false;
+      if (kind === 'all') return !cur.status && !cur.training;
+      if (['valid', 'expiring', 'expired'].includes(kind)) return cur.status === kind && !cur.training;
+      if (['trained', 'untrained'].includes(kind)) return cur.training === kind && !cur.status;
+      return false;
+    };
 
     section.innerHTML = `
       <div class="cert-stats-block">
         <div class="cert-stats-section">
           <div class="cert-stats-section-title">公司资质</div>
           <div class="stats-grid">
-            ${statCard('资质总计', c.total)}
-            ${statCard('有效资质', c.valid, c.valid > 0 ? 'success' : '')}
-            ${statCard('临期资质', c.expiring, c.expiring > 0 ? 'warning' : '')}
-            ${statCard('过期资质', c.expired, c.expired > 0 ? 'danger' : '')}
+            ${statCard('资质总计', c.total, '', 'company|all', isActive('company', 'all'))}
+            ${statCard('有效资质', c.valid, c.valid > 0 ? 'success' : '', 'company|valid', isActive('company', 'valid'))}
+            ${statCard('临期资质', c.expiring, c.expiring > 0 ? 'warning' : '', 'company|expiring', isActive('company', 'expiring'))}
+            ${statCard('过期资质', c.expired, c.expired > 0 ? 'danger' : '', 'company|expired', isActive('company', 'expired'))}
           </div>
         </div>
         <div class="cert-stats-section">
           <div class="cert-stats-section-title">个人证书</div>
           <div class="stats-grid">
-            ${statCard('证书总计', p.total)}
-            ${statCard('有效证书', p.valid, p.valid > 0 ? 'success' : '')}
-            ${statCard('临期证书', p.expiring, p.expiring > 0 ? 'warning' : '')}
-            ${statCard('过期证书', p.expired, p.expired > 0 ? 'danger' : '')}
-            ${statCard('本年度已培训', p.trained, p.trained > 0 ? 'success' : '')}
-            ${statCard('本年度未培训', p.untrained, p.untrained > 0 ? 'warning' : '')}
+            ${statCard('证书总计', p.total, '', 'personal|all', isActive('personal', 'all'))}
+            ${statCard('有效证书', p.valid, p.valid > 0 ? 'success' : '', 'personal|valid', isActive('personal', 'valid'))}
+            ${statCard('临期证书', p.expiring, p.expiring > 0 ? 'warning' : '', 'personal|expiring', isActive('personal', 'expiring'))}
+            ${statCard('过期证书', p.expired, p.expired > 0 ? 'danger' : '', 'personal|expired', isActive('personal', 'expired'))}
+            ${statCard('本年度已培训', p.trained, p.trained > 0 ? 'success' : '', 'personal|trained', isActive('personal', 'trained'))}
+            ${statCard('本年度未培训', p.untrained, p.untrained > 0 ? 'warning' : '', 'personal|untrained', isActive('personal', 'untrained'))}
           </div>
         </div>
       </div>
