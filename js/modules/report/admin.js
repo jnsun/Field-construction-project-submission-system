@@ -44,6 +44,7 @@ const Admin = {
 
     container.innerHTML = this.buildHTML();
     this.bindEvents(container);
+    Utils.bindBackToTop('report-admin-back-top');
     await this.loadData();
   },
 
@@ -64,6 +65,7 @@ const Admin = {
   buildHTML() {
     return `
       <div class="dashboard${this.state.readOnly ? ' admin-readonly' : ''}">
+        <button class="back-to-top" id="report-admin-back-top" title="回到顶部" aria-label="回到顶部">↑</button>
         ${this.buildHeader()}
         <div class="dashboard-content">
           ${this.buildTabs()}
@@ -173,6 +175,7 @@ const Admin = {
       <div class="dashboard-header">
         <div class="dashboard-header-inner">
           <div class="header-left">
+            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
             <h1>野外施工项目报送</h1>
             <span class="badge ${this.state.readOnly ? 'badge-muted' : 'badge-success'}">${this.state.readOnly ? '只读查看' : '管理员'}</span>
             ${!this.state.readOnly && Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
@@ -181,7 +184,6 @@ const Admin = {
             <div class="user-info">
               <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
             </div>
-            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
             <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
             <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
           </div>

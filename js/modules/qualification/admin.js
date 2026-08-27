@@ -37,6 +37,7 @@ const CertAdmin = {
     dedupeDeleting: false,    // 去重删除执行中（防重复提交）
     dedupeFailed: [],         // 去重删除失败项 [{ id, name, message }]（失败后不再自动重开弹窗）
     selectedIds: [],          // 批量操作（调整培训状态）勾选的证照 ID
+    trainingsByCert: null,     // Map<certificate_id, training[]> 预载培训记录，供动态培训状态判定
   },
 
   /**
@@ -70,6 +71,7 @@ const CertAdmin = {
   async render(container) {
     this.state.filters = { company: '', category: '', type: '', status: '', training: '', keyword: '' };
     container.innerHTML = this.buildHTML();
+    Utils.bindBackToTop('cert-admin-back-top');
     // 全局点击关闭工具栏下拉菜单（仅注册一次）
     if (!this._dropdownListener) {
       this._dropdownListener = (e) => {
@@ -87,6 +89,7 @@ const CertAdmin = {
   buildHTML() {
     return `
       <div class="dashboard">
+        <button class="back-to-top" id="cert-admin-back-top" title="回到顶部" aria-label="回到顶部">↑</button>
         ${this.buildHeader()}
         <div class="dashboard-content">
           ${this.buildTabs()}
@@ -115,19 +118,19 @@ const CertAdmin = {
     return `
       <div class="dashboard-header">
         <div class="dashboard-header-inner">
-          <div class="header-left">
-            <h1>资质证照管理</h1>
-            <span class="badge badge-success">管理员</span>
-            ${Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
+        <div class="header-left">
+          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
+          <h1>资质证照管理</h1>
+          <span class="badge badge-success">管理员</span>
+          ${Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
+        </div>
+        <div class="header-right">
+          <div class="user-info">
+            <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
           </div>
-          <div class="header-right">
-            <div class="user-info">
-              <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
-            </div>
-            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
-            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
-          </div>
+          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+        </div>
         </div>
       </div>
     `;
@@ -233,11 +236,12 @@ const CertAdmin = {
   async loadData() {
     this.showCertsLoading();
     try {
-      const [companyRes, certRes, typesRes, settingsRes] = await Promise.all([
+      const [companyRes, certRes, typesRes, settingsRes, trRes] = await Promise.all([
         sb.from('departments').select('*').eq('is_company', true).order('sort_order'),
         sb.from('certificates').select('*, departments(name, code)').order('created_at', { ascending: false }),
         sb.from('certificate_types').select('*').order('category, sort_order'),
         sb.from('cert_settings').select('warn_days').eq('id', 1).limit(1),
+        sb.from('certificate_trainings').select('*'),
       ]);
 
       if (companyRes.error) throw new Error('公司列表加载失败: ' + companyRes.error.message + '（请先执行 sql/schema.sql 注册公司）');
@@ -246,6 +250,14 @@ const CertAdmin = {
       this.state.companies = companyRes.data || [];
       this.state.certs = certRes.data || [];
       this.state.types = (typesRes.error ? [] : (typesRes.data || []));
+      // 预载全部培训记录，按证照 id 建立索引，供「注册安全工程师有效期内需培训 2 次」等动态判定
+      this.state.trainingsByCert = new Map();
+      if (!trRes.error && trRes.data) {
+        for (const t of trRes.data) {
+          if (!this.state.trainingsByCert.has(t.certificate_id)) this.state.trainingsByCert.set(t.certificate_id, []);
+          this.state.trainingsByCert.get(t.certificate_id).push(t);
+        }
+      }
       if (!settingsRes.error && settingsRes.data && settingsRes.data.length) {
         this.state.warnDays = settingsRes.data[0].warn_days || 90;
       }
@@ -293,7 +305,7 @@ const CertAdmin = {
     sel.innerHTML = `
       <option value="">全部公司（${this.state.certs.length}）</option>
       ${this.state.companies.map(d => `
-        <option value="${d.id}">${Utils.escapeHtml(d.name)}（${counts[d.id] || 0}）</option>
+        <option value="${d.id}">${Utils.escapeHtml(Utils.shortCompany(d.name))}（${counts[d.id] || 0}）</option>
       `).join('')}
     `;
     if (current) sel.value = current;
@@ -434,6 +446,8 @@ const CertAdmin = {
         <div class="stat-label">${label}</div>
         <div class="stat-value">${value}</div>
       </div>`;
+    const tb = this.state.trainingsByCert;
+    const trOf = (cert) => (tb && tb.get(cert.id)) || [];
     const calcStats = (list) => {
       let total = 0, valid = 0, expiring = 0, expired = 0, trained = 0, untrained = 0;
       for (const e of list) {
@@ -442,8 +456,9 @@ const CertAdmin = {
         else if (e.st.key === 'expiring') expiring++;
         else if (e.st.key === 'expired') expired++;
         if (e.cert.cert_category === 'personal') {
-          if (e.cert.training_status === '已培训') trained++;
-          else if (e.cert.training_status === '待培训') untrained++;
+          const ts = Utils.certTrainingInfo(e.cert, trOf(e.cert)).status;
+          if (ts === '已培训') trained++;
+          else if (ts === '待培训') untrained++;
         }
       }
       return { total, valid, expiring, expired, trained, untrained };
@@ -542,7 +557,7 @@ const CertAdmin = {
                   ${category === 'personal' ? '<th>备注</th>' : ''}
                   <th>有效期至</th>
                   <th>状态</th>
-                  ${category === 'company' ? '' : '<th>当年培训</th>'}
+                  ${category === 'company' ? '' : '<th>培训情况</th>'}
                   <th>操作</th>
                 </tr>
               </thead>
@@ -568,7 +583,7 @@ const CertAdmin = {
     const showRemarkCol = cat === 'personal'; // 仅个人证照视图显示「备注」
     const rowCls = st.key === 'expired' ? 'row-danger'
       : st.key === 'expiring' ? 'row-warning' : '';
-    const companyName = cert.departments ? cert.departments.name : '未分配';
+    const companyName = cert.departments ? Utils.shortCompany(cert.departments.name) : '未分配';
     const subCol = Utils.subText(cert)
       ? Utils.escapeHtml(Utils.subText(cert))
       : '<span class="text-muted">—</span>';
@@ -581,12 +596,12 @@ const CertAdmin = {
     const remarkCol = cert.remark
       ? `<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${Utils.escapeHtml(cert.remark)}">${Utils.escapeHtml(cert.remark)}</td>`
       : '<td><span class="text-muted">—</span></td>';
-    const trainingCol = Utils.trainingStatusBadge(cert.training_status);
+    const trainingCol = Utils.trainingColHTML(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []);
     return `
       <tr class="${rowCls}">
         <td class="col-select"><input type="checkbox" class="admin-row-select" data-id="${cert.id}" ${selected ? 'checked' : ''} onchange="CertAdmin.toggleRowSelect('${cert.id}', this.checked)"></td>
         <td>${Utils.escapeHtml(companyName)}</td>
-        <td><strong>${Utils.escapeHtml(cert.cert_name)}</strong></td>
+        <td><strong><a href="javascript:void(0)" class="cert-name-link" onclick="CertAdmin.showCertDetail('${cert.id}')" title="点击查看证照详情">${Utils.escapeHtml(cert.cert_name)}</a></strong></td>
         ${hideCategoryCol ? '' : `<td>${Utils.categoryLabel(cert.cert_category)}</td>`}
         <td>${Utils.typeChip(cert.cert_type)}</td>
         ${compactCompanyView ? '' : `<td>${subCol}</td>`}
@@ -599,7 +614,6 @@ const CertAdmin = {
           <div class="cert-actions-dropdown">
             <button class="btn btn-secondary btn-sm cert-actions-toggle" onclick="CertAdmin.toggleRowMenu('${cert.id}', this)">操作 ▾</button>
             <div class="cert-actions-menu" id="cert-menu-${cert.id}">
-              <button class="cert-menu-item" onclick="CertAdmin.showCertDetail('${cert.id}');CertAdmin.closeRowMenu('${cert.id}')">查看</button>
               <button class="cert-menu-item" onclick="CertAdmin.showCertForm('${cert.id}');CertAdmin.closeRowMenu('${cert.id}')">编辑</button>
               ${cert.status === 'active' ? `<button class="cert-menu-item" onclick="CertAdmin.showCertForm(null, '${cert.id}');CertAdmin.closeRowMenu('${cert.id}')">换证</button>` : ''}
               <button class="cert-menu-item danger" onclick="CertAdmin.closeRowMenu('${cert.id}');CertAdmin.handleDelete('${cert.id}')">删除</button>
@@ -880,8 +894,9 @@ const CertAdmin = {
    * 按证照类型规则批量初始化 / 校正「当年培训状态」
    * 规则（见 Utils.trainingRequirement）：
    *  - 公司证照 → 无需培训
-   *  - 特种作业人员资格证（应急局/住建局）、安全生产考核合格证书 → 无需培训
-   *  - 非煤矿山安全管理人员证书、爆破作业人员许可证等需年培个人证照 → 待培训
+   *  - 特种作业人员资格证、安全生产考核合格证书、非煤矿山安全管理人员证书、爆破作业人员许可证 → 无需培训（当年无需培训）
+   *  - 注册安全工程师 → 按有效期窗口统计，需培训 2 次（由培训记录动态判定，不在此写入）
+   *  - 其它个人证照 → 待培训（已培训保留）
    * 非破坏式：保留已明确填写的「已培训」；仅把「空 / 误填为无需培训」的应培项校正为「待培训」，
    * 并把本就无需培训的类型统一置为「无需培训」。
    */
@@ -891,8 +906,9 @@ const CertAdmin = {
     if (!confirm(
       '将按以下规则设置培训状态：\n' +
       '· 公司证照 → 无需培训\n' +
-      '· 特种作业人员资格证（应急局/住建局）、安全生产考核合格证书 → 无需培训\n' +
-      '· 非煤矿山安全管理人员证书、爆破作业人员许可证等需年培个人证照 → 待培训（原「已培训」保留）\n\n' +
+      '· 特种作业人员资格证、安全生产考核合格证书、非煤矿山安全管理人员证书、爆破作业人员许可证 → 无需培训（当年无需培训）\n' +
+      '· 注册安全工程师 → 按有效期窗口统计，需培训 2 次（由培训记录自动判定，不在此批量写入）\n' +
+      '· 其它个人证照 → 待培训（原「已培训」保留）\n\n' +
       '仅校正「无需培训/空」的应培项为待培训，不会清除已填的「已培训」。是否继续？'
     )) return;
 
@@ -1053,13 +1069,18 @@ const CertAdmin = {
     // 换证历史链（沿 renewed_from 向上追溯 + 向下找新证）
     const chain = this.buildRenewalChain(cert);
 
-    // 公司证照无需培训：详情中不展示「当年培训状态」与「历年培训情况」
+    // 公司证照无需培训：详情中不展示「培训状态」与「历年培训情况」
+    const trInfo = Utils.certTrainingInfo(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []);
+    const trainingNote = trInfo.need > 0
+      ? `<p class="training-note ${trInfo.count >= trInfo.need ? 'ok' : 'warn'}">${Utils.escapeHtml(cert.cert_type)}：有效期内需培训 ${trInfo.need} 次，已培训 ${trInfo.count} 次${trInfo.count >= trInfo.need ? '（已达标）' : '（未达标，请尽快安排培训）'}</p>`
+      : '';
     const trainingSection = cert.cert_category === 'company' ? '' : `
             <div class="detail-section">
               <h3>历年培训情况</h3>
               <div id="admin-cert-trainings-list" class="trainings-list">
                 <div class="empty-state" style="padding:16px;"><div class="spinner" style="margin:0 auto;"></div><p style="margin-top:8px;">培训记录加载中...</p></div>
               </div>
+              ${trainingNote}
               <div class="trainings-actions">
                 <button class="btn btn-primary btn-sm" onclick="CertAdmin.openTrainingForm('${cert.id}')">+ 添加培训记录</button>
               </div>
@@ -1074,7 +1095,7 @@ const CertAdmin = {
           </div>
           <div class="modal-body">
             <div class="detail-grid">
-              ${item('所属公司', text(cert.departments ? cert.departments.name : ''))}
+              ${item('所属公司', text(cert.departments ? Utils.shortCompany(cert.departments.name) : ''))}
               ${item('状态', `<span class="badge ${st.badge}">${st.label}</span>`)}
               ${item('证照大类', Utils.categoryLabel(cert.cert_category))}
               ${item('证照类型', text(cert.cert_type))}
@@ -1089,7 +1110,7 @@ const CertAdmin = {
               ${cert.cert_category === 'personal' ? item('证件号', text(cert.holder_id_no)) : ''}
               ${cert.cert_category === 'personal' ? item('职务 / 岗位', text(cert.holder_position)) : ''}
               ${item('备注', text(cert.remark))}
-              ${cert.cert_category === 'company' ? '' : item('当年培训状态', Utils.trainingStatusBadge(cert.training_status))}
+              ${cert.cert_category === 'company' ? '' : item('培训状态', Utils.trainingColHTML(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []))}
               ${item('登记时间', Utils.formatDateTime(cert.created_at))}
             </div>
 
@@ -1550,14 +1571,14 @@ const CertAdmin = {
                   ${isRenew ? '<p class="hint">换证生成的新记录状态为「在用」，旧证自动归档</p>' : ''}
                 </div>
                 <div class="form-group">
-                  <label>当年培训状态</label>
+                  <label>培训状态</label>
                   <select name="training_status">
                     <option value="">-- 请选择 --</option>
                     <option value="已培训" ${sel(v.training_status, '已培训')}>已培训</option>
                     <option value="无需培训" ${sel(v.training_status, '无需培训')}>无需培训</option>
                     <option value="待培训" ${sel(v.training_status, '待培训')}>待培训</option>
                   </select>
-                  <p class="hint">系统按证照类型自动默认（公司证照及无需年培的特定个人证照→无需培训；需年培个人证照→待培训），可手动调整</p>
+                  <p class="hint">系统按证照类型自动默认（公司证照及无需年培的特定个人证照→无需培训；需年培个人证照→待培训；注册安全工程师按有效期内培训次数自动判定）。可手动调整</p>
                 </div>
                 <div class="form-group col-span-2">
                   <label>备注</label>
@@ -1984,7 +2005,7 @@ const CertAdmin = {
    * 去重结果中的单条证照行
    */
   renderDedupeRow(cert, isKeep) {
-    const companyName = cert.departments ? cert.departments.name : '未分配';
+    const companyName = cert.departments ? Utils.shortCompany(cert.departments.name) : '未分配';
     const validUntil = cert.is_long_term
       ? '长期'
       : (cert.valid_until ? Utils.formatDate(cert.valid_until) : '—');

@@ -82,6 +82,7 @@ const Reporter = {
 
     container.innerHTML = this.buildHTML();
     this.bindEvents(container);
+    Utils.bindBackToTop('report-back-top');
     await this.loadFormConfig();
     await this.loadReports();
     await this.loadNoFieldStatus();
@@ -100,6 +101,7 @@ const Reporter = {
   buildHTML() {
     return `
       <div class="dashboard">
+        <button class="back-to-top" id="report-back-top" title="回到顶部" aria-label="回到顶部">↑</button>
         ${this.buildHeader()}
         <div class="dashboard-content">
           ${this.buildToolbar()}
@@ -118,6 +120,7 @@ const Reporter = {
     return `
       <div class="dashboard-header">
         <div class="header-left">
+          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
           <h1>野外施工项目报送</h1>
           <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
         </div>
@@ -125,7 +128,6 @@ const Reporter = {
           <div class="user-info">
             <span class="user-name">${Utils.escapeHtml(name)}</span>
           </div>
-          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
           <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
           <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
         </div>

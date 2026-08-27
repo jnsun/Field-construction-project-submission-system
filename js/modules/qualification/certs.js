@@ -30,6 +30,7 @@ const Certs = {
     },
     detailId: null,      // 详情弹窗当前证照 ID
     detailFiles: [],     // 详情弹窗当前附件列表
+    trainingsByCert: null, // Map<certificate_id, training[]> 预载培训记录，供动态培训状态判定
   },
 
   /**
@@ -72,6 +73,7 @@ const Certs = {
     this.state.filters = { keyword: '', category: '', status: '', training: '' };
 
     container.innerHTML = this.buildHTML();
+    Utils.bindBackToTop('certs-back-top');
     await this.loadConfig();
     await this.loadCerts();
   },
@@ -130,6 +132,21 @@ const Certs = {
     }
 
     this.state.certs = data || [];
+    // 预载本公司培训记录，按证照 id 建立索引，供「注册安全工程师有效期内需培训 2 次」等动态判定
+    this.state.trainingsByCert = new Map();
+    const ids = this.state.certs.map(c => c.id);
+    if (ids.length) {
+      const { data: trData } = await sb
+        .from('certificate_trainings')
+        .select('*')
+        .in('certificate_id', ids);
+      if (trData) {
+        for (const t of trData) {
+          if (!this.state.trainingsByCert.has(t.certificate_id)) this.state.trainingsByCert.set(t.certificate_id, []);
+          this.state.trainingsByCert.get(t.certificate_id).push(t);
+        }
+      }
+    }
     this.renderCerts();
   },
 
@@ -139,6 +156,7 @@ const Certs = {
   buildHTML() {
     return `
       <div class="dashboard">
+        <button class="back-to-top" id="certs-back-top" title="回到顶部" aria-label="回到顶部">↑</button>
         ${this.buildHeader()}
         <div class="dashboard-content">
           ${this.buildToolbar()}
@@ -156,19 +174,19 @@ const Certs = {
     return `
       <div class="dashboard-header">
         <div class="dashboard-header-inner">
-          <div class="header-left">
-            <h1>资质证照管理</h1>
-            <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
-            <span class="badge badge-muted" title="证照登记与维护由管理员操作">只读</span>
+        <div class="header-left">
+          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
+          <h1>资质证照管理</h1>
+          <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
+          <span class="badge badge-muted" title="证照登记与维护由管理员操作">只读</span>
+        </div>
+        <div class="header-right">
+          <div class="user-info">
+            <span class="user-name">${Utils.escapeHtml(name)}</span>
           </div>
-          <div class="header-right">
-            <div class="user-info">
-              <span class="user-name">${Utils.escapeHtml(name)}</span>
-            </div>
-            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
-            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
-          </div>
+          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+        </div>
         </div>
       </div>
     `;
@@ -311,6 +329,8 @@ const Certs = {
         <div class="stat-label">${label}</div>
         <div class="stat-value">${value}</div>
       </div>`;
+    const tb = this.state.trainingsByCert;
+    const trOf = (cert) => (tb && tb.get(cert.id)) || [];
     const calcStats = (list) => {
       let total = 0, valid = 0, expiring = 0, expired = 0, trained = 0, untrained = 0;
       for (const e of list) {
@@ -319,8 +339,9 @@ const Certs = {
         else if (e.st.key === 'expiring') expiring++;
         else if (e.st.key === 'expired') expired++;
         if (e.cert.cert_category === 'personal') {
-          if (e.cert.training_status === '已培训') trained++;
-          else if (e.cert.training_status === '待培训') untrained++;
+          const ts = Utils.certTrainingInfo(e.cert, trOf(e.cert)).status;
+          if (ts === '已培训') trained++;
+          else if (ts === '待培训') untrained++;
         }
       }
       return { total, valid, expiring, expired, trained, untrained };
@@ -432,8 +453,7 @@ const Certs = {
                   ${category === 'personal' ? '<th>备注</th>' : ''}
                   <th>有效期至</th>
                   <th>状态</th>
-                  ${category === 'company' ? '' : '<th>当年培训</th>'}
-                  <th>操作</th>
+                  ${category === 'company' ? '' : '<th>培训情况</th>'}
                 </tr>
               </thead>
               <tbody>
@@ -468,10 +488,10 @@ const Certs = {
     const remarkCol = cert.remark
       ? `<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${Utils.escapeHtml(cert.remark)}">${Utils.escapeHtml(cert.remark)}</td>`
       : '<td><span class="text-muted">—</span></td>';
-    const trainingCol = Utils.trainingStatusBadge(cert.training_status);
+    const trainingCol = Utils.trainingColHTML(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []);
     return `
       <tr class="${rowCls}">
-        <td><strong>${Utils.escapeHtml(cert.cert_name)}</strong></td>
+        <td><strong><a href="javascript:void(0)" class="cert-name-link" onclick="Certs.showCertDetail('${cert.id}')" title="点击查看证照详情">${Utils.escapeHtml(cert.cert_name)}</a></strong></td>
         ${hideCategoryCol ? '' : `<td>${Utils.categoryLabel(cert.cert_category)}</td>`}
         <td>${Utils.typeChip(cert.cert_type)}</td>
         ${compactCompanyView ? '' : `<td>${subCol}</td>`}
@@ -480,9 +500,6 @@ const Certs = {
         <td style="white-space:nowrap;">${validUntil}</td>
         <td><span class="badge ${st.badge}">${st.label}</span></td>
         ${compactCompanyView ? '' : `<td>${trainingCol}</td>`}
-        <td>
-          <button class="btn btn-secondary btn-sm cert-actions-toggle" onclick="Certs.showCertDetail('${cert.id}')">查看</button>
-        </td>
       </tr>
     `;
   },
@@ -539,13 +556,18 @@ const Certs = {
     // 换证历史链（沿 renewed_from 向上追溯 + 向下找新证）
     const chain = this.buildRenewalChain(cert);
 
-    // 公司证照无需培训：详情中不展示「当年培训状态」与「历年培训情况」
+    // 公司证照无需培训：详情中不展示「培训状态」与「历年培训情况」
+    const trInfo = Utils.certTrainingInfo(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []);
+    const trainingNote = trInfo.need > 0
+      ? `<p class="training-note ${trInfo.count >= trInfo.need ? 'ok' : 'warn'}">${Utils.escapeHtml(cert.cert_type)}：有效期内需培训 ${trInfo.need} 次，已培训 ${trInfo.count} 次${trInfo.count >= trInfo.need ? '（已达标）' : '（未达标，请尽快安排培训）'}</p>`
+      : '';
     const trainingSection = cert.cert_category === 'company' ? '' : `
             <div class="detail-section">
               <h3>历年培训情况</h3>
               <div id="cert-trainings-list" class="trainings-list">
                 <div class="empty-state" style="padding:16px;"><div class="spinner" style="margin:0 auto;"></div><p style="margin-top:8px;">培训记录加载中...</p></div>
               </div>
+              ${trainingNote}
             </div>`;
 
     const modalHTML = `
@@ -572,7 +594,7 @@ const Certs = {
               ${cert.cert_category === 'personal' ? item('证件号', text(cert.holder_id_no)) : ''}
               ${cert.cert_category === 'personal' ? item('职务 / 岗位', text(cert.holder_position)) : ''}
               ${item('备注', text(cert.remark))}
-              ${cert.cert_category === 'company' ? '' : item('当年培训状态', Utils.trainingStatusBadge(cert.training_status))}
+              ${cert.cert_category === 'company' ? '' : item('培训状态', Utils.trainingColHTML(cert, this.state.trainingsByCert ? (this.state.trainingsByCert.get(cert.id) || []) : []))}
               ${item('登记时间', Utils.formatDateTime(cert.created_at))}
             </div>
 

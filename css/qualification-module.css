@@ -678,3 +678,47 @@
 .cert-menu-item.danger { color: var(--color-danger); }
 .cert-menu-item.danger:hover { background: #fee2e2; }
 
+/* 回到顶部悬浮按钮（资质证照与野外报送共用） */
+.back-to-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: opacity .2s, visibility .2s, transform .2s, background .15s, color .15s;
+  z-index: 200;
+}
+.back-to-top.show { opacity: 1; visibility: visible; transform: translateY(0); }
+.back-to-top:hover { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+/* 台账「证照名称」可点击查看详情 */
+.cert-name-link {
+  color: var(--color-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+.cert-name-link:hover { text-decoration: underline; }
+
+/* 注册安全工程师：有效期内培训进度提示 */
+.training-note {
+  margin: 8px 0 0;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.training-note.ok { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.training-note.warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+

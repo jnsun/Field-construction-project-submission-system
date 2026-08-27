@@ -264,16 +264,28 @@ const Utils = {
   },
 
   /**
-   * 证照大类显示名（v1 旧值 enterprise/person 兼容映射）
+   * 证照大类显示名（简称：公司 / 个人；v1 旧值 enterprise/person 兼容映射）
    */
   categoryLabel(category) {
     const map = {
-      company: '公司证照',
-      personal: '个人证照',
-      enterprise: '公司证照',
-      person: '个人证照',
+      company: '公司',
+      personal: '个人',
+      enterprise: '公司',
+      person: '个人',
     };
-    return map[category] || '公司证照';
+    return map[category] || '公司';
+  },
+
+  /**
+   * 公司简称（物化院有限公司 → 物化院，六勘院有限公司 → 六勘院）
+   * 未匹配的长名称原样返回，避免影响其它公司
+   */
+  shortCompany(name) {
+    const map = {
+      '物化院有限公司': '物化院',
+      '六勘院有限公司': '六勘院',
+    };
+    return map[String(name || '').trim()] || (name || '');
   },
 
   /**
@@ -349,11 +361,15 @@ const Utils = {
   },
 
   /**
-   * 根据证照大类 / 类型 / 子分类判断是否需要「每年定期培训」
+   * 根据证照大类 / 类型 / 子分类判断培训要求
    * @param {string} category 'company' | 'personal'
    * @param {string} certType 证照类型名称
    * @param {string} [sub1] 子分类1（如培训机构）
-   * @returns {'annual'|'none'|null} annual=需每年培训，none=无需培训，null=规则未覆盖
+   * @returns {'none'|'annual'|'period2'|null}
+   *   - none    ：无需培训（公司证照、特种作业、安全生产考核合格、非煤矿山安管、爆破作业）
+   *   - annual  ：按自然年计，当年有培训记录即视为已培训
+   *   - period2 ：按有效期窗口计，有效期内需培训 2 次（注册安全工程师）
+   *   - null    ：规则未覆盖，沿用存储值
    */
   trainingRequirement(category, certType, sub1) {
     if (category === 'company') return 'none';
@@ -361,9 +377,64 @@ const Utils = {
     const t = String(certType || '').trim();
     if (t === '特种作业人员资格证') return 'none';
     if (t === '安全生产考核合格证书') return 'none';
-    if (t === '非煤矿山安全管理人员证书') return 'annual';
-    if (t === '爆破作业人员许可证') return 'annual';
+    // 非煤矿山安全管理人员证书、爆破作业人员许可证：依据发证日期 / 有效期起，当年无需培训
+    if (t === '非煤矿山安全管理人员证书') return 'none';
+    if (t === '爆破作业人员许可证') return 'none';
+    // 注册安全工程师：有效期内需培训 2 次
+    if (t === '注册安全工程师') return 'period2';
     return 'annual';
+  },
+
+  /**
+   * 统计某证照在「有效期窗口」内的培训次数（注册安全工程师用）
+   * 以 valid_from（缺省取 issue_date）为起点、valid_until 为终点，闭区间统计培训日期落在区间内的记录数。
+   * 起止日期缺失时，退化为统计全部培训记录数。
+   */
+  certTrainingCountInPeriod(cert, trainings) {
+    if (!trainings || !trainings.length) return 0;
+    const from = cert.valid_from || cert.issue_date;
+    const to = cert.valid_until;
+    if (from && to) {
+      let n = 0;
+      for (const t of trainings) {
+        const d = t.training_date;
+        if (d && d >= from && d <= to) n++;
+      }
+      return n;
+    }
+    return trainings.length;
+  },
+
+  /**
+   * 计算某证照的「有效培训状态」与培训进度，用于台账徽章与统计卡片
+   * @returns {{status:string, count:number, need:number}}
+   *   - need>0 表示按有效期窗口计（注册安全工程师），count 为窗口内已培训次数，status 由达标情况决定
+   *   - need=0 表示按年计或无需培训，沿用存储的 training_status
+   */
+  certTrainingInfo(cert, trainings) {
+    const req = this.trainingRequirement(cert.cert_category, cert.cert_type, cert.sub1_value);
+    if (req === 'none') return { status: '无需培训', count: 0, need: 0 };
+    if (req === 'period2') {
+      const count = this.certTrainingCountInPeriod(cert, trainings);
+      const need = 2;
+      return { status: count >= need ? '已培训' : '待培训', count, need };
+    }
+    // annual / 未覆盖：沿用存储的培训状态（空值视为未培，由徽章显示为「—」）
+    return { status: cert.training_status || '', count: 0, need: 0 };
+  },
+
+  /**
+   * 生成台账「培训情况」单元格 HTML：
+   *  - period2（注册安全工程师）：已培训 (n/2) / 待培训 (n/2)
+   *  - 其它：沿用原 trainingStatusBadge（已培训 / 待培训 / 无需培训 / —）
+   */
+  trainingColHTML(cert, trainings) {
+    const info = this.certTrainingInfo(cert, trainings);
+    if (info.need > 0) {
+      const done = info.count >= info.need;
+      return `<span class="badge ${done ? 'badge-success' : 'badge-warning'}">${info.status} (${info.count}/${info.need})</span>`;
+    }
+    return this.trainingStatusBadge(info.status);
   },
 
   /**
@@ -394,6 +465,29 @@ const Utils = {
     const ct = String(contentType || '');
     if (ct.startsWith('image/')) return true;
     return /\.(png|jpe?g|webp|gif)$/i.test(String(fileName || ''));
+  },
+
+  /**
+   * 绑定「回到顶部」悬浮按钮：滚动超过阈值时显现，点击平滑回到顶部。
+   * 同一页面多次调用 render 不会重复绑定滚动监听；按钮 click 仅绑定一次。
+   * @param {string} btnId 按钮元素 id
+   */
+  bindBackToTop(btnId) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    if (!btn.dataset.bound) {
+      btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+      btn.dataset.bound = '1';
+    }
+    if (!window.__backToTopBound) {
+      window.__backToTopBound = true;
+      const onScroll = () => {
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        document.querySelectorAll('.back-to-top').forEach(b => b.classList.toggle('show', y > 320));
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    }
   },
 };
 
