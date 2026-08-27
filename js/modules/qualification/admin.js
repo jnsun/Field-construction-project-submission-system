@@ -405,6 +405,7 @@ const CertAdmin = {
 
     const { company, category, type, status, training, keyword } = this.state.filters;
     const all = this.state.certs;
+    const tb = this.state.trainingsByCert;
 
     const enriched = all.map(c => ({ cert: c, st: this.statusOf(c) }));
     const filtered = enriched.filter(({ cert, st }) =>
@@ -412,7 +413,11 @@ const CertAdmin = {
       && (!category || cert.cert_category === category)
       && (!type || cert.cert_type === type)
       && (!status || st.key === status)
-      && (!training || (cert.cert_category === 'personal' && (training === 'trained' ? cert.training_status === '已培训' : cert.training_status === '待培训')))
+      && (!training || (cert.cert_category === 'personal' && (() => {
+        // 与统计卡片一致：使用动态培训状态（注册安全工程师按有效期内次数判定，无需培训类型置「无需培训」）
+        const ti = Utils.certTrainingInfo(cert, (tb && tb.get(cert.id)) || []);
+        return training === 'trained' ? ti.status === '已培训' : ti.status === '待培训';
+      })()))
       && this.matchKeyword(cert, keyword)
     );
 
@@ -446,7 +451,6 @@ const CertAdmin = {
         <div class="stat-label">${label}</div>
         <div class="stat-value">${value}</div>
       </div>`;
-    const tb = this.state.trainingsByCert;
     const trOf = (cert) => (tb && tb.get(cert.id)) || [];
     const calcStats = (list) => {
       let total = 0, valid = 0, expiring = 0, expired = 0, trained = 0, untrained = 0;
