@@ -181,7 +181,7 @@ const Admin = {
             <div class="user-info">
               <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
+            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
             <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
             <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
           </div>

@@ -124,7 +124,7 @@ const CertAdmin = {
             <div class="user-info">
               <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
+            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
             <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
             <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
           </div>
@@ -414,15 +414,12 @@ const CertAdmin = {
       return;
     }
 
-    // 统计（基于筛选后的公司/大类范围，不受状态筛选影响，便于横向比较）
-    const scope = enriched.filter(({ cert }) =>
+    // 统计（按公司/类型范围，忽略「大类」与「状态」筛选）—— 拆分为公司资质 / 个人证书两大板块
+    const baseScope = enriched.filter(({ cert }) =>
       (!company || cert.department_id === company)
-      && (!category || cert.cert_category === category)
       && (!type || cert.cert_type === type));
-    const activeScope = scope.filter(e => e.cert.status === 'active');
-    const expiringCount = activeScope.filter(e => e.st.key === 'expiring').length;
-    const expiredCount = activeScope.filter(e => e.st.key === 'expired').length;
-    const companyCount = new Set(scope.map(e => e.cert.department_id).filter(Boolean)).size;
+    const companyListStats = baseScope.filter(e => e.cert.cert_category === 'company');
+    const personalListStats = baseScope.filter(e => e.cert.cert_category === 'personal');
 
     // 排序：过期 > 即将到期 > 其他在用（按到期日升序）> 已换证/已注销
     // 「安全生产考核合格证书」默认按子分类 A→B→C 排序（子分类内再按到期日）
@@ -445,23 +442,49 @@ const CertAdmin = {
       return cmpDate(a.cert, b.cert);
     });
 
+    const statCard = (label, value, mod = '') => `
+      <div class="stat-card ${mod}">
+        <div class="stat-label">${label}</div>
+        <div class="stat-value">${value}</div>
+      </div>`;
+    const calcStats = (list) => {
+      let total = 0, valid = 0, expiring = 0, expired = 0, trained = 0, untrained = 0;
+      for (const e of list) {
+        total++;
+        if (e.st.key === 'valid') valid++;
+        else if (e.st.key === 'expiring') expiring++;
+        else if (e.st.key === 'expired') expired++;
+        if (e.cert.cert_category === 'personal') {
+          if (e.cert.training_status === '已培训') trained++;
+          else if (e.cert.training_status === '待培训') untrained++;
+        }
+      }
+      return { total, valid, expiring, expired, trained, untrained };
+    };
+    const c = calcStats(companyListStats);
+    const p = calcStats(personalListStats);
+
     el.innerHTML = `
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">在用证照 / 涉及公司</div>
-          <div class="stat-value">${activeScope.length} <span class="stat-sub">/ ${companyCount}</span></div>
+      <div class="cert-stats-block">
+        <div class="cert-stats-section">
+          <div class="cert-stats-section-title">公司资质</div>
+          <div class="stats-grid">
+            ${statCard('资质总计', c.total)}
+            ${statCard('有效资质', c.valid, c.valid > 0 ? 'success' : '')}
+            ${statCard('临期资质', c.expiring, c.expiring > 0 ? 'warning' : '')}
+            ${statCard('过期资质', c.expired, c.expired > 0 ? 'danger' : '')}
+          </div>
         </div>
-        <div class="stat-card ${expiringCount > 0 ? 'warning' : 'success'}">
-          <div class="stat-label">即将到期（${this.state.warnDays} 天内）</div>
-          <div class="stat-value">${expiringCount}</div>
-        </div>
-        <div class="stat-card ${expiredCount > 0 ? 'danger' : 'success'}">
-          <div class="stat-label">已过期</div>
-          <div class="stat-value">${expiredCount}</div>
-        </div>
-        <div class="stat-card info">
-          <div class="stat-label">当前筛选结果</div>
-          <div class="stat-value">${filtered.length}</div>
+        <div class="cert-stats-section">
+          <div class="cert-stats-section-title">个人证书</div>
+          <div class="stats-grid">
+            ${statCard('证书总计', p.total)}
+            ${statCard('有效证书', p.valid, p.valid > 0 ? 'success' : '')}
+            ${statCard('临期证书', p.expiring, p.expiring > 0 ? 'warning' : '')}
+            ${statCard('过期证书', p.expired, p.expired > 0 ? 'danger' : '')}
+            ${statCard('本年度已培训', p.trained, p.trained > 0 ? 'success' : '')}
+            ${statCard('本年度未培训', p.untrained, p.untrained > 0 ? 'warning' : '')}
+          </div>
         </div>
       </div>
       <div class="card">

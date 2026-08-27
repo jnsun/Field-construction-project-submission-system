@@ -125,7 +125,7 @@ const Reporter = {
           <div class="user-info">
             <span class="user-name">${Utils.escapeHtml(name)}</span>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="App.openDashboard()">工作台</button>
+          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
           <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
           <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
         </div>
