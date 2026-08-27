@@ -594,6 +594,7 @@ const Certs = {
               ${item('发证日期', text(cert.issue_date))}
               ${item('有效期起', text(cert.valid_from))}
               ${item('有效期止', validUntilHTML)}
+              ${item('换证要求', Utils.reCertRequirement(cert.cert_type))}
               ${cert.cert_category === 'personal' ? item('持证人', text(cert.holder_name)) : ''}
               ${cert.cert_category === 'personal' ? item('证件号', text(cert.holder_id_no)) : ''}
               ${cert.cert_category === 'personal' ? item('职务 / 岗位', text(cert.holder_position)) : ''}

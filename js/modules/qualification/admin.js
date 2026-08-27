@@ -896,13 +896,14 @@ const CertAdmin = {
 
   /**
    * 按证照类型规则批量初始化 / 校正「当年培训状态」
-   * 规则（见 Utils.trainingRequirement）：
+   * 规则（见 Utils.trainingRequirement / certTrainingInfo）：
    *  - 公司证照 → 无需培训
-   *  - 特种作业人员资格证、安全生产考核合格证书、非煤矿山安全管理人员证书、爆破作业人员许可证 → 无需培训（当年无需培训）
+   *  - 特种作业人员资格证、安全生产考核合格证书 → 无需培训（当年无需培训）
+   *  - 爆破作业人员许可证、非煤矿山安全管理人员证书 → 每年需培训（取证当年豁免，无需当年培训）
    *  - 注册安全工程师 → 按有效期窗口统计，需培训 2 次（由培训记录动态判定，不在此写入）
-   *  - 其它个人证照 → 待培训（已培训保留）
-   * 非破坏式：保留已明确填写的「已培训」；仅把「空 / 误填为无需培训」的应培项校正为「待培训」，
-   * 并把本就无需培训的类型统一置为「无需培训」。
+   *  - 其它个人证照 → 每年需培训（取证当年豁免）
+   * 取证当年的应年培证照置为「无需培训」；其余应年培项（空 / 误填为无需培训）置为「待培训」；
+   * 已明确「已培训」的保留。
    */
   async initTrainingStatusByRule() {
     const certs = this.state.certs || [];
@@ -910,21 +911,27 @@ const CertAdmin = {
     if (!confirm(
       '将按以下规则设置培训状态：\n' +
       '· 公司证照 → 无需培训\n' +
-      '· 特种作业人员资格证、安全生产考核合格证书、非煤矿山安全管理人员证书、爆破作业人员许可证 → 无需培训（当年无需培训）\n' +
+      '· 特种作业人员资格证、安全生产考核合格证书 → 无需培训（当年无需培训）\n' +
+      '· 爆破作业人员许可证、非煤矿山安全管理人员证书 → 每年需培训（取证当年豁免，无需当年培训）\n' +
       '· 注册安全工程师 → 按有效期窗口统计，需培训 2 次（由培训记录自动判定，不在此批量写入）\n' +
-      '· 其它个人证照 → 待培训（原「已培训」保留）\n\n' +
-      '仅校正「无需培训/空」的应培项为待培训，不会清除已填的「已培训」。是否继续？'
+      '· 其它个人证照 → 每年需培训（取证当年豁免）\n\n' +
+      '取证当年的应年培证照将置为「无需培训」，其余应年培项中「无需培训/空」的将置为「待培训」，已「已培训」保留。是否继续？'
     )) return;
 
     const noneIds = [];
     const annualFillIds = [];
+    const curYear = String(new Date().getFullYear());
     for (const c of certs) {
       const req = Utils.trainingRequirement(c.cert_category, c.cert_type, c.sub1_value);
       if (req === 'none') {
         noneIds.push(c.id);
       } else if (req === 'annual') {
-        // 需年培：空或「无需培训」(误填) → 待培训；已培训/待培训保留
-        if (!c.training_status || c.training_status === '无需培训') {
+        const obtainYear = String(c.issue_date || c.valid_from || '').slice(0, 4);
+        if (obtainYear && obtainYear === curYear) {
+          // 取证当年豁免：当年无需培训
+          if (c.training_status !== '无需培训') noneIds.push(c.id);
+        } else if (!c.training_status || c.training_status === '无需培训') {
+          // 非取证当年：应年培项（空 / 误填为无需培训）置为待培训；已培训/待培训保留
           annualFillIds.push(c.id);
         }
       }
@@ -1110,6 +1117,7 @@ const CertAdmin = {
               ${item('发证日期', text(cert.issue_date))}
               ${item('有效期起', text(cert.valid_from))}
               ${item('有效期止', validUntilHTML)}
+              ${item('换证要求', Utils.reCertRequirement(cert.cert_type))}
               ${cert.cert_category === 'personal' ? item('持证人', text(cert.holder_name)) : ''}
               ${cert.cert_category === 'personal' ? item('证件号', text(cert.holder_id_no)) : ''}
               ${cert.cert_category === 'personal' ? item('职务 / 岗位', text(cert.holder_position)) : ''}

@@ -366,8 +366,8 @@ const Utils = {
    * @param {string} certType 证照类型名称
    * @param {string} [sub1] 子分类1（如培训机构）
    * @returns {'none'|'annual'|'period2'|null}
-   *   - none    ：无需培训（公司证照、特种作业、安全生产考核合格、非煤矿山安管、爆破作业）
-   *   - annual  ：按自然年计，当年有培训记录即视为已培训
+   *   - none    ：无需每年培训（公司证照、特种作业、安全生产考核合格）
+   *   - annual  ：每年需培训，取证当年豁免（爆破作业、非煤矿山安管等其余个人证照）
    *   - period2 ：按有效期窗口计，有效期内需培训 2 次（注册安全工程师）
    *   - null    ：规则未覆盖，沿用存储值
    */
@@ -375,13 +375,12 @@ const Utils = {
     if (category === 'company') return 'none';
     if (category !== 'personal') return null;
     const t = String(certType || '').trim();
+    // 无需每年培训（到期前换证即可）
     if (t === '特种作业人员资格证') return 'none';
     if (t === '安全生产考核合格证书') return 'none';
-    // 非煤矿山安全管理人员证书、爆破作业人员许可证：依据发证日期 / 有效期起，当年无需培训
-    if (t === '非煤矿山安全管理人员证书') return 'none';
-    if (t === '爆破作业人员许可证') return 'none';
     // 注册安全工程师：有效期内需培训 2 次
     if (t === '注册安全工程师') return 'period2';
+    // 其余个人证照（含爆破作业人员许可证、非煤矿山安全管理人员证书等）每年需培训，取证当年豁免
     return 'annual';
   },
 
@@ -419,8 +418,26 @@ const Utils = {
       const need = 2;
       return { status: count >= need ? '已培训' : '待培训', count, need };
     }
-    // annual / 未覆盖：沿用存储的培训状态（空值视为未培，由徽章显示为「—」）
-    return { status: cert.training_status || '', count: 0, need: 0 };
+    // annual：每年需培训；取证当年（发证日期所在年 = 当前年）豁免，当年无需培训
+    const obtainYear = String(cert.issue_date || cert.valid_from || '').slice(0, 4);
+    const curYear = String(new Date().getFullYear());
+    if (obtainYear && obtainYear === curYear) {
+      return { status: '无需培训', count: 0, need: 0 };
+    }
+    // 非取证当年：需每年培训，沿用存储状态，未明确「已培训」的视为待培训
+    const ts = cert.training_status;
+    return { status: ts === '已培训' ? '已培训' : '待培训', count: 0, need: 0 };
+  },
+
+  /**
+   * 换证（到期前再取证）要求说明，用于详情提示
+   *  - 非煤矿山安全管理人员证书：到期前需培训 6 天并换证
+   *  - 其余证照：到期前换证
+   */
+  reCertRequirement(certType) {
+    const t = String(certType || '').trim();
+    if (t === '非煤矿山安全管理人员证书') return '到期前需培训 6 天并换证';
+    return '到期前换证';
   },
 
   /**
