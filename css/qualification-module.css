@@ -637,17 +637,15 @@
   color: #fff;
 }
 
-/* 自定义统计胶囊强调色（在主表 success/warning/danger 基础上扩展） */
-.cert-stats-block .stat-card.success { border-left-color: var(--color-success); background: #f0fdf4; }
-.cert-stats-block .stat-card.success .stat-value { color: var(--color-success); }
-.cert-stats-block .stat-card.warning { border-left-color: var(--color-warning); background: #fffbeb; }
-.cert-stats-block .stat-card.warning .stat-value { color: var(--color-warning); }
-.cert-stats-block .stat-card.danger { border-left-color: var(--color-danger); background: #fef2f2; }
-.cert-stats-block .stat-card.danger .stat-value { color: var(--color-danger); }
-.cert-stats-block .stat-card.orange { border-left-color: #f97316; background: #fff7ed; }
-.cert-stats-block .stat-card.orange .stat-value { color: #f97316; }
-.cert-stats-block .stat-card.danger-deep { border-left-color: #b91c1c; background: #fef2f2; }
-.cert-stats-block .stat-card.danger-deep .stat-value { color: #b91c1c; }
+/* 统一统计卡片配色：总计/有效/临期/过期/培训状态，左右两侧公司资质与个人证照完全统一 */
+.cert-stats-block .stat-card.total { border-left-color: #4f46e5; background: #eef2ff; }
+.cert-stats-block .stat-card.total .stat-value { color: #4f46e5; }
+.cert-stats-block .stat-card.success { border-left-color: #22c55e; background: #f0fdf4; }
+.cert-stats-block .stat-card.success .stat-value { color: #22c55e; }
+.cert-stats-block .stat-card.warning { border-left-color: #f59e0b; background: #fffbeb; }
+.cert-stats-block .stat-card.warning .stat-value { color: #f59e0b; }
+.cert-stats-block .stat-card.danger { border-left-color: #ef4444; background: #fef2f2; }
+.cert-stats-block .stat-card.danger .stat-value { color: #ef4444; }
 .cert-stats-block .stat-card.info { border-left-color: #3b82f6; background: #eff6ff; }
 .cert-stats-block .stat-card.info .stat-value { color: #3b82f6; }
 

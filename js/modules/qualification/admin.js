@@ -464,21 +464,21 @@ const CertAdmin = {
         <div class="cert-stats-section">
           <div class="cert-stats-section-title">公司资质</div>
           <div class="stats-grid">
-            ${statCard('资质总计', c.total, '', 'company|all', isActive('company', 'all'))}
-            ${statCard('有效资质', c.valid, c.valid > 0 ? 'success' : '', 'company|valid', isActive('company', 'valid'))}
-            ${statCard('临期资质', c.expiring, c.expiring > 0 ? 'orange' : '', 'company|expiring', isActive('company', 'expiring'))}
-            ${statCard('过期资质', c.expired, c.expired > 0 ? 'danger' : '', 'company|expired', isActive('company', 'expired'))}
+            ${statCard('资质总计', c.total, 'total', 'company|all', isActive('company', 'all'))}
+            ${statCard('有效资质', c.valid, 'success', 'company|valid', isActive('company', 'valid'))}
+            ${statCard('临期资质', c.expiring, 'warning', 'company|expiring', isActive('company', 'expiring'))}
+            ${statCard('过期资质', c.expired, 'danger', 'company|expired', isActive('company', 'expired'))}
           </div>
         </div>
         <div class="cert-stats-section">
           <div class="cert-stats-section-title">个人证照</div>
           <div class="stats-grid">
-            ${statCard('证照总计', p.total, '', 'personal|all', isActive('personal', 'all'))}
-            ${statCard('有效证照', p.valid, p.valid > 0 ? 'success' : '', 'personal|valid', isActive('personal', 'valid'))}
-            ${statCard('临期证照', p.expiring, p.expiring > 0 ? 'warning' : '', 'personal|expiring', isActive('personal', 'expiring'))}
-            ${statCard('过期证照', p.expired, p.expired > 0 ? 'danger-deep' : '', 'personal|expired', isActive('personal', 'expired'))}
-            ${statCard('本年度已培训', p.trained, p.trained > 0 ? 'success' : '', 'personal|trained', isActive('personal', 'trained'))}
-            ${statCard('本年度未培训', p.untrained, p.untrained > 0 ? 'info' : '', 'personal|untrained', isActive('personal', 'untrained'))}
+            ${statCard('证照总计', p.total, 'total', 'personal|all', isActive('personal', 'all'))}
+            ${statCard('有效证照', p.valid, 'success', 'personal|valid', isActive('personal', 'valid'))}
+            ${statCard('临期证照', p.expiring, 'warning', 'personal|expiring', isActive('personal', 'expiring'))}
+            ${statCard('过期证照', p.expired, 'danger', 'personal|expired', isActive('personal', 'expired'))}
+            ${statCard('本年度已培训', p.trained, 'success', 'personal|trained', isActive('personal', 'trained'))}
+            ${statCard('本年度未培训', p.untrained, 'info', 'personal|untrained', isActive('personal', 'untrained'))}
           </div>
         </div>
       </div>
