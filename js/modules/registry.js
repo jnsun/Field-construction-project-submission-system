@@ -53,8 +53,8 @@ const ModuleRegistry = (() => {
       desc: '安全绩效指标与评价', renderer: (app) => PerformanceModule.render(app) },
     { id: 'contract', name: '合同归档管理', icon: ICON.contract,
       desc: '合同台账与归档', renderer: (app) => ContractModule.render(app) },
-    { id: 'training', name: '培训考试管理', icon: ICON.training,
-      desc: '培训计划与考试记录', renderer: (app) => TrainingModule.render(app) },
+    { id: 'training', name: '培训教育', icon: ICON.training, trial: true,
+      desc: '培训计划 / 培训记录 / 考试管理', renderer: (app) => TrainingModule.render(app) },
     { id: 'notice', name: '公告通知中心', icon: ICON.notice,
       desc: '内部公告与消息通知', renderer: (app)  => NoticeModule.render(app) },
   ];
