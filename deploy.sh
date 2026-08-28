@@ -12,6 +12,15 @@ PAGE="http://140.143.247.55"
 
 cd "$(dirname "$0")"
 
+# 保险：防止在功能分支上误把未合并代码发上服务器
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+if [ "$BRANCH" != "main" ] && [ "${1:-}" != "--force" ]; then
+  echo "⚠️  当前在分支 [$BRANCH]，不是 main。"
+  echo "    为避免把未合并的代码发上服务器，已停止部署。"
+  echo "    如确认要部署当前分支内容，请执行: bash deploy.sh --force"
+  exit 1
+fi
+
 echo "== [1/3] 确保远端目录存在 =="
 ssh "$SERVER" "mkdir -p ~/site"
 
