@@ -1,0 +1,41 @@
+name: Deploy static site to GitHub Pages
+
+# 培训教育模块测试用：本分支（training-module）每次 push 自动部署到 GitHub Pages
+# 合并回 main 后若要继续用 Pages，把 branches 改成 [main] 即可
+
+on:
+  push:
+    branches: [training-module]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site files
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+          include-dot-files: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
