@@ -176,11 +176,13 @@ const Admin = {
         <div class="dashboard-header-inner">
           <div class="header-left">
             <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
-            <h1>野外施工项目报送</h1>
-            <span class="badge ${this.state.readOnly ? 'badge-muted' : 'badge-success'}">${this.state.readOnly ? '只读查看' : '管理员'}</span>
-            ${!this.state.readOnly && Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
+          </div>
+          <div class="header-center">
+            <h1 class="page-title">野外施工项目报送</h1>
           </div>
           <div class="header-right">
+            <span class="badge ${this.state.readOnly ? 'badge-muted' : 'badge-success'}">${this.state.readOnly ? '只读查看' : '管理员'}</span>
+            ${!this.state.readOnly && Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
             <div class="user-info">
               <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
             </div>

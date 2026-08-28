@@ -119,17 +119,21 @@ const Reporter = {
     const name = this.state.fullName || this.state.email || '用户';
     return `
       <div class="dashboard-header">
-        <div class="header-left">
-          <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
-          <h1>野外施工项目报送</h1>
-          <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
-        </div>
-        <div class="header-right">
-          <div class="user-info">
-            <span class="user-name">${Utils.escapeHtml(name)}</span>
+        <div class="dashboard-header-inner">
+          <div class="header-left">
+            <button class="btn btn-back" onclick="App.openDashboard()">← 返回上级菜单</button>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
-          <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          <div class="header-center">
+            <h1 class="page-title">野外施工项目报送</h1>
+          </div>
+          <div class="header-right">
+            <span class="badge badge-muted">${Utils.escapeHtml(this.state.departmentName)}</span>
+            <div class="user-info">
+              <span class="user-name">${Utils.escapeHtml(name)}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="AccountSettings.open()">账户设置</button>
+            <button class="btn btn-secondary btn-sm" onclick="Auth.logout()">退出登录</button>
+          </div>
         </div>
       </div>
     `;
