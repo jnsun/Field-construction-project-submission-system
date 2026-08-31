@@ -327,21 +327,41 @@ CREATE POLICY "tr_plan_delete" ON public.training_plans
   FOR DELETE TO authenticated USING (public.training_can_write(department_id));
 
 -- 10.3 计划适用范围
+-- ⚠️ 这里绝不能用 FOR ALL：FOR ALL 会覆盖 SELECT，若 SELECT 策略里再引用
+--    training_plans，就会和 training_plans 的策略互相触发，报
+--    "infinite recursion detected in policy for relation training_plans"。
+--    正确做法：SELECT 只看自身字段，写操作（INSERT/UPDATE/DELETE）才回查 training_plans。
 DROP POLICY IF EXISTS "tr_target_select" ON public.training_plan_targets;
 CREATE POLICY "tr_target_select" ON public.training_plan_targets
   FOR SELECT TO authenticated
   USING (department_id IN (SELECT public.training_visible_dept_ids()));
 
 DROP POLICY IF EXISTS "tr_target_write" ON public.training_plan_targets;
-CREATE POLICY "tr_target_write" ON public.training_plan_targets
-  FOR ALL TO authenticated
+
+DROP POLICY IF EXISTS "tr_target_insert" ON public.training_plan_targets;
+CREATE POLICY "tr_target_insert" ON public.training_plan_targets
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    public.is_admin() AND EXISTS (
+      SELECT 1 FROM public.training_plans p
+      WHERE p.id = plan_id AND public.training_can_write(p.department_id)
+    )
+  );
+
+DROP POLICY IF EXISTS "tr_target_update" ON public.training_plan_targets;
+CREATE POLICY "tr_target_update" ON public.training_plan_targets
+  FOR UPDATE TO authenticated
   USING (
     public.is_admin() AND EXISTS (
       SELECT 1 FROM public.training_plans p
       WHERE p.id = plan_id AND public.training_can_write(p.department_id)
     )
-  )
-  WITH CHECK (
+  );
+
+DROP POLICY IF EXISTS "tr_target_delete" ON public.training_plan_targets;
+CREATE POLICY "tr_target_delete" ON public.training_plan_targets
+  FOR DELETE TO authenticated
+  USING (
     public.is_admin() AND EXISTS (
       SELECT 1 FROM public.training_plans p
       WHERE p.id = plan_id AND public.training_can_write(p.department_id)
