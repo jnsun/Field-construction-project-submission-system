@@ -34,6 +34,9 @@ const TrainingMine = {
         <div class="toolbar-left">
           <span class="text-muted">下面是分配给您的培训任务，请在截止日期前完成学习。</span>
         </div>
+        <div class="toolbar-right">
+          <button class="btn btn-secondary btn-sm" onclick="TrainingMine.openWrongBook()">我的错题本</button>
+        </div>
       </div>
       <div id="mine-list"></div>
     `;
@@ -44,6 +47,16 @@ const TrainingMine = {
     const { data, error } = await sb.rpc('training_my_trainings');
     if (error) throw error;
     this.state.list = data || [];
+
+    // 考试状态 / 签字状态（本人 assignments，RLS 保证只读自己的）
+    const ids = this.state.list.map(r => r.plan_id);
+    this.state.asgMap = {};
+    if (ids.length) {
+      const { data: asg } = await sb.from('training_assignments')
+        .select('id, plan_id, exam_status, exam_attempts, status, progress, completed_at, training_signatures(assignment_id)')
+        .in('plan_id', ids);
+      (asg || []).forEach(a => { this.state.asgMap[a.plan_id] = a; });
+    }
     this.renderList();
   },
 
@@ -71,6 +84,7 @@ const TrainingMine = {
               ${rows.length === 0
                 ? TrainingModule.emptyRow(6, '暂无分配给您的培训任务')
                 : rows.map(r => {
+                    const a = this.state.asgMap ? (this.state.asgMap[r.plan_id] || {}) : {};
                     const pct = Number(r.progress || 0);
                     const cls = r.status === 'completed' ? '#22c55e'
                       : (r.status === 'overdue' ? '#ef4444' : '#f59e0b');
@@ -89,11 +103,13 @@ const TrainingMine = {
                           </span>
                         </div>
                       </td>
-                      <td>${this.statusBadge(r.status)}</td>
+                      <td>${this.statusBadge(r.status)}${this.examBadge(a.exam_status)}</td>
                       <td>
                         <button class="btn btn-sm btn-primary" onclick="TrainingMine.openLearn('${r.plan_id}')">
                           ${r.status === 'completed' ? '查看' : '去学习'}
                         </button>
+                        ${this.examAction(r, a)}
+                        ${this.signAction(r, a)}
                       </td>
                     </tr>`;
                   }).join('')}
@@ -109,6 +125,32 @@ const TrainingMine = {
     if (s === 'overdue') return '<span class="badge badge-danger">已逾期</span>';
     if (s === 'learning') return '<span class="badge badge-info">学习中</span>';
     return '<span class="badge badge-warning">未开始</span>';
+  },
+
+  examBadge(es) {
+    if (es === 'passed') return ' <span class="badge badge-success">考试通过</span>';
+    if (es === 'failed') return ' <span class="badge badge-danger">未通过</span>';
+    if (es === 'pending') return ' <span class="badge badge-warning">待考试</span>';
+    if (es === 'ongoing') return ' <span class="badge badge-info">考试中</span>';
+    return '';
+  },
+
+  examAction(r, a) {
+    const es = a.exam_status;
+    if (es === 'passed') return '';
+    if (es === 'pending' || es === 'ongoing' || es === 'failed') {
+      const label = es === 'ongoing' ? '继续考试' : (es === 'failed' ? '再考一次' : '开始考试');
+      return `<button class="btn btn-sm btn-danger" onclick="TrainingMine.openExam('${r.plan_id}')">${label}</button>`;
+    }
+    return '';
+  },
+
+  signAction(r, a) {
+    const signed = a.training_signatures && a.training_signatures.length > 0;
+    const canSign = (r.status === 'completed' || a.exam_status === 'passed') && !signed;
+    return canSign
+      ? `<button class="btn btn-sm btn-primary" onclick="TrainingMine.openSign('${a.id}')">签字确认</button>`
+      : '';
   },
 
   host() {
@@ -428,6 +470,324 @@ const TrainingMine = {
 
   async finishLearn() {
     this.close();
+    await this.load();
+  },
+
+  // ---------------------------------------------------------------- 考试
+  async openExam(planId) {
+    try {
+      const { data, error } = await sb.rpc('exam_start', { p_plan_id: planId });
+      if (error) { alert(error.message); return; }
+      this.state.exam = {
+        attemptId: data.attempt_id,
+        deadline: new Date(data.deadline_at),
+        totalScore: data.total_score,
+        questions: data.questions || [],
+      };
+      this.renderExamModal();
+    } catch (e) {
+      alert('开考失败：' + (e.message || e));
+    }
+  },
+
+  renderExamModal() {
+    const ex = this.state.exam;
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingMine.closeExam()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:820px">
+          <div class="modal-header">
+            <h3>在线考试</h3>
+            <span id="exam-timer" style="font-weight:600;color:#b91c1c;font-size:15px">--:--</span>
+          </div>
+          <div class="modal-body">
+            <p class="hint" style="font-size:12px;margin-bottom:12px">
+              共 ${ex.questions.length} 题，总分 ${ex.totalScore} 分。切屏会被记录，请专注作答；到时自动交卷。
+            </p>
+            ${ex.questions.map((q, idx) => this.renderQuestion(q, idx)).join('')}
+          </div>
+          <div class="modal-footer" style="justify-content:space-between">
+            <span class="hint" style="font-size:12px">答完请点「交卷」，未提交不保存答案</span>
+            <button class="btn btn-primary" onclick="TrainingMine.submitExam()">交卷</button>
+          </div>
+        </div>
+      </div>
+    `;
+    this.attachSwitchWatch();
+    this.startTimer();
+  },
+
+  renderQuestion(q, idx) {
+    const head = `
+      <div style="margin:14px 0 8px">
+        <b style="font-size:14px">${idx + 1}. ${this.TYPE_LABEL[q.type] || ''}（${q.score} 分）</b>
+        <div style="margin-top:6px;line-height:1.7;white-space:pre-wrap">${Utils.escapeHtml(q.stem)}</div>
+      </div>`;
+    if (q.type === 'case') {
+      const subs = q.sub_questions || [];
+      return `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:10px">
+        ${head}
+        ${subs.map((s, i) => `
+          <div style="margin-top:10px">
+            <div style="font-size:13px;font-weight:500">（${i + 1}）${Utils.escapeHtml(s.stem || '')}</div>
+            ${(s.options || []).map(k => `
+              <label style="display:flex;gap:8px;align-items:center;padding:5px 10px;margin:4px 0;
+                border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px">
+                <input type="radio" name="q-${q.id}-${i}" value="${k.key}" style="width:15px;height:15px">
+                <span><b>${k.key}.</b> ${Utils.escapeHtml(k.text)}</span>
+              </label>`).join('')}
+          </div>`).join('')}
+      </div>`;
+    }
+    const name = `q-${q.id}`;
+    return `<div style="margin-bottom:10px">${head}
+      ${(q.options || []).map(k => `
+        <label style="display:flex;gap:8px;align-items:flex-start;padding:7px 10px;margin-bottom:5px;
+          border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:13px;line-height:1.5">
+          <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="${name}" value="${k.key}"
+            style="margin-top:2px;width:15px;height:15px;flex:none">
+          <span><b>${k.key}.</b> ${Utils.escapeHtml(k.text)}</span>
+        </label>`).join('')}
+      ${q.type === 'multi' ? '<p class="hint" style="font-size:12px">多选题：全部选对才得分</p>' : ''}
+    </div>`;
+  },
+
+  startTimer() {
+    this.stopTimer();
+    const tick = () => {
+      const el = document.getElementById('exam-timer');
+      if (!el) { this.stopTimer(); return; }
+      const ms = this.state.exam.deadline - Date.now();
+      if (ms <= 0) {
+        el.textContent = '00:00';
+        this.stopTimer();
+        alert('考试时间已到，系统自动交卷');
+        this.submitExam(true);
+        return;
+      }
+      const m = Math.floor(ms / 60000), s = Math.floor(ms % 60000 / 1000);
+      el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+    tick();
+    this.state.examTimer = setInterval(tick, 1000);
+  },
+
+  stopTimer() {
+    if (this.state.examTimer) { clearInterval(this.state.examTimer); this.state.examTimer = null; }
+  },
+
+  attachSwitchWatch() {
+    this.detachSwitchWatch();
+    this.state.switchHandler = () => {
+      if (document.visibilityState === 'hidden' && this.state.exam) {
+        sb.rpc('exam_report_switch', { p_attempt_id: this.state.exam.attemptId }).then(() => {}, () => {});
+      }
+    };
+    document.addEventListener('visibilitychange', this.state.switchHandler);
+  },
+
+  detachSwitchWatch() {
+    if (this.state.switchHandler) {
+      document.removeEventListener('visibilitychange', this.state.switchHandler);
+      this.state.switchHandler = null;
+    }
+  },
+
+  async submitExam(auto) {
+    const ex = this.state.exam;
+    if (!ex) return;
+    if (this.state.submitting) return;
+    if (!auto && !confirm('确定交卷？交卷后立即判分，无法修改。')) return;
+    this.state.submitting = true;
+
+    const answers = {};
+    ex.questions.forEach(q => {
+      if (q.type === 'case') {
+        const arr = [];
+        (q.sub_questions || []).forEach((s, i) => {
+          const el = document.querySelector(`input[name="q-${q.id}-${i}"]:checked`);
+          arr.push(el ? el.value : '');
+        });
+        answers[q.id] = arr;
+      } else if (q.type === 'multi') {
+        answers[q.id] = [...document.querySelectorAll(`input[name="q-${q.id}"]:checked`)]
+          .map(x => x.value).sort().join('');
+      } else {
+        const el = document.querySelector(`input[name="q-${q.id}"]:checked`);
+        answers[q.id] = el ? el.value : '';
+      }
+    });
+
+    try {
+      const { data, error } = await sb.rpc('exam_submit', {
+        p_attempt_id: ex.attemptId, p_answers: answers,
+      });
+      if (error) { alert('交卷失败：' + error.message); return; }
+      this.stopTimer();
+      this.detachSwitchWatch();
+      this.renderExamResult(data);
+    } catch (e) {
+      alert('交卷失败：' + (e.message || e));
+    } finally {
+      this.state.submitting = false;
+    }
+  },
+
+  renderExamResult(res) {
+    const pass = res.result === 'pass';
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingMine.closeExam()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:460px">
+          <div class="modal-header">
+            <h3>考试结果</h3>
+            <button class="modal-close" onclick="TrainingMine.closeExam()">×</button>
+          </div>
+          <div class="modal-body" style="text-align:center;padding:32px 24px">
+            <div style="font-size:44px;font-weight:600;color:${pass ? '#22c55e' : '#ef4444'}">${res.score}</div>
+            <div style="font-size:13px;color:#64748b;margin:6px 0 14px">及格线 ${res.pass_line} 分</div>
+            <div>${pass
+              ? '<span class="badge badge-success" style="font-size:14px;padding:6px 16px">恭喜通过！请回到任务列表完成签字确认</span>'
+              : '<span class="badge badge-danger" style="font-size:14px;padding:6px 16px">未通过，可在错题本复习后再考</span>'}</div>
+            ${res.timeout ? '<p class="hint" style="font-size:12px;margin-top:10px">本场考试已超时，按已答内容判分</p>' : ''}
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" onclick="TrainingMine.closeExam()">知道了</button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  async closeExam() {
+    this.stopTimer();
+    this.detachSwitchWatch();
+    this.host().innerHTML = '';
+    this.state.exam = null;
+    await this.load();
+  },
+
+  // ---------------------------------------------------------------- 错题本
+  async openWrongBook() {
+    const { data, error } = await sb.rpc('exam_my_wrong_book', { p_unresolved_only: false });
+    if (error) { alert('加载失败：' + error.message); return; }
+    const rows = data || [];
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingMine.closeSimple()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:720px">
+          <div class="modal-header">
+            <h3>我的错题本（${rows.length}）</h3>
+            <button class="modal-close" onclick="TrainingMine.closeSimple()">×</button>
+          </div>
+          <div class="modal-body">
+            ${rows.length === 0
+              ? '<p class="text-muted" style="text-align:center;padding:24px">暂无错题，继续保持！</p>'
+              : rows.map(w => `
+                <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:10px">
+                  <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+                    <span class="badge badge-muted">${this.TYPE_LABEL[w.question_type] || w.question_type}</span>
+                    ${w.resolved ? '<span class="badge badge-success">已掌握</span>' : ''}
+                    ${w.course_title ? `<span class="hint" style="font-size:12px">关联课件：${Utils.escapeHtml(w.course_title)}</span>` : ''}
+                  </div>
+                  <div style="font-size:13px;line-height:1.7;white-space:pre-wrap">${Utils.escapeHtml(w.stem)}</div>
+                  <div style="font-size:13px;margin-top:8px">
+                    <span style="color:#ef4444">我的答案：${Utils.escapeHtml(w.my_answer || '未作答')}</span>
+                    <span style="color:#22c55e;margin-left:12px">正确答案：${Utils.escapeHtml(w.correct_answer || '')}</span>
+                  </div>
+                  ${w.analysis ? `<div class="hint" style="font-size:12px;margin-top:6px;line-height:1.6">解析：${Utils.escapeHtml(w.analysis)}</div>` : ''}
+                  ${!w.resolved ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px"
+                    onclick="TrainingMine.resolveWrong('${w.question_id}', this)">我已掌握</button>` : ''}
+                </div>`).join('')}
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="TrainingMine.closeSimple()">关闭</button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  async resolveWrong(qid, btn) {
+    const { error } = await sb.rpc('exam_wrong_resolve', { p_question_id: qid });
+    if (error) { alert(error.message); return; }
+    btn.textContent = '已掌握';
+    btn.disabled = true;
+  },
+
+  closeSimple() {
+    this.host().innerHTML = '';
+  },
+
+  // ---------------------------------------------------------------- 签字
+  openSign(assignmentId) {
+    this.state.signAsg = assignmentId;
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingMine.closeSimple()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
+          <div class="modal-header">
+            <h3>培训完成签字确认</h3>
+            <button class="modal-close" onclick="TrainingMine.closeSimple()">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="hint" style="font-size:13px;margin-bottom:10px">
+              请在下方空白处<b>手写签名</b>，确认本人已完成本次培训。签字将留档备查。
+            </p>
+            <canvas id="sign-canvas" width="600" height="220"
+              style="width:100%;border:1.5px dashed #c7d0dc;border-radius:10px;touch-action:none;
+                     background:#fff;cursor:crosshair"></canvas>
+            <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+              <button class="btn btn-sm btn-secondary" onclick="TrainingMine.clearSign()">清除重写</button>
+              <span class="hint" style="font-size:12px">请用手指或鼠标在框内签名</span>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" onclick="TrainingMine.saveSign()">确认签字</button>
+            <button class="btn btn-secondary" onclick="TrainingMine.closeSimple()">取消</button>
+          </div>
+        </div>
+      </div>`;
+    this.initSignCanvas();
+  },
+
+  initSignCanvas() {
+    const cv = document.getElementById('sign-canvas');
+    const ctx = cv.getContext('2d');
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    this.state.signHasDrawn = false;
+    let drawing = false;
+    const pos = e => {
+      const r = cv.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height };
+    };
+    cv.onpointerdown = e => {
+      drawing = true; cv.setPointerCapture(e.pointerId);
+      const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    };
+    cv.onpointermove = e => {
+      if (!drawing) return;
+      const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+      this.state.signHasDrawn = true;
+    };
+    cv.onpointerup = cv.onpointerleave = () => { drawing = false; };
+  },
+
+  clearSign() {
+    const cv = document.getElementById('sign-canvas');
+    if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    this.state.signHasDrawn = false;
+  },
+
+  async saveSign() {
+    if (!this.state.signHasDrawn) { alert('请先在框内签名'); return; }
+    const cv = document.getElementById('sign-canvas');
+    const blob = await (await fetch(cv.toDataURL('image/png'))).blob();
+    const path = `signatures/${this.state.signAsg}_${Date.now()}.png`;
+    const { error: upErr } = await sb.storage.from('training-courses')
+      .upload(path, blob, { contentType: 'image/png' });
+    if (upErr) { alert('签字上传失败：' + upErr.message); return; }
+    const { error } = await sb.rpc('training_submit_signature', {
+      p_assignment_id: this.state.signAsg, p_path: path,
+      p_device: (navigator.userAgent || '').slice(0, 200),
+    });
+    if (error) { alert('签字失败：' + error.message); return; }
+    if (Utils.toast) Utils.toast('签字成功，培训已完成！');
+    this.closeSimple();
     await this.load();
   },
 };
