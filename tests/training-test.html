@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>培训教育模块 · 测试清单</title>
+<style>
+  :root { --p: #4f46e5; --bd: #e5e7eb; --mut: #6b7280; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Microsoft YaHei", sans-serif; background: #f6f7fb; color: #1f2937; font-size: 14px; }
+  header { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid var(--bd); padding: 14px 20px; }
+  header h1 { margin: 0 0 8px; font-size: 17px; }
+  header h1::before { content: ""; display: inline-block; width: 4px; height: 15px; border-radius: 2px; background: var(--p); margin-right: 8px; vertical-align: -1px; }
+  .bar { height: 8px; background: #e9edf3; border-radius: 4px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--p); width: 0; transition: width .3s; }
+  .meta { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--mut); margin-top: 6px; flex-wrap: wrap; }
+  .meta b { color: #1f2937; }
+  button.mini { border: 1px solid var(--bd); background: #fff; border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  button.mini:hover { border-color: var(--p); color: var(--p); }
+  main { max-width: 900px; margin: 16px auto; padding: 0 14px 60px; }
+  section { background: #fff; border: 1px solid var(--bd); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
+  section > h2 { margin: 0; padding: 12px 16px; font-size: 14px; background: #f8fafc; border-bottom: 1px solid var(--bd); }
+  section > h2 .cnt { color: var(--mut); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  .case { padding: 10px 16px; border-bottom: 1px solid #f1f5f9; }
+  .case:last-child { border-bottom: none; }
+  .case.fail { background: #fef2f2; }
+  .case.pass { background: #f0fdf4; }
+  .case .row { display: flex; gap: 10px; align-items: flex-start; }
+  .case .st { flex: none; width: 190px; display: flex; gap: 4px; }
+  .case .st button { flex: 1; border: 1px solid var(--bd); background: #fff; border-radius: 6px; padding: 3px 0; font-size: 12px; cursor: pointer; color: var(--mut); }
+  .case.pass .b-ok   { background: #22c55e; color: #fff; border-color: #22c55e; }
+  .case.fail .b-bad  { background: #ef4444; color: #fff; border-color: #ef4444; }
+  .case .tt { flex: 1; font-weight: 500; }
+  .case .id { color: var(--p); font-size: 12px; margin-right: 6px; }
+  .case .detail { font-size: 12.5px; color: #475569; margin-top: 6px; line-height: 1.7; padding-left: 200px; }
+  .case .detail b { color: #1f2937; }
+  .case textarea { display: block; width: 100%; margin-top: 6px; border: 1px solid #fecaca; border-radius: 6px; padding: 6px 8px; font-size: 12px; min-height: 40px; display: none; }
+  .case.fail textarea { display: block; }
+  .tip { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.8; margin-bottom: 14px; }
+  pre.v { background: #0f172a; color: #a5f3fc; padding: 10px 12px; border-radius: 8px; font-size: 12px; overflow-x: auto; margin: 6px 0; }
+  @media (max-width: 640px) {
+    .case .st { width: 130px; }
+    .case .detail { padding-left: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>培训教育模块 · 测试清单</h1>
+  <div class="bar"><div id="pbar"></div></div>
+  <div class="meta">
+    <span>通过 <b id="c-pass">0</b></span>
+    <span>失败 <b id="c-fail" style="color:#ef4444">0</b></span>
+    <span>未测 <b id="c-todo">0</b></span>
+    <span>合计 <b id="c-all">0</b></span>
+    <span style="flex:1"></span>
+    <button class="mini" onclick="exportResult()">复制测试结果</button>
+    <button class="mini" onclick="resetAll()">重置全部</button>
+  </div>
+</header>
+<main>
+  <div class="tip">
+    <b>使用说明：</b>每条用例点「通过 / 失败」标记，状态自动保存在本浏览器；失败的用例会出现红色输入框，把报错或现象写进去，最后点右上角「复制测试结果」发给 AI。<br>
+    <b>测试前置：</b>云库已按序执行 新版 training-online-v2.sql → training-content-library.sql → exam-module.sql；
+    准备好三个账号：公司级管理员、工程物探所管理员、已开通账号的员工（卫红学）；「测试2」计划已发布并挂接工程物探所。
+    验证 SQL（SQL Editor 执行，应输出 company≥1 / entity=19 / internal 若干）：
+    <pre class="v">SELECT dept_type, COUNT(*) FROM departments GROUP BY dept_type;
+SELECT proname FROM pg_proc WHERE proname IN ('exam_start','exam_submit','exam_report_switch',
+  'exam_my_wrong_book','exam_wrong_resolve','exam_quiz_for_course','exam_quiz_answer',
+  'training_submit_signature');</pre>
+  </div>
+  <div id="app"></div>
+</main>
+<script>
+const SECTIONS = [
+  { t: "一、组织与部门", cases: [
+    { id: "D1", tt: "部门树与类型徽章", s: "公司级管理员 → 部门管理", d: "公司根显示「公司」徽章；二级部门显示「经营实体」或「内设机构」徽章；DEPT-01~19 为经营实体，其余为内设机构。" },
+    { id: "D2", tt: "经营实体管理员受限视图", s: "工程物探所管理员登录 → 部门管理", d: "只看到本部门及其下项目部；只能在本部门下新建/编辑/删除项目部，不能动其它部门。" },
+    { id: "D3", tt: "内设机构不能建项目部", s: "任一内设机构的管理员账号登录 → 部门管理", d: "无「新建项目部」入口；即使绕过 UI 直接调接口也应被拒绝。" },
+    { id: "D4", tt: "内设机构下无误挂项目部", s: "云库执行验证③查询", d: "fix-dept-types.sql 验证③（内设机构 join project）返回 0 行。" },
+  ]},
+  { t: "二、员工档案（性能与双视图）", cases: [
+    { id: "E1", tt: "默认按部门折叠", s: "培训教育 → 员工档案", d: "打开即只显示各部门组头（部门名/人数/在职/已开通），不显示员工行；页面不卡顿。" },
+    { id: "E2", tt: "展开/收起正常", s: "点击任意部门组头", d: "展开显示该部门员工行，再点收起；展开状态刷新页面后仍保持。" },
+    { id: "E3", tt: "显示模式切换高亮同步", s: "工具栏胶囊「表格 / 方块」来回点击", d: "内容与胶囊高亮同步切换（表格=行式、方块=卡片），高亮不再停留在一边。" },
+    { id: "E4", tt: "方块配色与图例", s: "切到方块视图", d: "绿=已开通账号、白=未开通、靛蓝=管理员、灰=离职；顶部图例与实际颜色一致。" },
+    { id: "E5", tt: "搜索自动展开", s: "搜索框输入员工姓名", d: "包含该员工的部门组自动展开并显示匹配行，无需手动展开。" },
+    { id: "E6", tt: "Excel 导入建档", s: "下载导入模板 → 填几行 → Excel 导入", d: "导入成功后员工出现在对应部门组；重复导入同名不报错（复用）。" },
+  ]},
+  { t: "三、培训计划与圈人（重点回归）", cases: [
+    { id: "L1", tt: "考试关联模式可选", s: "新建/编辑计划弹窗", d: "「考试关联模式」三选一：仅培训不考试 / 课件学完自动触发 / 管理员手动发起；保存后重新打开回填正确。" },
+    { id: "L2", tt: "指定范围不放大成全员（回归 380 人 bug）", s: "「测试2」适用范围只勾工程物探所 → 发布", d: "看板/名单里待完成人数 ≈ 工程物探所在职员工数，绝不是全员 380 人。" },
+    { id: "L3", tt: "逾期红色提示", s: "编辑任一计划把截止日期改成昨天 → 员工端查看", d: "员工任务列表该计划显示「已逾期」红色徽章。" },
+    { id: "L4", tt: "公司级计划勾了部门就按部门圈人", s: "公司级计划勾选 1 个部门 → 发布", d: "只圈该部门及其下级，不圈全员。" },
+  ]},
+  { t: "四、课件管理", cases: [
+    { id: "C1", tt: "超长中文名 PDF 上传成功（回归 Invalid key）", s: "计划 → 课件 → 添加课件选 PDF，用中文长文件名文件（如 z-library 导出的）", d: "上传成功，不再报 Invalid key；课件名称手动填短名即可。" },
+    { id: "C2", tt: "课件列表信息正确", s: "课件管理弹窗", d: "显示序号/名称/类型/页数或秒数/必修徽章；说明行统计共 N 个必修 M 个。" },
+    { id: "C3", tt: "编辑回填", s: "编辑已有课件", d: "名称/类型/页数/必修勾选正确回填；不重选文件保持原文件。" },
+  ]},
+  { t: "五、员工在线学习", cases: [
+    { id: "S1", tt: "员工只见「我的培训」", s: "员工账号（卫红学）登录 → 培训教育", d: "无管理页签，只有自己的任务列表；「测试2」任务在列。" },
+    { id: "S2", tt: "PDF 加载进度可见（回归黑盒卡死）", s: "打开大 PDF 课件", d: "显示「正在加载 PDF…（已下载 x.x / xx.x MB）」且数字在增长；若报「PDF 加载失败：xxx」记录 xxx。" },
+    { id: "S3", tt: "PDF 阅读自适应", s: "桌面打开 PDF 课件", d: "阅读区 ≤760px 居中显示，不再满屏夸张；手机上满宽自适应；翻页按钮居中可用。" },
+    { id: "S4", tt: "进度上报与断点续学", s: "翻到中间页 → 关闭弹窗 → 重新打开", d: "进度条变化；重开后直接回到上次最大页码；翻到最后几页后该课件计为完成。" },
+    { id: "S5", tt: "完成判定分模式", s: "全部必修课件学到 90% 以上", d: "无考试计划 → 任务直接「已完成」；auto 模式计划 → 任务亮「待考试」+「开始考试」按钮。" },
+  ]},
+  { t: "六、题库与试卷（管理端）", cases: [
+    { id: "Q1", tt: "四种题型录入", s: "题库管理 → 公司通用库 → 新增试题", d: "单选/多选/判断/案例各录一道；案例=材料+至少 1 个子选择题；列表类型徽章正确。" },
+    { id: "Q2", tt: "题库筛选与分类", s: "按题型/分类/关键词筛选", d: "筛选结果正确；分类下拉自动收集已录分类；公司库对非公司级管理员只读。" },
+    { id: "Q3", tt: "固定卷组卷", s: "试卷管理 → 新建 → 固定模式", d: "从候选添加题目、改分值、上下移动生效；总分自动汇总；保存后编辑回填正确。" },
+    { id: "Q4", tt: "随机卷规则", s: "新建随机卷：如 单选×3×1分 + 判断×2×1分", d: "规则增删可用；总分=Σ(数量×分值)；保存后编辑回填规则。" },
+    { id: "Q5", tt: "校验拦截", s: "及格线填超过总分的值 → 保存", d: "被拦截并提示「及格线不能超过试卷总分」；固定卷 0 题保存被拦截。" },
+    { id: "Q6", tt: "发布后看板出现", s: "试卷发布并挂接计划 → 考试登记页签", d: "「在线考试看板」出现该计划一行：应考人数 = 参训名单数。" },
+  ]},
+  { t: "七、在线考试（员工端）", cases: [
+    { id: "X1", tt: "待考试触发", s: "auto 模式：员工学完必修课件；manual 模式：看板点「发起考试」", d: "员工任务卡出现「待考试」徽章与「开始考试」按钮。" },
+    { id: "X2", tt: "答题页渲染", s: "点「开始考试」", d: "四种题型渲染正常（案例=材料+子题）；多选题下方标注「全对才得分」；顶部倒计时在走。" },
+    { id: "X3", tt: "切屏计数", s: "答题中切到别的窗口/页面再切回，共 3 次以上", d: "管理员看板该员工切屏次数增加，≥3 时标红且可点开明细查看。" },
+    { id: "X4", tt: "判分口径（多选全对）", s: "故意把一道多选只选部分正确选项 → 交卷", d: "该题 0 分（全对才得分）；单选/判断答对得分；案例题只答对部分子题得对应子题分。" },
+    { id: "X5", tt: "成绩与结果页", s: "交卷", d: "结果页显示得分、及格线、通过/未通过；任务卡徽章变为「考试通过」或「未通过」。" },
+    { id: "X6", tt: "错题本", s: "任务列表右上「我的错题本」", d: "考试答错的题自动入本：显示我的答案（红）/正确答案（绿）/解析/关联课件；点「我已掌握」标记成功。" },
+    { id: "X7", tt: "补考限制", s: "未过员工点「再考一次」；连续考满次数后再点", d: "未超次数可重考；超过 retry_limit（默认 3 含首考）被拒绝并提示次数用完。" },
+  ]},
+  { t: "八、手写签字与归档", cases: [
+    { id: "G1", tt: "签字入口", s: "考试通过（或无考试计划完成课件）后回任务列表", d: "任务卡出现「签字确认」按钮；未满足条件（未考/课件未完）时不出现。" },
+    { id: "G2", tt: "手写签字", s: "点「签字确认」→ 手写 → 确认签字", d: "Canvas 可书写（手机手指/鼠标）；「清除重写」有效；未画任何笔迹点确认被拦截。" },
+    { id: "G3", tt: "签字后完成与归档", s: "签字成功", d: "任务变「已完成」；管理员在培训记录/参训明细中能看到该员工（含考试成绩）。" },
+  ]},
+  { t: "九、通用 UI", cases: [
+    { id: "U1", tt: "弹窗样式统一", s: "任意打开一个弹窗（课件/计划/题库/考试明细）", d: "白色圆角卡片+深色毛玻璃遮罩+标题左侧靛蓝竖条；没有透明背景。" },
+    { id: "U2", tt: "页签切换不左右抖动", s: "在长短页签间来回切换（如 统计概览 ↔ 员工档案）", d: "页面整体不左右移动（滚动条轨道常驻）。" },
+    { id: "U3", tt: "手机端可用", s: "手机浏览器（或开发者工具 ≤640px）走一遍 员工学习+考试+签字", d: "弹窗全屏、表单单列、按钮可点、无横向滚动。" },
+  ]},
+];
+
+const KEY = 'training-test-progress-v1';
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { state = {}; }
+
+function save() { localStorage.setItem(KEY, JSON.stringify(state)); render(); }
+
+function render() {
+  const app = document.getElementById('app');
+  let pass = 0, fail = 0, all = 0;
+  app.innerHTML = SECTIONS.map(sec => {
+    let p = 0;
+    const body = sec.cases.map(c => {
+      all++;
+      const st = (state[c.id] || {}).s || '';
+      if (st === 'pass') { pass++; p++; }
+      if (st === 'fail') { fail++; p++; }
+      const note = (state[c.id] || {}).note || '';
+      return `<div class="case ${st}" >
+        <div class="row">
+          <div class="st">
+            <button class="b-ok" onclick="mark('${c.id}','pass')">✓ 通过</button>
+            <button class="b-bad" onclick="mark('${c.id}','fail')">✗ 失败</button>
+          </div>
+          <div class="tt"><span class="id">${c.id}</span>${c.tt}</div>
+        </div>
+        <div class="detail"><b>操作：</b>${c.s}<br><b>预期：</b>${c.d}</div>
+        <textarea placeholder="失败现象 / 报错原文（会随导出一起复制）" oninput="note('${c.id}', this.value)">${note}</textarea>
+      </div>`;
+    }).join('');
+    const done = sec.cases.filter(c => (state[c.id] || {}).s).length;
+    return `<section><h2>${sec.t}<span class="cnt">${done}/${sec.cases.length}</span></h2>${body}</section>`;
+  }).join('');
+
+  document.getElementById('pbar').style.width = (all ? Math.round((pass + fail) / all * 100) : 0) + '%';
+  document.getElementById('c-pass').textContent = pass;
+  document.getElementById('c-fail').textContent = fail;
+  document.getElementById('c-todo').textContent = all - pass - fail;
+  document.getElementById('c-all').textContent = all;
+}
+
+function mark(id, s) {
+  state[id] = state[id] || {};
+  state[id].s = state[id].s === s ? '' : s;
+  save();
+}
+function note(id, v) {
+  state[id] = state[id] || {};
+  state[id].note = v;
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
+function resetAll() {
+  if (!confirm('确定清空全部测试记录？')) return;
+  state = {};
+  localStorage.removeItem(KEY);
+  render();
+}
+function exportResult() {
+  const date = new Date().toLocaleString('zh-CN');
+  let txt = `培训教育模块测试结果（${date}）\n`;
+  let pass = 0, fail = 0;
+  SECTIONS.forEach(sec => {
+    txt += `\n【${sec.t}】\n`;
+    sec.cases.forEach(c => {
+      const st = (state[c.id] || {}).s || '未测';
+      if (st === 'pass') pass++;
+      if (st === 'fail') fail++;
+      const note = (state[c.id] || {}).note;
+      txt += `${st === 'pass' ? '✓' : st === 'fail' ? '✗' : '－'} ${c.id} ${c.tt}` +
+             (st === 'fail' && note ? ` ｜问题：${note}` : '') + '\n';
+    });
+  });
+  txt += `\n汇总：通过 ${pass} / 失败 ${fail} / 未测 ${SECTIONS.reduce((n, s) => n + s.cases.length, 0) - pass - fail}\n`;
+  navigator.clipboard.writeText(txt).then(
+    () => alert('测试结果已复制到剪贴板，直接粘贴给 AI 即可'),
+    () => { prompt('复制失败，请手动复制：', txt); }
+  );
+}
+render();
+</script>
+</body>
+</html>
