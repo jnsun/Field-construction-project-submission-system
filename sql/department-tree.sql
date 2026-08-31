@@ -30,36 +30,58 @@ BEGIN
 END $$;
 
 -- --------------------------------------------------------------------------
--- 1. 建立公司根节点「物化院有限公司」
---    注意：库里可能已存在 code='COMPANY' 的历史行（名称不同、类型非 company），
---    直接用 INSERT + 仅查 name/dept_type 的守卫会触发 departments_code_key 唯一约束冲突。
---    故分三步，保证幂等且不冲突：
---      1a. 任何 code='COMPANY' 但还不是公司的历史行 → 统一升级为公司根
---      1b. 名为「物化院有限公司」但还不是公司的普通部门 → 就地升级为公司根
---      1c. 若以上都没有产生公司根 → 再新建（三重 NOT EXISTS 确保不触发唯一约束）
+-- 1. 建立/修正公司根节点「物化院有限公司」
+--    需处理两类历史脏数据（都会触发 departments_code_key 唯一约束，报错 23505）：
+--      (a) code='COMPANY' 但 dept_type 不是 company 的孤立行
+--      (b) 旧建根 SQL 留下的占位名「XX公司全称」company 根，与用户指定的
+--          「物化院有限公司」并存 → 以「物化院有限公司」为公司根，占位行降级为 entity
+--    全部按名称/类型匹配，不写死 UUID，可跨库（云库 / 服务器库）复用；整段幂等。
 -- --------------------------------------------------------------------------
 
--- 1a. 修正历史脏数据：code='COMPANY' 但 dept_type 不是 company 的行
-UPDATE public.departments
-SET name = '物化院有限公司',
-    dept_type = 'company',
-    parent_id = NULL,
-    sort_order = 0,
-    needs_report = FALSE,
-    can_view_admin = TRUE
+-- 1-pre. 任何 code='COMPANY' 但非 company 的行，先把编码让出来，避免后续升级冲突
+UPDATE public.departments SET code = 'COMPANY-LEGACY'
 WHERE code = 'COMPANY' AND dept_type <> 'company';
 
--- 1b. 把名为「物化院有限公司」的普通部门就地升级（排除已在 1a 修正的 COMPANY 行）
-UPDATE public.departments
-SET dept_type = 'company',
-    parent_id = NULL,
-    code = 'COMPANY',
-    sort_order = 0,
-    needs_report = FALSE,
-    can_view_admin = TRUE
-WHERE name = '物化院有限公司' AND dept_type <> 'company' AND code <> 'COMPANY';
+DO $$
+DECLARE v_new_root UUID; v_old_root UUID;
+BEGIN
+  -- 现有 company 根（可能是占位名 XX公司全称）
+  SELECT id INTO v_old_root FROM public.departments WHERE dept_type = 'company' ORDER BY sort_order LIMIT 1;
+  -- 用户指定的公司名
+  SELECT id INTO v_new_root FROM public.departments WHERE name = '物化院有限公司' LIMIT 1;
 
--- 1c. 仍无公司根时新建（三重 NOT EXISTS 确保 code / name / dept_type 均不冲突）
+  IF v_new_root IS NULL THEN
+    -- 库里没有「物化院有限公司」→ 直接把现有 company 根改名为它
+    IF v_old_root IS NOT NULL THEN
+      UPDATE public.departments SET name = '物化院有限公司' WHERE id = v_old_root;
+    END IF;
+  ELSE
+    -- 让「物化院有限公司」成为公司根；若另有占位 company 根则降级为经营实体
+    IF v_old_root IS NOT NULL AND v_old_root <> v_new_root THEN
+      -- 占位根降级为 entity，挂到新根之下
+      UPDATE public.departments
+      SET dept_type = 'entity',
+          parent_id = v_new_root,
+          sort_order = (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM public.departments WHERE id <> v_old_root)
+      WHERE id = v_old_root;
+      -- 占位根的子部门（不含新根自身，避免自引用）改挂新根
+      UPDATE public.departments SET parent_id = v_new_root WHERE parent_id = v_old_root AND id <> v_new_root;
+      -- 占位根若仍占着 COMPANY 编码则让出
+      UPDATE public.departments SET code = 'COMPANY-LEGACY' WHERE id = v_old_root AND code = 'COMPANY';
+    END IF;
+    -- 升级「物化院有限公司」为公司根
+    UPDATE public.departments
+    SET dept_type = 'company',
+        parent_id = NULL,
+        code = 'COMPANY',
+        sort_order = 0,
+        needs_report = FALSE,
+        can_view_admin = TRUE
+    WHERE id = v_new_root;
+  END IF;
+END $$;
+
+-- 1-final. 若经过上面处理仍无 company 根（如全新空库），则新建
 INSERT INTO public.departments (name, code, sort_order, dept_type, parent_id, needs_report, can_view_admin)
 SELECT '物化院有限公司', 'COMPANY', 0, 'company', NULL, FALSE, TRUE
 WHERE NOT EXISTS (SELECT 1 FROM public.departments WHERE dept_type = 'company')
