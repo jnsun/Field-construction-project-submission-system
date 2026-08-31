@@ -31,14 +31,25 @@ END $$;
 
 -- --------------------------------------------------------------------------
 -- 1. 建立公司根节点「物化院有限公司」
---    - 若库里已存在名为「物化院有限公司」的普通部门，则就地升级为公司根（避免重名）
---    - 否则新建公司根
+--    注意：库里可能已存在 code='COMPANY' 的历史行（名称不同、类型非 company），
+--    直接用 INSERT + 仅查 name/dept_type 的守卫会触发 departments_code_key 唯一约束冲突。
+--    故分三步，保证幂等且不冲突：
+--      1a. 任何 code='COMPANY' 但还不是公司的历史行 → 统一升级为公司根
+--      1b. 名为「物化院有限公司」但还不是公司的普通部门 → 就地升级为公司根
+--      1c. 若以上都没有产生公司根 → 再新建（三重 NOT EXISTS 确保不触发唯一约束）
 -- --------------------------------------------------------------------------
-INSERT INTO public.departments (name, code, sort_order, dept_type, parent_id, needs_report, can_view_admin)
-SELECT '物化院有限公司', 'COMPANY', 0, 'company', NULL, FALSE, TRUE
-WHERE NOT EXISTS (SELECT 1 FROM public.departments WHERE dept_type = 'company')
-  AND NOT EXISTS (SELECT 1 FROM public.departments WHERE name = '物化院有限公司');
 
+-- 1a. 修正历史脏数据：code='COMPANY' 但 dept_type 不是 company 的行
+UPDATE public.departments
+SET name = '物化院有限公司',
+    dept_type = 'company',
+    parent_id = NULL,
+    sort_order = 0,
+    needs_report = FALSE,
+    can_view_admin = TRUE
+WHERE code = 'COMPANY' AND dept_type <> 'company';
+
+-- 1b. 把名为「物化院有限公司」的普通部门就地升级（排除已在 1a 修正的 COMPANY 行）
 UPDATE public.departments
 SET dept_type = 'company',
     parent_id = NULL,
@@ -46,7 +57,14 @@ SET dept_type = 'company',
     sort_order = 0,
     needs_report = FALSE,
     can_view_admin = TRUE
-WHERE name = '物化院有限公司' AND dept_type <> 'company';
+WHERE name = '物化院有限公司' AND dept_type <> 'company' AND code <> 'COMPANY';
+
+-- 1c. 仍无公司根时新建（三重 NOT EXISTS 确保 code / name / dept_type 均不冲突）
+INSERT INTO public.departments (name, code, sort_order, dept_type, parent_id, needs_report, can_view_admin)
+SELECT '物化院有限公司', 'COMPANY', 0, 'company', NULL, FALSE, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM public.departments WHERE dept_type = 'company')
+  AND NOT EXISTS (SELECT 1 FROM public.departments WHERE code = 'COMPANY')
+  AND NOT EXISTS (SELECT 1 FROM public.departments WHERE name = '物化院有限公司');
 
 -- --------------------------------------------------------------------------
 -- 2. 将现有所有「无上级部门」的部门挂到公司根下，设为经营实体
