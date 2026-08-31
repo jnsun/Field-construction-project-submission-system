@@ -89,12 +89,12 @@ const TrainingEmployees = {
                 <th style="width:110px">入职日期</th>
                 <th style="width:80px">类型</th>
                 <th style="width:70px">状态</th>
-                ${canEdit ? '<th style="width:120px">操作</th>' : ''}
+                <th style="width:${canEdit ? '200px' : '90px'}">操作</th>
               </tr>
             </thead>
             <tbody>
               ${rows.length === 0
-                ? TrainingModule.emptyRow(canEdit ? 10 : 9, '暂无员工档案')
+                ? TrainingModule.emptyRow(10, '暂无员工档案')
                 : rows.map(e => `
                   <tr>
                     <td>${Utils.escapeHtml(e.name)}</td>
@@ -108,10 +108,12 @@ const TrainingEmployees = {
                     <td>${e.status === 'left'
                         ? '<span class="badge badge-muted">离职</span>'
                         : '<span class="badge badge-success">在职</span>'}</td>
-                    ${canEdit ? `<td>
-                      <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openForm('${e.id}')">编辑</button>
-                      <button class="btn btn-sm btn-danger" onclick="TrainingEmployees.remove('${e.id}')">删除</button>
-                    </td>` : ''}
+                    <td>
+                      <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openHistory('${e.id}')">培训档案</button>
+                      ${canEdit ? `
+                        <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openForm('${e.id}')">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="TrainingEmployees.remove('${e.id}')">删除</button>` : ''}
+                    </td>
                   </tr>`).join('')}
             </tbody>
           </table>
@@ -122,6 +124,60 @@ const TrainingEmployees = {
 
   typeLabel(t) {
     return { employee: '普通员工', special: '特种作业', manager: '管理人员' }[t] || '普通员工';
+  },
+
+  /** 个人培训档案（一人一档）：列出该员工历年培训与成绩 */
+  async openHistory(empId) {
+    const emp = this.state.list.find(x => x.id === empId);
+    if (!emp) return;
+    const { data, error } = await sb.rpc('training_employee_history', { p_employee_id: empId });
+    if (error) { alert('加载培训档案失败：' + error.message); return; }
+    const rows = data || [];
+
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingEmployees.closeForm()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:720px">
+          <div class="modal-header">
+            <h3>个人培训档案 — ${Utils.escapeHtml(emp.name)}</h3>
+            <button class="modal-close" onclick="TrainingEmployees.closeForm()">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted" style="margin-bottom:8px">
+              ${Utils.escapeHtml(TrainingModule.deptName(emp.department_id))} ｜
+              ${Utils.escapeHtml(emp.position || '')} ｜ 累计参训 ${rows.length} 次
+            </p>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:110px">培训日期</th>
+                  <th>培训名称</th>
+                  <th style="width:70px">学时</th>
+                  <th style="width:80px">签到</th>
+                  <th style="width:80px">成绩</th>
+                  <th style="width:90px">结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.length === 0
+                  ? TrainingModule.emptyRow(6, '暂无参训记录')
+                  : rows.map(r => `
+                    <tr>
+                      <td>${Utils.escapeHtml(r.train_date || '')}</td>
+                      <td>${Utils.escapeHtml(r.title || '')}</td>
+                      <td>${r.hours != null ? r.hours : '—'}</td>
+                      <td>${r.signed ? '<span class="badge badge-success">已签到</span>' : '<span class="badge badge-muted">未签到</span>'}</td>
+                      <td>${r.score != null ? r.score : '—'}</td>
+                      <td>${TrainingRecords.resultBadge(r.result)}</td>
+                    </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="TrainingEmployees.closeForm()">关闭</button>
+          </div>
+        </div>
+      </div>
+    `;
   },
 
   // ---------------------------------------------------------------- 表单
