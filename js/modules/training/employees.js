@@ -16,6 +16,10 @@ const TrainingEmployees = {
   setView(v) {
     this.state.view = v;
     localStorage.setItem('emp-view', v);
+    const tb = document.getElementById('emp-view-table');
+    const cb = document.getElementById('emp-view-card');
+    if (tb) tb.classList.toggle('active', v === 'table');
+    if (cb) cb.classList.toggle('active', v === 'card');
     this.renderTable();
   },
 
@@ -60,9 +64,9 @@ const TrainingEmployees = {
             <option value="left"${this.state.filters.status === 'left' ? ' selected' : ''}>离职</option>
           </select>
           <span style="margin-left:10px;display:inline-flex;background:#e9edf3;border-radius:999px;padding:3px;vertical-align:middle">
-            <button type="button" class="cat-tab${this.state.view === 'table' ? ' active' : ''}"
+            <button type="button" id="emp-view-table" class="cat-tab${this.state.view === 'table' ? ' active' : ''}"
               style="padding:4px 14px;font-size:12px" onclick="TrainingEmployees.setView('table')">表格</button>
-            <button type="button" class="cat-tab${this.state.view === 'card' ? ' active' : ''}"
+            <button type="button" id="emp-view-card" class="cat-tab${this.state.view === 'card' ? ' active' : ''}"
               style="padding:4px 14px;font-size:12px" onclick="TrainingEmployees.setView('card')">方块</button>
           </span>
         </div>
@@ -194,16 +198,16 @@ const TrainingEmployees = {
     const kwEmpty = !(this.state.filters.keyword || '').trim();
     if (!groups.length) {
       return `<table class="data-table"><tbody>
-        ${TrainingModule.emptyRow(canEdit ? 13 : 11, '暂无员工档案，可用上方「Excel 导入」批量建档')}
+        ${TrainingModule.emptyRow(canEdit ? 13 : 12, '暂无员工档案，可用上方「Excel 导入」批量建档')}
       </tbody></table>`;
     }
     return groups.map(g => {
-      const open = kwEmpty ? this.isGroupOpen(g.key) : this.isGroupOpen(g.key);
+      const open = this.isGroupOpen(g.key);
       return `
         <table class="data-table" style="margin-bottom:2px">
           <thead>
             <tr style="cursor:pointer;background:#f4f6fa" onclick="TrainingEmployees.toggleGroup('${g.key}')">
-              <th colspan="${canEdit ? 13 : 11}" style="text-align:left">${this.groupHead(g, open)}</th>
+              <th colspan="${canEdit ? 13 : 12}" style="text-align:left">${this.groupHead(g, open)}</th>
             </tr>
           </thead>
           ${open ? `<tbody>${g.emps.map(e => this.empRow(e, canEdit)).join('')}</tbody>` : ''}
