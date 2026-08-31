@@ -8,6 +8,7 @@ const TrainingPlans = {
   state: {
     list: [],
     targets: {},          // plan_id -> [部门id]
+    targetRows: [],       // 下发记录原始行（含 status / record_id / participant_count）
     filters: { year: String(new Date().getFullYear()), level: '', status: '' },
   },
 
@@ -58,11 +59,13 @@ const TrainingPlans = {
       sb.from('training_plans')
         .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
-      sb.from('training_plan_targets').select('plan_id, department_id'),
+      sb.from('training_plan_targets')
+        .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
     ]);
     if (error) throw error;
     this.state.list = data || [];
     this.state.targets = {};
+    this.state.targetRows = tg.data || [];
     (tg.data || []).forEach(t => {
       (this.state.targets[t.plan_id] = this.state.targets[t.plan_id] || []).push(t.department_id);
     });
@@ -101,12 +104,13 @@ const TrainingPlans = {
                 <th style="width:120px">讲师/单位</th>
                 <th style="width:150px">适用范围</th>
                 <th style="width:80px">状态</th>
+                <th style="width:90px">执行</th>
                 ${canEdit ? '<th style="width:120px">操作</th>' : ''}
               </tr>
             </thead>
             <tbody>
               ${rows.length === 0
-                ? TrainingModule.emptyRow(canEdit ? 10 : 9, '暂无培训计划')
+                ? TrainingModule.emptyRow(canEdit ? 11 : 10, '暂无培训计划')
                 : rows.map(p => `
                   <tr>
                     <td>${this.levelBadge(p.level)}</td>
@@ -118,6 +122,7 @@ const TrainingPlans = {
                     <td>${Utils.escapeHtml(p.trainer || '')}</td>
                     <td>${this.targetText(p)}</td>
                     <td>${this.statusBadge(p.status)}</td>
+                    <td>${this.executionCell(p)}</td>
                     ${canEdit ? `<td>
                       <button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openForm('${p.id}')">编辑</button>
                       <button class="btn btn-sm btn-danger" onclick="TrainingPlans.remove('${p.id}')">删除</button>
@@ -151,6 +156,163 @@ const TrainingPlans = {
     if (!ids.length) return Utils.escapeHtml(p.target_desc || '—');
     const names = ids.map(id => TrainingModule.deptName(id)).slice(0, 2).join('、');
     return Utils.escapeHtml(ids.length > 2 ? `${names} 等${ids.length}个部门` : names);
+  },
+
+  /** 执行情况列：显示 已上报/总数，点击查看详情 */
+  executionCell(p) {
+    const rows = (this.state.targetRows || []).filter(t => t.plan_id === p.id);
+    if (!rows.length) {
+      return `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">查看</button>`;
+    }
+    const done = rows.filter(t => t.status === 'reported').length;
+    const cls = done === rows.length ? '#22c55e' : (done ? '#f59e0b' : '#6b7280');
+    return `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')"
+      style="color:${cls};font-weight:600">${done}/${rows.length}</button>`;
+  },
+
+  // ---------------------------------------------------------------- 执行上报
+  async openExecution(planId) {
+    const p = this.state.list.find(x => x.id === planId);
+    if (!p) return;
+    const rows = (this.state.targetRows || []).filter(t => t.plan_id === planId);
+    const canEdit = TrainingModule.canEdit();
+
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingPlans.closeForm()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:820px">
+          <div class="modal-header">
+            <h3>执行情况 — ${Utils.escapeHtml(p.title)}</h3>
+            <button class="modal-close" onclick="TrainingPlans.closeForm()">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted" style="margin-bottom:8px">
+              计划下发 ${rows.length} 个部门；上报完成后系统自动生成培训记录，并按部门档案带入在职员工为参训人员。
+              ${p.require_exam ? '<b>（该计划要求考试，上报时会自动生成一条待填的考试登记）</b>' : ''}
+            </p>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:180px">部门</th>
+                  <th style="width:110px">要求完成</th>
+                  <th style="width:90px">状态</th>
+                  <th style="width:110px">实际日期</th>
+                  <th style="width:90px">参训人数</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.length === 0
+                  ? TrainingModule.emptyRow(6, '该计划尚未下发到具体部门（可在编辑里勾选下发部门）')
+                  : rows.map(t => `
+                    <tr>
+                      <td>${Utils.escapeHtml(TrainingModule.deptName(t.department_id))}</td>
+                      <td>${Utils.escapeHtml(t.due_date || '—')}</td>
+                      <td>${t.status === 'reported'
+                          ? '<span class="badge badge-success">已上报</span>'
+                          : (t.status === 'skipped'
+                              ? '<span class="badge badge-muted">已跳过</span>'
+                              : '<span class="badge badge-warning">待上报</span>')}</td>
+                      <td>${Utils.escapeHtml(t.actual_date || '—')}</td>
+                      <td>${t.participant_count || 0}</td>
+                      <td>
+                        ${t.status === 'reported'
+                          ? `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.closeForm();TrainingModule.switchView('records')">查看记录</button>`
+                          : (canEdit
+                              ? `<button class="btn btn-sm btn-primary" onclick="TrainingPlans.openReportForm('${t.id}')">上报完成</button>`
+                              : '—')}
+                      </td>
+                    </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="TrainingPlans.closeForm()">关闭</button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  openReportForm(targetId) {
+    const t = (this.state.targetRows || []).find(x => x.id === targetId);
+    if (!t) return;
+    const plan = this.state.list.find(p => p.id === t.plan_id) || {};
+
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingPlans.closeForm()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
+          <div class="modal-header">
+            <h3>上报完成 — ${Utils.escapeHtml(TrainingModule.deptName(t.department_id))}</h3>
+            <button class="modal-close" onclick="TrainingPlans.closeForm()">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted" style="margin-bottom:8px">
+              培训名称：${Utils.escapeHtml(plan.title || '')}
+              ${plan.require_exam ? '<b>｜含考试</b>' : ''}
+            </p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>实际培训日期 <span class="required">*</span></label>
+                <input id="rep-date" type="date" class="form-control" value="${new Date().toISOString().slice(0, 10)}">
+              </div>
+              <div class="form-group">
+                <label>学时</label>
+                <input id="rep-hours" type="number" step="0.5" class="form-control" value="${plan.hours != null ? plan.hours : ''}">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>讲师 / 组织单位</label>
+                <input id="rep-trainer" class="form-control" value="${Utils.escapeHtml(plan.trainer || '')}">
+              </div>
+              <div class="form-group">
+                <label>培训地点</label>
+                <input id="rep-location" class="form-control" value="${Utils.escapeHtml(plan.location || '')}">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>签到方式</label>
+              <select id="rep-sign" class="form-control">
+                <option value="sign_sheet">签到表</option>
+                <option value="photo">拍照留痕</option>
+                <option value="gps">定位签到</option>
+                <option value="manual">手工登记</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>培训内容</label>
+              <textarea id="rep-content" class="form-control" rows="2">${Utils.escapeHtml(plan.content || '')}</textarea>
+            </div>
+            <p class="text-muted" style="font-size:12px">
+              提交后：自动生成培训记录 → 按部门档案带入在职员工为参训人员${plan.require_exam ? ' → 自动生成一条待填的考试登记' : ''}
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="TrainingPlans.closeForm()">取消</button>
+            <button class="btn btn-primary" onclick="TrainingPlans.submitReport('${targetId}')">提交上报</button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  async submitReport(targetId) {
+    const { data, error } = await sb.rpc('training_report_complete', {
+      p_target_id: targetId,
+      p_actual_date: document.getElementById('rep-date').value || null,
+      p_hours: document.getElementById('rep-hours').value ? parseFloat(document.getElementById('rep-hours').value) : null,
+      p_sign_method: document.getElementById('rep-sign').value,
+      p_trainer: document.getElementById('rep-trainer').value.trim() || null,
+      p_location: document.getElementById('rep-location').value.trim() || null,
+      p_content: document.getElementById('rep-content').value.trim() || null,
+    });
+    if (error) { alert('上报失败：' + error.message); return; }
+
+    this.closeForm();
+    await this.load();
+    if (Utils.toast) Utils.toast('已上报，培训记录已自动生成');
+    await this.openExecution(this.state.list.find(p =>
+      (this.state.targetRows || []).some(t => t.id === targetId && t.plan_id === p.id))?.id || '');
   },
 
   // ---------------------------------------------------------------- 表单
