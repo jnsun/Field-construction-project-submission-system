@@ -312,10 +312,20 @@ const TrainingMine = {
         '<span style="color:#b91c1c">PDF 组件未加载，请刷新页面重试。</span>';
       return;
     }
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      new URL('vendor/pdf.worker.min.js', document.baseURI).href;
 
     try {
-      const pdf = await pdfjsLib.getDocument(this.fileUrl(c)).promise;
+      // 带进度反馈：大文件 / 弱网下载慢时能看到"已下载 x MB"，不再黑盒等待
+      const task = pdfjsLib.getDocument(this.fileUrl(c));
+      task.onProgress = (d) => {
+        const box = document.getElementById('pdf-stage');
+        if (!box || !d) return;
+        const loaded = ((d.loaded || 0) / 1048576).toFixed(1);
+        const total = d.total ? ' / ' + (d.total / 1048576).toFixed(1) + ' MB' : ' MB';
+        box.textContent = `正在加载 PDF…（已下载 ${loaded}${total}，文件较大时请耐心等待）`;
+      };
+      const pdf = await task.promise;
       this.state.pdf = { doc: pdf, page: Math.max(1, Math.min(pdf.numPages, Number(p.max_position || 1))), max: Number(p.max_position || 1) };
       this.pdfRender();
       this.report(c.id, (this.state.pdf.max / pdf.numPages) * 100, this.state.pdf.max);
