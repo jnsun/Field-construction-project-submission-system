@@ -13,7 +13,8 @@ const TrainingExams = {
   async render(box) {
     const years = Utils.getYearOptions ? Utils.getYearOptions() : [new Date().getFullYear()];
     box.innerHTML = `
-      <div class="toolbar">
+      <div id="exam-board"></div>
+      <div class="toolbar" style="margin-top:14px">
         <div class="toolbar-left">
           <label>年度：</label>
           <select id="exam-filter-year" onchange="TrainingExams.onFilterChange()">
@@ -31,7 +32,159 @@ const TrainingExams = {
       </div>
       <div id="exam-table"></div>
     `;
+    this.loadBoard();
     await this.load();
+  },
+
+  // ---------------------------------------------------------------- 在线考试看板
+  async loadBoard() {
+    const [papers, asg] = await Promise.all([
+      sb.from('exam_papers')
+        .select('plan_id, title, training_plans(title, exam_mode)')
+        .eq('status', 'published')
+        .not('plan_id', 'is', null),
+      sb.from('training_assignments')
+        .select('id, plan_id, exam_status, exam_attempts, switch_count, progress, status, training_employees(name)'),
+    ]);
+
+    const byPlan = {};
+    (papers.data || []).forEach(p => {
+      byPlan[p.plan_id] = {
+        planId: p.plan_id,
+        paper: p.title,
+        planTitle: p.training_plans ? p.training_plans.title : '',
+        examMode: p.training_plans ? p.training_plans.exam_mode : 'none',
+        list: [],
+      };
+    });
+    (asg.data || []).forEach(a => { if (byPlan[a.plan_id]) byPlan[a.plan_id].list.push(a); });
+
+    this.state.board = Object.values(byPlan).map(s => {
+      const L = s.list;
+      s.total    = L.length;
+      s.notReady = L.filter(x => (!x.exam_status || x.exam_status === 'none') && (x.progress || 0) >= 90).length;
+      s.pending  = L.filter(x => x.exam_status === 'pending').length;
+      s.ongoing  = L.filter(x => x.exam_status === 'ongoing').length;
+      s.passed   = L.filter(x => x.exam_status === 'passed').length;
+      s.failed   = L.filter(x => x.exam_status === 'failed').length;
+      s.switched = L.filter(x => (x.switch_count || 0) >= 3).length;
+      return s;
+    });
+    this.renderBoard();
+  },
+
+  renderBoard() {
+    const box = document.getElementById('exam-board');
+    if (!box) return;
+    const rows = this.state.board || [];
+    const canW = TrainingModule.canEdit();
+
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h2>在线考试看板</h2></div>
+        <div class="card-body" style="padding:0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>培训计划</th>
+                <th style="width:150px">试卷</th>
+                <th style="width:56px">应考</th>
+                <th style="width:56px">待考</th>
+                <th style="width:64px">考试中</th>
+                <th style="width:56px">通过</th>
+                <th style="width:56px">未过</th>
+                <th style="width:76px">切屏异常</th>
+                <th style="width:170px">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.length === 0
+                ? TrainingModule.emptyRow(9, '暂无考试：到「试卷管理」创建试卷、发布并挂接培训计划后，这里会出现考试看板。')
+                : rows.map(s => `
+                  <tr>
+                    <td title="${Utils.escapeHtml(s.planTitle)}">${Utils.escapeHtml(s.planTitle)}</td>
+                    <td title="${Utils.escapeHtml(s.paper)}">${Utils.escapeHtml(s.paper)}</td>
+                    <td>${s.total}</td>
+                    <td style="color:${s.pending ? '#f59e0b' : 'inherit'};font-weight:600">${s.pending}</td>
+                    <td>${s.ongoing}</td>
+                    <td style="color:${s.passed ? '#22c55e' : 'inherit'};font-weight:600">${s.passed}</td>
+                    <td style="color:${s.failed ? '#ef4444' : 'inherit'};font-weight:600">${s.failed}</td>
+                    <td>${s.switched
+                      ? `<button class="btn btn-sm btn-danger" onclick="TrainingExams.openDetail('${s.planId}')">${s.switched} 人</button>`
+                      : '0'}</td>
+                    <td>
+                      <button class="btn btn-sm btn-secondary" onclick="TrainingExams.openDetail('${s.planId}')">明细</button>
+                      ${canW && s.examMode === 'manual' && (s.notReady || s.failed)
+                        ? `<button class="btn btn-sm btn-primary" onclick="TrainingExams.launchExam('${s.planId}')">发起考试</button>` : ''}
+                    </td>
+                  </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  },
+
+  async openDetail(planId) {
+    const s = (this.state.board || []).find(x => x.planId === planId);
+    if (!s) return;
+    const E = { none: '未开考', pending: '待考试', ongoing: '考试中', passed: '已通过', failed: '未通过' };
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingExams.closeDetail()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:720px">
+          <div class="modal-header">
+            <h3>考试明细 — ${Utils.escapeHtml(s.planTitle || '')}</h3>
+            <button class="modal-close" onclick="TrainingExams.closeDetail()">×</button>
+          </div>
+          <div class="modal-body">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>员工</th>
+                  <th style="width:90px">考试状态</th>
+                  <th style="width:70px">考试次数</th>
+                  <th style="width:80px">切屏次数</th>
+                  <th style="width:110px">课件进度</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${s.list.length === 0
+                  ? TrainingModule.emptyRow(5, '该计划暂无参训名单')
+                  : s.list.map(x => `
+                    <tr>
+                      <td>${Utils.escapeHtml(x.training_employees ? x.training_employees.name : '—')}</td>
+                      <td>${E[x.exam_status] || '未开考'}</td>
+                      <td>${x.exam_attempts || 0}</td>
+                      <td style="color:${(x.switch_count || 0) >= 3 ? '#ef4444' : 'inherit'};font-weight:${(x.switch_count || 0) >= 3 ? 600 : 400}">
+                        ${x.switch_count || 0}</td>
+                      <td>${Math.round(x.progress || 0)}%</td>
+                    </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="TrainingExams.closeDetail()">关闭</button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  closeDetail() {
+    const d = document.getElementById('training-modal-host');
+    if (d) d.innerHTML = '';
+  },
+
+  async launchExam(planId) {
+    if (!confirm('把该计划下「已完成课件但未安排考试」的员工全部标记为待考试？')) return;
+    const { error } = await sb.from('training_assignments')
+      .update({ exam_status: 'pending' })
+      .eq('plan_id', planId)
+      .eq('exam_status', 'none')
+      .gte('progress', 90);
+    if (error) { alert('发起失败：' + error.message); return; }
+    if (Utils.toast) Utils.toast('已发起，员工任务卡将出现「开始考试」');
+    this.loadBoard();
   },
 
   onFilterChange() {

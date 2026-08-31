@@ -57,7 +57,7 @@ const TrainingPlans = {
   async load() {
     const [{ data, error }, tg] = await Promise.all([
       sb.from('training_plans')
-        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status')
+        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, exam_mode')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_plan_targets')
         .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
@@ -482,6 +482,17 @@ const TrainingPlans = {
                 value="${Utils.escapeHtml(p ? (p.target_desc || '') : '')}">
             </div>
             <div class="form-group">
+              <label>考试关联模式</label>
+              <select id="plan-exam-mode" class="form-control">
+                <option value="none"${(!p || p.exam_mode === 'none') ? ' selected' : ''}>仅培训，不考试</option>
+                <option value="auto"${p && p.exam_mode === 'auto' ? ' selected' : ''}>课件学完自动触发考试</option>
+                <option value="manual"${p && p.exam_mode === 'manual' ? ' selected' : ''}>管理员手动发起考试</option>
+              </select>
+              <p class="text-muted" style="font-size:12px;margin:4px 0 0">
+                需先在「试卷管理」创建并发布挂接本计划的试卷，考试才会生效。
+              </p>
+            </div>
+            <div class="form-group">
               <label>下发部门（可不选，用于跟踪各单位完成情况）</label>
               <div style="max-height:150px;overflow:auto;border:1px solid var(--color-border);border-radius:6px;padding:8px">
                 ${TrainingModule.state.depts.map(d => `
@@ -530,6 +541,7 @@ const TrainingPlans = {
       trainer: document.getElementById('plan-trainer').value.trim() || null,
       location: document.getElementById('plan-location').value.trim() || null,
       status: document.getElementById('plan-status').value,
+      exam_mode: document.getElementById('plan-exam-mode').value || 'none',
       target_desc: document.getElementById('plan-target-desc').value.trim() || null,
       content: document.getElementById('plan-content').value.trim() || null,
       remark: document.getElementById('plan-remark').value.trim() || null,
