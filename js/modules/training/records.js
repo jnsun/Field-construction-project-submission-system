@@ -7,7 +7,7 @@ const TrainingRecords = {
   state: {
     list: [],
     employees: [],
-    filters: { year: String(new Date().getFullYear()), dept: '' },
+    filters: { year: String(new Date().getFullYear()), dept: '', source: '' },
   },
 
   SIGN_LABEL: { manual: '手工登记', sign_sheet: '签到表', photo: '拍照留痕', gps: '定位签到' },
@@ -27,6 +27,12 @@ const TrainingRecords = {
           <select id="rec-filter-dept" onchange="TrainingRecords.onFilterChange()">
             ${TrainingModule.deptOptions(this.state.filters.dept, true)}
           </select>
+          <label>来源：</label>
+          <select id="rec-filter-source" onchange="TrainingRecords.onFilterChange()">
+            <option value="">全部</option>
+            <option value="auto"${this.state.filters.source === 'auto' ? ' selected' : ''}>计划自动上报</option>
+            <option value="manual"${this.state.filters.source === 'manual' ? ' selected' : ''}>手工登记</option>
+          </select>
         </div>
         <div class="toolbar-right">
           ${TrainingModule.canEdit() ? '<button class="btn btn-primary btn-sm" onclick="TrainingRecords.openForm()">+ 登记培训</button>' : ''}
@@ -40,13 +46,14 @@ const TrainingRecords = {
   onFilterChange() {
     this.state.filters.year = document.getElementById('rec-filter-year').value;
     this.state.filters.dept = document.getElementById('rec-filter-dept').value;
+    this.state.filters.source = document.getElementById('rec-filter-source').value;
     this.renderTable();
   },
 
   async load() {
     const [{ data, error }, emps] = await Promise.all([
       sb.from('training_records')
-        .select('id, plan_id, title, train_date, hours, trainer, location, department_id, content, participant_count, sign_method, remark')
+        .select('id, plan_id, title, train_date, hours, trainer, location, department_id, content, participant_count, sign_method, remark, source')
         .order('train_date', { ascending: false }),
       sb.from('training_employees').select('id, name, department_id, position, status').eq('status', 'active').order('name'),
     ]);
@@ -57,10 +64,11 @@ const TrainingRecords = {
   },
 
   filtered() {
-    const { year, dept } = this.state.filters;
+    const { year, dept, source } = this.state.filters;
     return this.state.list.filter(r => {
       if (year && !(r.train_date || '').startsWith(String(year))) return false;
       if (dept && r.department_id !== dept) return false;
+      if (source && (r.source || 'manual') !== source) return false;
       return true;
     });
   },
@@ -86,6 +94,7 @@ const TrainingRecords = {
                 <th style="width:110px">地点</th>
                 <th style="width:90px">参训人数</th>
                 <th style="width:100px">签到方式</th>
+                <th style="width:100px">来源</th>
                 <th style="width:${canEdit ? '180px' : '80px'}">操作</th>
               </tr>
             </thead>
@@ -102,6 +111,9 @@ const TrainingRecords = {
                     <td>${Utils.escapeHtml(r.location || '')}</td>
                     <td>${r.participant_count || 0}</td>
                     <td>${this.SIGN_LABEL[r.sign_method] || '手工登记'}</td>
+                    <td>${r.source === 'auto'
+                        ? '<span class="badge badge-info">自动上报</span>'
+                        : '<span class="badge badge-muted">手工登记</span>'}</td>
                     <td>
                       <button class="btn btn-sm btn-secondary" onclick="TrainingRecords.openDetail('${r.id}')">人员明细</button>
                       ${canEdit ? `
