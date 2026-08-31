@@ -927,6 +927,16 @@ input[disabled] {
   .modal-overlay { padding: 0; }
 }
 
+/* 一线员工手机端：培训学习弹窗纵向堆叠（覆盖 mine.js 内联 flex） */
+@media (max-width: 640px) {
+  #training-modal-host .modal { max-width: 100% !important; }
+  #training-modal-host .modal-body { display: block !important; padding: 12px !important; }
+  #training-modal-host #learn-nav { width: 100% !important; margin-bottom: 12px; }
+  #training-modal-host #learn-stage { min-height: 320px !important; }
+  #training-modal-host .modal-footer { flex-direction: column; gap: 8px; }
+  #training-modal-host .modal-footer .btn { width: 100%; }
+}
+
 /* ----- 账户设置 ----- */
 .account-section { margin-bottom: 4px; }
 .account-section-title {

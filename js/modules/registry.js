@@ -32,11 +32,11 @@ const ModuleRegistry = (() => {
     { id: 'report', name: '野外施工项目报送', icon: ICON.report,
       desc: '月度施工项目信息报送与管理', ready: true,
       renderer: (app) => {
-        if (Auth.isAdmin()) {
-          Admin.render(app, { readOnly: false });
-        } else if (Auth.isEntityManager()) {
-          // 经营实体：进入部门管理（非只读，但仅暴露部门管理页，且受模块内权限约束只能建/改/删本部门项目部）
+        if (Auth.isEntityManager()) {
+          // 经营实体管理员：进入受限管理（部门管理 + 账号管理，仅本部门子树）
           Admin.render(app, { entityMode: true });
+        } else if (Auth.isAdmin()) {
+          Admin.render(app, { readOnly: false });
         } else if (Auth.canViewAdmin()) {
           Admin.render(app, { readOnly: true });
         } else {

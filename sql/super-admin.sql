@@ -69,7 +69,8 @@ CREATE OR REPLACE FUNCTION public.create_dept_user(
   p_password       TEXT,
   p_full_name      TEXT DEFAULT NULL,
   p_department_id  UUID DEFAULT NULL,
-  p_role           TEXT DEFAULT 'reporter'
+  p_role           TEXT DEFAULT 'reporter',
+  p_admin_level    TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -77,16 +78,48 @@ SECURITY DEFINER
 SET search_path = public, extensions
 AS $$
 DECLARE
-  v_user_id UUID;
+  v_user_id   UUID;
+  v_my_dept   UUID;
+  v_my_level  TEXT;
 BEGIN
   -- 仅管理员可调用
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION '只有管理员才能执行此操作';
   END IF;
 
-  -- 创建管理员账号：仅超级管理员可操作
-  IF p_role = 'admin' AND NOT public.is_super_admin() THEN
-    RAISE EXCEPTION '只有超级管理员才能创建管理员账号';
+  -- 解析当前账号的部门与级别
+  SELECT department_id, COALESCE(admin_level, 'company')
+    INTO v_my_dept, v_my_level
+  FROM public.profiles WHERE id = auth.uid();
+
+  -- 权限判定
+  IF public.is_super_admin() THEN
+    NULL; -- 超级管理员：任意账号
+  ELSIF public.is_entity_manager() THEN
+    -- 经营实体：只能建本部门/项目部下的部门账号，或本部门下项目部的项目部管理员
+    IF p_role = 'admin' THEN
+      IF p_admin_level IS DISTINCT FROM 'project' THEN
+        RAISE EXCEPTION '经营实体只能指定「项目部管理员」';
+      END IF;
+      IF p_department_id IS NULL OR NOT EXISTS (
+        SELECT 1 FROM public.departments
+        WHERE id = p_department_id AND dept_type = 'project' AND parent_id = v_my_dept
+      ) THEN
+        RAISE EXCEPTION '项目部管理员必须归属您本部门下的项目部';
+      END IF;
+    ELSE
+      IF p_department_id IS NULL OR NOT (
+        p_department_id = v_my_dept
+        OR EXISTS (SELECT 1 FROM public.departments WHERE id = p_department_id AND parent_id = v_my_dept)
+      ) THEN
+        RAISE EXCEPTION '部门账号必须归属您本部门或本部门下的项目部';
+      END IF;
+    END IF;
+  ELSE
+    -- 普通管理员（非经营实体）：仍只能建部门账号
+    IF p_role = 'admin' THEN
+      RAISE EXCEPTION '只有超级管理员才能创建管理员账号';
+    END IF;
   END IF;
 
   -- 输入校验
@@ -131,14 +164,16 @@ BEGIN
   -- 此处用 ON CONFLICT (id) DO UPDATE 覆盖字段，避免与触发器重复插入同 id 触发主键冲突
   -- （否则会被 unique_violation 通用异常误报"邮箱已被其他账号使用"）。
   -- 新创建的管理员默认 is_super_admin = false（普通管理员）
-  INSERT INTO public.profiles (id, email, department_id, role, full_name, is_super_admin)
-  VALUES (v_user_id, lower(trim(p_email)), p_department_id, p_role, p_full_name, false)
+  INSERT INTO public.profiles (id, email, department_id, role, full_name, is_super_admin, admin_level)
+  VALUES (v_user_id, lower(trim(p_email)), p_department_id, p_role, p_full_name, false,
+          CASE WHEN p_role = 'admin' THEN p_admin_level ELSE NULL END)
   ON CONFLICT (id) DO UPDATE SET
     email          = EXCLUDED.email,
     department_id  = EXCLUDED.department_id,
     role           = EXCLUDED.role,
     full_name      = EXCLUDED.full_name,
-    is_super_admin = EXCLUDED.is_super_admin;
+    is_super_admin = EXCLUDED.is_super_admin,
+    admin_level    = EXCLUDED.admin_level;
 
   RETURN jsonb_build_object('success', true, 'user_id', v_user_id);
 
@@ -156,7 +191,8 @@ CREATE OR REPLACE FUNCTION public.update_dept_user(
   p_full_name      TEXT DEFAULT NULL,
   p_department_id  UUID DEFAULT NULL,
   p_role           TEXT DEFAULT 'reporter',
-  p_password       TEXT DEFAULT NULL
+  p_password       TEXT DEFAULT NULL,
+  p_admin_level    TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -166,6 +202,7 @@ AS $$
 DECLARE
   v_email        TEXT;
   v_cur_role     TEXT;
+  v_cur_admin    TEXT;
   v_is_super     BOOLEAN;
   v_super_count  INTEGER;
 BEGIN
@@ -180,15 +217,36 @@ BEGIN
   END IF;
 
   -- 读取目标账号当前角色与超级管理员标记
-  SELECT role, coalesce(is_super_admin, false) INTO v_cur_role, v_is_super
+  SELECT role, coalesce(admin_level, 'project'), coalesce(is_super_admin, false)
+    INTO v_cur_role, v_cur_admin, v_is_super
   FROM public.profiles WHERE id = p_user_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION '账号不存在';
   END IF;
 
-  -- 涉及管理员账号（当前是管理员，或将改为管理员）时，仅超级管理员可操作
-  IF (v_cur_role = 'admin' OR p_role = 'admin') AND NOT public.is_super_admin() THEN
-    RAISE EXCEPTION '只有超级管理员才能修改管理员账号';
+  -- 涉及管理员账号（当前是管理员，或将改为管理员）时的权限
+  IF (v_cur_role = 'admin' OR p_role = 'admin') THEN
+    IF public.is_super_admin() THEN
+      NULL;
+    ELSIF public.is_entity_manager() THEN
+      -- 经营实体只能改「本部门下项目部的项目部管理员」
+      IF p_role = 'admin' AND p_admin_level IS DISTINCT FROM 'project' THEN
+        RAISE EXCEPTION '经营实体只能指定「项目部管理员」';
+      END IF;
+      IF p_department_id IS NULL OR NOT EXISTS (
+        SELECT 1 FROM public.departments d
+        WHERE d.id = p_department_id
+          AND d.dept_type = 'project'
+          AND d.parent_id = (SELECT department_id FROM public.profiles WHERE id = auth.uid())
+      ) THEN
+        RAISE EXCEPTION '项目部管理员必须归属您本部门下的项目部';
+      END IF;
+      IF v_cur_role = 'admin' AND v_cur_admin <> 'project' THEN
+        RAISE EXCEPTION '您只能修改本部门下项目部的项目部管理员';
+      END IF;
+    ELSE
+      RAISE EXCEPTION '只有超级管理员才能修改管理员账号';
+    END IF;
   END IF;
 
   -- 校验输入
@@ -232,6 +290,7 @@ BEGIN
       department_id = p_department_id,
       role = p_role,
       is_super_admin = CASE WHEN p_role <> 'admin' THEN false ELSE is_super_admin END,
+      admin_level = CASE WHEN p_role <> 'admin' THEN NULL ELSE COALESCE(p_admin_level, admin_level) END,
       updated_at = now()
   WHERE id = p_user_id;
 
@@ -319,8 +378,8 @@ DROP POLICY IF EXISTS "profiles_update_self" ON public.profiles;
 -- 5. 授权（函数签名未变，权限授予保持与 user-management.sql 一致）
 --    实际权限由函数体内的 is_admin() / is_super_admin() 校验控制
 -- --------------------------------------------------------------------------
-GRANT EXECUTE ON FUNCTION public.create_dept_user(TEXT, TEXT, TEXT, UUID, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.update_dept_user(UUID, TEXT, TEXT, UUID, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_dept_user(TEXT, TEXT, TEXT, UUID, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_dept_user(UUID, TEXT, TEXT, UUID, TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_dept_user(UUID) TO authenticated;
 
 -- ==========================================================================

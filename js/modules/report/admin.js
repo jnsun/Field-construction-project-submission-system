@@ -103,17 +103,18 @@ const Admin = {
       { key: 'reports',     label: '报送管理' },
       { key: 'completed',   label: '完工项目' },
     ];
-    // 管理员可见：账号管理、部门管理、报送配置
-    // 经营实体可见：部门管理（仅能在本部门下建/改/删项目部）
-    if (Auth.isAdmin()) {
+    // 经营实体（受限模式）：仅部门管理 + 账号管理（指定项目部管理员），无报送配置
+    if (this.state.entityMode) {
+      views.push(
+        { key: 'departments', label: '部门管理' },
+        { key: 'users',       label: '账号管理' },
+      );
+    } else if (Auth.isAdmin()) {
+      // 公司级 / 超级管理员：全部后台管理页
       views.push(
         { key: 'users',       label: '账号管理' },
         { key: 'departments', label: '部门管理' },
         { key: 'config',      label: '报送配置' },
-      );
-    } else if (Auth.isEntityManager()) {
-      views.push(
-        { key: 'departments', label: '部门管理' },
       );
     }
     return `
@@ -131,6 +132,8 @@ const Admin = {
    * @param {'reports'|'users'|'departments'} view
    */
   async switchView(view) {
+    // 经营实体模式不开放报送配置
+    if (this.state.entityMode && view === 'config') return;
     // 账号管理 / 报送配置 仅管理员可进入
     if ((view === 'users' || view === 'config') && !Auth.isAdmin()) return;
     // 部门管理：管理员或经营实体可进入
@@ -1145,7 +1148,12 @@ const Admin = {
     const container = document.getElementById('admin-users-content');
     if (!container) return;
 
-    const users = this.state.users;
+    let users = this.state.users;
+    if (this.state.entityMode) {
+      // 经营实体：仅显示本部门及下属项目部的账号
+      const subIds = new Set((this.visibleDepts() || []).map(d => d.id));
+      users = users.filter(u => u.department_id && subIds.has(u.department_id));
+    }
     const currentUserId = Auth.currentUser ? Auth.currentUser.id : null;
     const isSuper = Auth.isSuperAdmin();
 
@@ -1204,12 +1212,16 @@ const Admin = {
     const roleBadge = u.role === 'admin'
       ? (u.is_super_admin
           ? '<span class="badge badge-danger">超级管理员</span>'
-          : '<span class="badge badge-warning">管理员</span>')
+          : u.admin_level === 'project'
+            ? '<span class="badge badge-info">项目部管理员</span>'
+            : '<span class="badge badge-warning">管理员</span>')
       : '<span class="badge badge-muted">部门账号</span>';
     const deptName = u.departments ? u.departments.name : (u.role === 'admin' ? '-' : '<span class="badge badge-danger">未分配</span>');
 
     // 操作按钮：当前账号不可操作；管理员账号仅超级管理员可编辑/删除
-    const canManage = !isSelf && (u.role !== 'admin' || isSuper);
+    //          经营实体可管理本部门下项目部的项目部管理员
+    const canManage = !isSelf && (u.role !== 'admin' || isSuper
+      || (Auth.isEntityManager() && u.admin_level === 'project'));
 
     const actions = isSelf
       ? '<span class="dept-meta" title="当前登录的账号不能在页面中修改">当前账号</span>'
@@ -1257,7 +1269,9 @@ const Admin = {
    * 部门下拉选项
    */
   buildDeptOptions(selectedId = null) {
-    return this.state.departments.map(d =>
+    // 经营实体模式：部门下拉仅含本部门及下属项目部
+    const depts = this.state.entityMode ? (this.visibleDepts() || []) : (this.state.departments || []);
+    return depts.map(d =>
       `<option value="${d.id}" ${d.id === selectedId ? 'selected' : ''}>${Utils.escapeHtml(d.name)}</option>`
     ).join('');
   },
@@ -1275,9 +1289,11 @@ const Admin = {
     }
 
     const isSuper = Auth.isSuperAdmin();
+    const isEntity = this.state.entityMode && !isSuper;
+    const isProjectAdmin = isEdit && user && user.role === 'admin' && user.admin_level === 'project';
 
-    // 普通管理员不能编辑管理员账号
-    if (userId && user && user.role === 'admin' && !isSuper) {
+    // 普通管理员（非经营实体）不能编辑管理员账号
+    if (userId && user && user.role === 'admin' && !isSuper && !(isEntity && user.admin_level === 'project')) {
       Utils.toast('只有超级管理员才能修改管理员账号', 'error');
       return;
     }
@@ -1294,10 +1310,15 @@ const Admin = {
         <label><input type="radio" name="role" value="reporter" ${role === 'reporter' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
         <label><input type="radio" name="role" value="admin" ${role === 'admin' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 管理员</label>
       `
-      : `
-        <label><input type="radio" name="role" value="reporter" checked onchange="Admin.onRoleChange()"> 部门账号</label>
-        <label class="disabled-option" title="只有超级管理员才能创建管理员账号"><input type="radio" name="role" value="admin" disabled> 管理员（仅超管）</label>
-      `;
+      : isEntity
+        ? `
+          <label><input type="radio" name="role" value="reporter" ${!isProjectAdmin ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
+          <label><input type="radio" name="role" value="admin" ${isProjectAdmin ? 'checked' : ''} onchange="Admin.onRoleChange()"> 项目部管理员</label>
+        `
+        : `
+          <label><input type="radio" name="role" value="reporter" checked onchange="Admin.onRoleChange()"> 部门账号</label>
+          <label class="disabled-option" title="只有超级管理员才能创建管理员账号"><input type="radio" name="role" value="admin" disabled> 管理员（仅超管）</label>
+        `;
 
     const modalHTML = `
       <div class="modal-overlay" id="user-modal" onclick="Admin.onUserModalOverlayClick(event)">
@@ -1340,8 +1361,22 @@ const Admin = {
                   <div class="radio-group">
                     ${roleOptions}
                   </div>
-                  ${isSuper ? '<p class="hint">提示：管理员账号创建后默认为普通管理员；如需设为超级管理员，请用 SQL 设置 is_super_admin。</p>' : ''}
+                  ${isSuper
+                    ? '<p class="hint">提示：管理员账号创建后默认为公司级普通管理员；如需设为超级管理员，请用 SQL 设置 is_super_admin。</p>'
+                    : isEntity
+                      ? '<p class="hint">提示：您可创建「部门账号」，或指定归属<b>本部门下项目部</b>的「项目部管理员」（其仅能管理该项目部）。</p>'
+                      : ''}
                 </div>
+                ${isSuper ? `
+                <div class="form-group col-span-2" id="admin-level-group">
+                  <label>管理员级别</label>
+                  <select name="admin_level">
+                    <option value="company" ${v.admin_level === 'company' || (!v.admin_level && v.role === 'admin') ? 'selected' : ''}>公司级（安全生产部 / 全量权限）</option>
+                    <option value="dept" ${v.admin_level === 'dept' ? 'selected' : ''}>经营实体（本部门 + 下属项目部）</option>
+                    <option value="project" ${v.admin_level === 'project' ? 'selected' : ''}>项目部（仅本项目）</option>
+                  </select>
+                  <p class="hint">公司级看全量数据；经营实体仅管本部门及下属项目部；项目部仅管本项目。</p>
+                </div>` : ''}
                 <div class="form-group col-span-2">
                   <label>${isEdit ? '重置密码' : '初始密码'} <span class="required">${isEdit ? '' : '*'}</span></label>
                   <input type="password" name="password" ${isEdit ? '' : 'required'}
@@ -1375,10 +1410,15 @@ const Admin = {
     const roleInput = document.querySelector('#user-form input[name="role"]:checked');
     if (!roleInput) return;
     const isAdmin = roleInput.value === 'admin';
+    // 公司级/超级管理员选「管理员」时部门非必填；经营实体选「项目部管理员」必须归属项目部
+    const needDept = !isAdmin || this.state.entityMode;
     const deptSelect = document.getElementById('user-dept-select');
     const mark = document.getElementById('dept-required-mark');
-    if (deptSelect) deptSelect.required = !isAdmin;
-    if (mark) mark.style.display = isAdmin ? 'none' : '';
+    if (deptSelect) deptSelect.required = needDept;
+    if (mark) mark.style.display = needDept ? '' : 'none';
+    // 超级管理员选「管理员」时才显示级别选择
+    const lvlGroup = document.getElementById('admin-level-group');
+    if (lvlGroup) lvlGroup.style.display = (isAdmin && Auth.isSuperAdmin()) ? '' : 'none';
   },
 
   onUserModalOverlayClick(event) {
@@ -1417,16 +1457,17 @@ const Admin = {
     if (!isEdit && !email && !phone) { Utils.toast('请至少填写登录邮箱或手机号，以便账号登录', 'error'); return; }
     if (phone && !/^1[0-9]{10}$/.test(phone)) { Utils.toast('请输入有效的手机号（1 开头的 11 位数字）', 'error'); return; }
 
-    // 权限校验：普通管理员不能创建/提升管理员账号
-    if (role === 'admin' && !Auth.isSuperAdmin()) {
+    // 权限校验：非（超级管理员或经营实体）不能创建管理员账号
+    if (role === 'admin' && !Auth.isSuperAdmin() && !Auth.isEntityManager()) {
       Utils.toast('只有超级管理员才能创建管理员账号', 'error');
       return;
     }
 
-    // 编辑时校验：目标账号是管理员时，普通管理员不能操作（前端双保险）
+    // 编辑时校验：目标账号是管理员时，仅超管可改（经营实体仅可改本项目部的项目部管理员）
     if (isEdit && !Auth.isSuperAdmin()) {
       const target = this.state.users.find(u => u.id === this.state.editingUserId);
-      if (target && target.role === 'admin') {
+      const targetIsProjectAdmin = target && target.role === 'admin' && target.admin_level === 'project';
+      if (target && target.role === 'admin' && !(Auth.isEntityManager() && targetIsProjectAdmin)) {
         Utils.toast('只有超级管理员才能修改管理员账号', 'error');
         return;
       }
@@ -1454,6 +1495,9 @@ const Admin = {
           p_department_id: role === 'admin' && !deptId ? null : deptId,
           p_role: role,
           p_password: password || null,
+          p_admin_level: role === 'admin'
+            ? (Auth.isEntityManager() ? 'project' : (Auth.isSuperAdmin() ? (fd.get('admin_level') || 'company') : null))
+            : null,
         };
         // 仅新库（有 phone 列）才传 p_phone，避免旧函数签名匹配失败
         if (this.state.hasPhoneColumn) params.p_phone = phone;
@@ -1465,6 +1509,9 @@ const Admin = {
           p_full_name: fullName || null,
           p_department_id: role === 'admin' && !deptId ? null : deptId,
           p_role: role,
+          p_admin_level: role === 'admin'
+            ? (Auth.isEntityManager() ? 'project' : (Auth.isSuperAdmin() ? (fd.get('admin_level') || 'company') : null))
+            : null,
         };
         if (this.state.hasPhoneColumn) params.p_phone = phone || null;
         result = await sb.rpc('create_dept_user', params);

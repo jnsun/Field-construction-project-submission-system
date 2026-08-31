@@ -291,15 +291,29 @@ const Auth = {
     return this.isAdmin() && this.currentProfile.is_super_admin === true;
   },
 
+  /** 当前账号层级：company / dept / project / null（未设置） */
+  adminLevel() {
+    return (this.currentProfile || {}).admin_level || null;
+  },
+
+  /** 公司级（安全生产部 / 超级管理员） */
+  isCompanyAdmin() {
+    if (!this.isAdmin()) return false;
+    if (this.isSuperAdmin()) return true;
+    return this.adminLevel() === 'company';
+  },
+
   /**
-   * 判断当前用户是否为「经营实体」账号
-   * 经营实体 = 部门账号（非管理员）且其所属部门 dept_type = 'entity'。
-   * 具备在本部门账号下新建 / 编辑 / 删除「项目部」的权限（三级组织树：公司→经营实体→项目部）。
-   * 旧库未执行 department-tree.sql 时 departments 无 dept_type 列，currentProfile.departments.dept_type 为 undefined → 返回 false。
+   * 判断当前用户是否为「经营实体管理员」
+   * 经营实体管理员 = 管理员账号，所属部门 dept_type = 'entity'，且层级不是 company。
+   * （安全生产部设为 company 级后不会被误判为经营实体）
+   * 具备在本部门下新建 / 编辑 / 删除「项目部」、并指定「项目部管理员」的权限。
+   * 旧库未执行 department-tree.sql 时 departments 无 dept_type 列 → 返回 false。
    * @returns {boolean}
    */
   isEntityManager() {
-    if (this.isAdmin()) return false;
+    if (!this.isAdmin()) return false;
+    if (this.isCompanyAdmin()) return false;
     const d = this.currentProfile && this.currentProfile.departments;
     return !!(d && d.dept_type === 'entity');
   },
