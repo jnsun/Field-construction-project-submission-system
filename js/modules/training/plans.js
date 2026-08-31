@@ -57,7 +57,7 @@ const TrainingPlans = {
   async load() {
     const [{ data, error }, tg] = await Promise.all([
       sb.from('training_plans')
-        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark')
+        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_plan_targets')
         .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
@@ -69,7 +69,54 @@ const TrainingPlans = {
     (tg.data || []).forEach(t => {
       (this.state.targets[t.plan_id] = this.state.targets[t.plan_id] || []).push(t.department_id);
     });
+    await this.loadProgress();
     this.renderTable();
+  },
+
+  /** 已发布计划的完成进度（未执行 v2 脚本时静默跳过） */
+  async loadProgress() {
+    this.state.progress = {};
+    const published = this.state.list.filter(p => p.publish_status === 'published');
+    if (!published.length) return;
+    try {
+      const res = await Promise.all(
+        published.map(p => sb.rpc('training_plan_progress', { p_plan_id: p.id }))
+      );
+      published.forEach((p, i) => {
+        const d = res[i] && res[i].data;
+        this.state.progress[p.id] = Array.isArray(d) ? d[0] : d;
+      });
+    } catch (_) { /* v2 脚本未执行 */ }
+  },
+
+  /** 完成进度单元格 */
+  progressCell(p) {
+    if (p.publish_status !== 'published') return '<span class="text-muted">未发布</span>';
+    const g = this.state.progress[p.id];
+    if (!g || !g.total) return '<span class="text-muted">—</span>';
+    const pct = g.total ? (g.completed / g.total * 100) : 0;
+    const cls = pct >= 100 ? '#22c55e' : (pct >= 50 ? '#f59e0b' : '#ef4444');
+    return `<span style="color:${cls};font-weight:600">${g.completed}/${g.total}</span>
+      <span class="text-muted" style="font-size:12px">（${pct.toFixed(0)}%）</span>
+      ${g.overdue ? `<span class="badge badge-danger" style="margin-left:4px">逾期${g.overdue}</span>` : ''}`;
+  },
+
+  publishBadge(s) {
+    if (s === 'published') return '<span class="badge badge-success">已发布</span>';
+    if (s === 'closed') return '<span class="badge badge-muted">已结束</span>';
+    return '<span class="badge badge-warning">草稿</span>';
+  },
+
+  /** 发布：按层级自动展开参训名单 */
+  async publish(id) {
+    const p = this.state.list.find(x => x.id === id);
+    if (!p) return;
+    if (!confirm(`发布后系统会按层级自动把「${p.title}」推送给覆盖范围内的在职员工，员工登录即可看到并开始学习。\n\n确定发布？`)) return;
+    const { data, error } = await sb.rpc('training_publish_plan', { p_plan_id: id });
+    if (error) { alert('发布失败：' + (error.message || '')); return; }
+    await this.load();
+    alert(`已发布，自动推送给 ${data.assigned} 名员工。`);
+    if (data.assigned === 0) alert('提示：覆盖范围内没有在职员工。请检查计划层级、覆盖部门，或员工是否已导入并归属部门。');
   },
 
   filtered() {
@@ -103,9 +150,10 @@ const TrainingPlans = {
                 <th style="width:70px">学时</th>
                 <th style="width:120px">讲师/单位</th>
                 <th style="width:150px">适用范围</th>
+                <th style="width:90px">发布</th>
+                <th style="width:130px">完成情况</th>
                 <th style="width:80px">状态</th>
-                <th style="width:90px">执行</th>
-                ${canEdit ? '<th style="width:120px">操作</th>' : ''}
+                <th style="width:${canEdit ? '230px' : '90px'}">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -121,12 +169,19 @@ const TrainingPlans = {
                     <td>${p.hours != null ? p.hours : ''}</td>
                     <td>${Utils.escapeHtml(p.trainer || '')}</td>
                     <td>${this.targetText(p)}</td>
+                    <td>${this.publishBadge(p.publish_status)}</td>
+                    <td>${this.progressCell(p)}</td>
                     <td>${this.statusBadge(p.status)}</td>
-                    <td>${this.executionCell(p)}</td>
-                    ${canEdit ? `<td>
-                      <button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openForm('${p.id}')">编辑</button>
-                      <button class="btn btn-sm btn-danger" onclick="TrainingPlans.remove('${p.id}')">删除</button>
-                    </td>` : ''}
+                    <td>
+                      ${canEdit ? `
+                        ${p.publish_status === 'draft'
+                          ? `<button class="btn btn-sm btn-primary" onclick="TrainingPlans.publish('${p.id}')">发布</button>`
+                          : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
+                        <button class="btn btn-sm btn-secondary" onclick="TrainingCourses.open('${p.id}')">课件</button>
+                        <button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openForm('${p.id}')">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="TrainingPlans.remove('${p.id}')">删除</button>`
+                        : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
+                    </td>
                   </tr>`).join('')}
             </tbody>
           </table>
@@ -397,6 +452,19 @@ const TrainingPlans = {
             </div>
             <div class="form-row">
               <div class="form-group">
+                <label>完成截止时间</label>
+                <input id="plan-deadline" type="date" class="form-control" value="${p ? (p.deadline || '') : ''}">
+              </div>
+              <div class="form-group">
+                <label>要求学时（完成后计入档案）</label>
+                <input id="plan-required-hours" type="number" step="0.5" class="form-control" value="${p && p.required_hours != null ? p.required_hours : ''}">
+              </div>
+            </div>
+            <p class="text-muted" style="font-size:12px;margin-top:-4px">
+              覆盖范围规则：公司级 → 全体在职员工；部门级 / 项目级 → 下面勾选的部门（含其下级部门），不勾选则为计划所属部门。
+            </p>
+            <div class="form-row">
+              <div class="form-group">
                 <label>培训地点</label>
                 <input id="plan-location" class="form-control" value="${Utils.escapeHtml(p ? (p.location || '') : '')}">
               </div>
@@ -456,6 +524,9 @@ const TrainingPlans = {
       start_date: document.getElementById('plan-start').value || null,
       end_date: document.getElementById('plan-end').value || null,
       hours: document.getElementById('plan-hours').value ? parseFloat(document.getElementById('plan-hours').value) : null,
+      deadline: document.getElementById('plan-deadline').value || null,
+      required_hours: document.getElementById('plan-required-hours').value
+        ? parseFloat(document.getElementById('plan-required-hours').value) : null,
       trainer: document.getElementById('plan-trainer').value.trim() || null,
       location: document.getElementById('plan-location').value.trim() || null,
       status: document.getElementById('plan-status').value,
