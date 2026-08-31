@@ -29,12 +29,13 @@ const TrainingModule = {
   // ---------------------------------------------------------------- 入口
   async render(app) {
     this.state.profile = Auth.currentProfile || {};
+    const staff = this.isStaff();
 
     app.innerHTML = `
       <div class="dashboard">
         ${this.buildHeader()}
         <div class="dashboard-content">
-          ${this.buildTabs()}
+          ${staff ? '' : this.buildTabs()}
           <div id="training-section">
             <div class="card"><div class="card-body">加载中...</div></div>
           </div>
@@ -42,8 +43,19 @@ const TrainingModule = {
       </div>
     `;
 
+    const box = document.getElementById('training-section');
+    if (staff) {
+      // 员工端：只看「我的培训」
+      await TrainingMine.render(box);
+      return;
+    }
     await this.loadDepartments();
     await this.renderView();
+  },
+
+  /** 员工账号（非管理员、非部门报送账号） */
+  isStaff() {
+    return (this.state.profile || {}).role === 'employee';
   },
 
   // ---------------------------------------------------------------- 顶部
