@@ -478,6 +478,7 @@ ALTER TABLE public.training_exams
 
 -- 11.4 RPC：上报完成（一个事务内完成：建记录 → 带入参训人员 → 回写下发行 → 需要考试时建考试）
 --     权限：仅管理员，且该部门在管辖范围内
+DROP FUNCTION IF EXISTS public.training_report_complete(UUID, DATE, NUMERIC, TEXT, TEXT, TEXT, TEXT, BOOLEAN);
 DROP FUNCTION IF EXISTS public.training_report_complete(UUID, DATE, NUMERIC, TEXT, TEXT, TEXT, TEXT);
 CREATE FUNCTION public.training_report_complete(
   p_target_id   UUID,
@@ -486,7 +487,8 @@ CREATE FUNCTION public.training_report_complete(
   p_sign_method TEXT,
   p_trainer     TEXT,
   p_location    TEXT,
-  p_content     TEXT
+  p_content     TEXT,
+  p_with_exam   BOOLEAN DEFAULT NULL   -- NULL = 跟随计划上的「需要考试」设置
 ) RETURNS UUID AS $$
 DECLARE
   v_target   public.training_plan_targets%ROWTYPE;
@@ -548,8 +550,9 @@ BEGIN
     reported_at = NOW()
   WHERE id = p_target_id;
 
-  -- 4) 计划要求考试时，自动生成一条待填的考试登记
-  IF v_plan.require_exam THEN
+  -- 4) 需要考试时，自动生成一条待填的考试登记
+  --    取值优先级：上报时勾选 > 计划上的「需要考试」
+  IF COALESCE(p_with_exam, v_plan.require_exam) THEN
     INSERT INTO public.training_exams (
       record_id, plan_target_id, exam_name, exam_date, department_id,
       participant_count, pass_count, pass_line, source, created_by
@@ -564,7 +567,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-GRANT EXECUTE ON FUNCTION public.training_report_complete(UUID, DATE, NUMERIC, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.training_report_complete(UUID, DATE, NUMERIC, TEXT, TEXT, TEXT, TEXT, BOOLEAN) TO authenticated;
 
 -- 11.5 RPC：查询某员工的个人培训档案（一人一档）
 DROP FUNCTION IF EXISTS public.training_employee_history(UUID);
@@ -656,8 +659,109 @@ BEGIN
 END $$;
 
 -- ==========================================================================
+-- 13. v1.3 修复：列表全空的三个根因（2026-08-31 排障结论）
+--
+--   ① 部门为空的数据「存得进去、读不出来」
+--      旧策略写作 `department_id IN (可见部门)`。当 department_id 为 NULL 时，
+--      `NULL IN (...)` 求值是 NULL（不算通过），于是这条记录对谁都不可见；
+--      而写策略 training_can_write(NULL) 返回 TRUE，插入还能成功
+--      —— 表现就是「保存成功，但列表里 0 条」。
+--
+--   ② 未设置 admin_level 的管理员，可见部门集合为空
+--      profiles.admin_level 默认为 NULL，training_is_company_admin() 判定为假，
+--      又查不到所属部门，于是培训记录 / 考试登记 / 培训计划全部为空。
+--      兜底策略：未配置级别的管理员暂按「公司级」处理，设置级别后自动收紧。
+--
+--   ③ 上报时没有决定「本次是否组织考试」
+--      原逻辑只认计划上的 require_exam，建计划时忘勾就永远不会有考试记录。
+--      现改为上报表单可勾选，默认跟随计划设置。
+-- --------------------------------------------------------------------------
+
+-- 13.1 未配置级别的管理员暂按公司级处理（避免一进来全是空列表）
+CREATE OR REPLACE FUNCTION public.training_is_company_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
+      AND role = 'admin'
+      AND (is_super_admin IS TRUE OR COALESCE(admin_level, 'company') = 'company')
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- 13.2 统一的「可读」判定：部门为空的数据只有公司级能看到
+CREATE OR REPLACE FUNCTION public.training_can_read(p_dept UUID)
+RETURNS BOOLEAN AS $$
+  SELECT CASE
+    WHEN p_dept IS NULL THEN public.training_is_company_admin()
+    ELSE p_dept IN (SELECT public.training_visible_dept_ids())
+  END;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- 13.3 用 training_can_read 重写所有读策略
+DROP POLICY IF EXISTS "tr_emp_select" ON public.training_employees;
+CREATE POLICY "tr_emp_select" ON public.training_employees
+  FOR SELECT TO authenticated
+  USING (public.training_can_read(department_id));
+
+DROP POLICY IF EXISTS "tr_plan_select" ON public.training_plans;
+CREATE POLICY "tr_plan_select" ON public.training_plans
+  FOR SELECT TO authenticated
+  USING (
+    public.training_can_read(department_id)
+    OR level = 'company'
+    OR id IN (SELECT public.training_shared_plan_ids())
+  );
+
+DROP POLICY IF EXISTS "tr_rec_select" ON public.training_records;
+CREATE POLICY "tr_rec_select" ON public.training_records
+  FOR SELECT TO authenticated
+  USING (public.training_can_read(department_id));
+
+DROP POLICY IF EXISTS "tr_part_select" ON public.training_participants;
+CREATE POLICY "tr_part_select" ON public.training_participants
+  FOR SELECT TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM public.training_records r
+    WHERE r.id = record_id AND public.training_can_read(r.department_id)
+  ));
+
+DROP POLICY IF EXISTS "tr_exam_select" ON public.training_exams;
+CREATE POLICY "tr_exam_select" ON public.training_exams
+  FOR SELECT TO authenticated
+  USING (
+    public.training_can_read(department_id)
+    OR (record_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.training_records r
+      WHERE r.id = record_id AND public.training_can_read(r.department_id)
+    ))
+  );
+
+-- 13.4 权限自检 RPC（页面「统计概览」会显示，也可在 SQL 编辑器单独执行：
+--      SELECT * FROM public.training_debug_me();）
+DROP FUNCTION IF EXISTS public.training_debug_me();
+CREATE FUNCTION public.training_debug_me()
+RETURNS TABLE (
+  email              TEXT,
+  role               TEXT,
+  is_super_admin     BOOLEAN,
+  admin_level        TEXT,
+  dept_name          TEXT,
+  is_company_admin   BOOLEAN,
+  visible_dept_count BIGINT
+) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT p.email, p.role, p.is_super_admin, p.admin_level, d.name,
+         public.training_is_company_admin(),
+         (SELECT COUNT(*) FROM public.training_visible_dept_ids())
+  FROM public.profiles p
+  LEFT JOIN public.departments d ON d.id = p.department_id
+  WHERE p.id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.training_debug_me() TO authenticated;
+
+-- ==========================================================================
 -- 执行完成后请做三件事：
---   1. 给现有管理员账号设置级别（超级管理员无需设置）：
+--   1. 给现有管理员账号设置级别（超级管理员无需设置，未设置者暂按公司级处理）：
 --      UPDATE public.profiles SET admin_level = 'dept' WHERE email = '某部门管理员@qq.com';
 --   2. 如需三级数据隔离，在部门维护里补齐 departments.parent_id（部门 -> 项目部）
 --   3. 老数据补标来源（可选）：

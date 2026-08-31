@@ -89,7 +89,8 @@ const TrainingExams = {
             </thead>
             <tbody>
               ${rows.length === 0
-                ? TrainingModule.emptyRow(canEdit ? 9 : 8, '暂无考试记录')
+                ? TrainingModule.emptyRow(canEdit ? 9 : 8,
+                    '暂无考试记录。考试由「培训计划 → 执行 → 上报完成」自动生成（上报时勾选「本次组织了考试」），也可点右上角「+ 登记考试」手工补录。')
                 : rows.map(x => {
                     const r = this.rate(x);
                     const cls = r >= 80 ? '#22c55e' : (r >= 60 ? '#f59e0b' : '#ef4444');

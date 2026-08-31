@@ -135,6 +135,13 @@ const TrainingModule = {
     const err = [emps, plans, recs, parts, exams].find(r => r.error);
     if (err) throw new Error(err.error.message);
 
+    // 权限自检（RPC 不存在时静默跳过，不影响主流程）
+    let me = null;
+    try {
+      const { data } = await sb.rpc('training_debug_me');
+      me = Array.isArray(data) ? data[0] : (data || null);
+    } catch (_) { /* 未执行 v1.3 补丁 */ }
+
     const empList = emps.data || [];
     const planList = plans.data || [];
     const recList = recs.data || [];
@@ -165,6 +172,25 @@ const TrainingModule = {
             <div class="cert-stat-label">${Utils.escapeHtml(c.label)}</div>
           </div>`).join('')}
       </div>
+      ${me ? `
+      <div class="card" style="margin-top:12px">
+        <div class="card-header"><h2>当前账号权限自检</h2></div>
+        <div class="card-body">
+          <table style="font-size:13px">
+            <tr><td style="padding:2px 16px 2px 0;color:#6b7280">账号</td><td>${Utils.escapeHtml(me.email || '')}</td></tr>
+            <tr><td style="padding:2px 16px 2px 0;color:#6b7280">角色 / 级别</td>
+                <td>${Utils.escapeHtml(me.role || '')} / <b>${Utils.escapeHtml(
+                  me.is_super_admin ? '超级管理员' : (me.admin_level === 'company' ? '公司级'
+                    : me.admin_level === 'dept' ? '部门级' : me.admin_level === 'project' ? '项目级'
+                    : '未设置（暂按公司级）'))}</b></td></tr>
+            <tr><td style="padding:2px 16px 2px 0;color:#6b7280">所属部门</td><td>${Utils.escapeHtml(me.dept_name || '未设置')}</td></tr>
+            <tr><td style="padding:2px 16px 2px 0;color:#6b7280">可见部门数</td>
+                <td style="color:${(me.visible_dept_count || 0) > 0 ? '#22c55e' : '#ef4444'};font-weight:600">
+                  ${me.visible_dept_count || 0} 个${(me.visible_dept_count || 0) === 0
+                    ? '（为 0 说明看不到任何数据，请检查该账号是否归属部门）' : ''}</td></tr>
+          </table>
+        </div>
+      </div>` : ''}
       <div class="card" style="margin-top:12px">
         <div class="card-header"><h2>说明</h2></div>
         <div class="card-body">

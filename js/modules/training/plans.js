@@ -283,8 +283,12 @@ const TrainingPlans = {
               <label>培训内容</label>
               <textarea id="rep-content" class="form-control" rows="2">${Utils.escapeHtml(plan.content || '')}</textarea>
             </div>
+            <div class="form-group" style="display:flex;align-items:center;gap:8px">
+              <input id="rep-exam" type="checkbox" ${plan.require_exam ? 'checked' : ''} style="width:16px;height:16px">
+              <label for="rep-exam" style="margin:0">本次组织了考试（勾选后自动生成一条待填的考试登记）</label>
+            </div>
             <p class="text-muted" style="font-size:12px">
-              提交后：自动生成培训记录 → 按部门档案带入在职员工为参训人员${plan.require_exam ? ' → 自动生成一条待填的考试登记' : ''}
+              提交后：自动生成培训记录 → 按部门档案带入在职员工为参训人员${plan.require_exam ? ' → 自动生成待填的考试登记' : ''}
             </p>
           </div>
           <div class="modal-footer">
@@ -305,6 +309,7 @@ const TrainingPlans = {
       p_trainer: document.getElementById('rep-trainer').value.trim() || null,
       p_location: document.getElementById('rep-location').value.trim() || null,
       p_content: document.getElementById('rep-content').value.trim() || null,
+      p_with_exam: document.getElementById('rep-exam').checked,
     });
     if (error) { alert('上报失败：' + error.message); return; }
 

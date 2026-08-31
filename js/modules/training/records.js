@@ -100,7 +100,8 @@ const TrainingRecords = {
             </thead>
             <tbody>
               ${rows.length === 0
-                ? TrainingModule.emptyRow(9, '暂无培训记录')
+                ? TrainingModule.emptyRow(9,
+                    '暂无培训记录。培训记录主要由「培训计划 → 执行 → 上报完成」自动生成，也可点右上角「+ 登记培训」手工补录；若已添加却看不到，请把上方「年度」切为「全部」。')
                 : rows.map(r => `
                   <tr>
                     <td>${Utils.escapeHtml(r.train_date || '')}</td>
