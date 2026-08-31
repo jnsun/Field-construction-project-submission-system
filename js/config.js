@@ -7,8 +7,10 @@
  *   - anon public key -> 填入 SUPABASE_ANON_KEY
  */
 
-const SUPABASE_URL = 'https://exwsuwhqqpsqekzkmdol.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4d3N1d2hxcXBzcWVremttZG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MzUyNTcsImV4cCI6MjEwMzExMTI1N30.bMqWlGbJ0IGL9mgT33r9IjUQiJ7E2dwADKHNU04ukW0';
+// 后端指向腾讯云自托管 Supabase（服务器 140.143.247.55，经 Nginx 同源反代）
+// 如需回滚云 Supabase：把下面两行改回云端 Project URL 与 anon key 即可
+const SUPABASE_URL = 'http://140.143.247.55';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg3OTIzMTgyLCJleHAiOjIxMDMyODMxODJ9.KnS6ejpGHGxOyET6KQdjwhFzWBcGNpHfoLKOfh-dTXU';
 
 // 初始化 Supabase 客户端（全局可用）
 // 使用 try-catch 防止 SDK 加载失败时阻塞整个应用
