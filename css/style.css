@@ -1420,3 +1420,13 @@ input[disabled] {
 }
 
 
+
+/* ==========================================================================
+   防止滚动条出现/消失导致页面整体左右抖动：
+   - 老浏览器：强制 html 始终保留纵向滚动条轨道
+   - 支持 scrollbar-gutter 的现代浏览器：按需滚动但预留 gutter（不强制显示）
+   ========================================================================== */
+html { overflow-y: scroll; }
+@supports (scrollbar-gutter: stable) {
+  html { overflow-y: auto; scrollbar-gutter: stable; }
+}
