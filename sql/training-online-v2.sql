@@ -153,9 +153,13 @@ RETURNS UUID AS $$
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 
 -- 6.2 我参训的计划（员工端用）
+--     双通道匹配：user_id 快照 或 employee_id 实时绑定
+--     （员工在计划发布后才开通账号的，任务也能立即出现）
 CREATE OR REPLACE FUNCTION public.training_my_plan_ids()
 RETURNS SETOF UUID AS $$
-  SELECT plan_id FROM public.training_assignments WHERE user_id = auth.uid();
+  SELECT plan_id FROM public.training_assignments
+  WHERE user_id = auth.uid()
+     OR employee_id = public.training_my_employee_id();
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 
 -- 6.3 能否读某个计划的课件：参训员工 或 管辖内管理员 或 公司级计划
@@ -387,7 +391,8 @@ RETURNS TABLE (
          a.completed_at
   FROM public.training_assignments a
   JOIN public.training_plans p ON p.id = a.plan_id
-  WHERE a.user_id = auth.uid()
+  WHERE (a.user_id = auth.uid()
+         OR a.employee_id = public.training_my_employee_id())
     AND p.publish_status = 'published'
   ORDER BY (a.status = 'completed'), p.deadline NULLS LAST, p.created_at DESC;
 $$;
@@ -582,6 +587,7 @@ CREATE POLICY "tr_asg_select" ON public.training_assignments
   FOR SELECT TO authenticated
   USING (
     user_id = auth.uid()
+    OR employee_id = public.training_my_employee_id()
     OR public.training_can_read(department_id)
   );
 
