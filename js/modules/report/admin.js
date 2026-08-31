@@ -1618,8 +1618,9 @@ const Admin = {
   deptTypeName(t) {
     if (t === 'company') return '公司';
     if (t === 'entity') return '经营实体';
+    if (t === 'internal') return '内设机构';
     if (t === 'project') return '项目部';
-    return '经营实体';
+    return t || '未分类';
   },
 
   /**
@@ -1813,7 +1814,9 @@ const Admin = {
       ? '<span class="badge badge-primary">公司</span>'
       : d.dept_type === 'entity'
         ? '<span class="badge badge-info">经营实体</span>'
-        : '<span class="badge badge-warning">项目部</span>';
+        : d.dept_type === 'internal'
+          ? '<span class="badge badge-muted">内设机构</span>'
+          : '<span class="badge badge-warning">项目部</span>';
 
     // 操作按钮权限
     let actions;
@@ -1942,10 +1945,11 @@ const Admin = {
           <label>部门类型</label>
           <select name="dept_type">
             ${t('entity', '经营实体')}
+            ${t('internal', '内设机构')}
             ${t('project', '项目部')}
             ${t('company', '公司')}
           </select>
-          <p class="hint">company=公司根 / entity=经营实体 / project=项目部（公司已存在时不可再选公司）</p>
+          <p class="hint">company=公司根 / entity=经营实体 / internal=内设机构 / project=项目部（公司已存在时不可再选公司；内设机构为二级叶子，不再建下级）</p>
         </div>`;
     }
 
