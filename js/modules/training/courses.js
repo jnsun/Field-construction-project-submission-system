@@ -222,8 +222,10 @@ const TrainingCourses = {
     if ((type === 'pdf' || type === 'video' || type === 'image')
         && fileInput && fileInput.files.length) {
       const file = fileInput.files[0];
-      const safe = file.name.replace(/[^\w.\-一-龥]/g, '_');
-      const path = `${this.state.planId}/${Date.now()}_${safe}`;
+      // Storage key 白名单不含中文等非 ASCII 字符（否则报 Invalid key），
+      // key 一律用 时间戳_随机串.后缀，原文件名展示走 title 字段（与证照模块同模式）
+      const ext = (file.name.match(/\.([A-Za-z0-9]{1,8})$/) || [null, 'bin'])[1].toLowerCase();
+      const path = `${this.state.planId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const { error: upErr } = await sb.storage.from(this.BUCKET).upload(path, file, {
         cacheControl: '3600',
         upsert: false,
