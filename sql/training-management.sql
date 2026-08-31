@@ -589,6 +589,73 @@ $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 GRANT EXECUTE ON FUNCTION public.training_employee_history(UUID) TO authenticated;
 
 -- ==========================================================================
+-- 12. v1.2 修复：用 SECURITY DEFINER 函数彻底消除策略递归
+--     背景：只要 A 表策略里直接查 B 表、B 表策略里又直接查 A 表，
+--           Postgres 就会报 infinite recursion detected in policy。
+--     做法：把「跨表查询」封装进 SECURITY DEFINER 函数——函数以属主身份读表，
+--           绕过 RLS，因而不会再触发对方的策略，递归自然消失。
+-- --------------------------------------------------------------------------
+
+-- 12.1 共享给我的计划 ID（下发到我所辖部门的计划）
+CREATE OR REPLACE FUNCTION public.training_shared_plan_ids()
+RETURNS SETOF UUID AS $$
+  SELECT plan_id FROM public.training_plan_targets
+  WHERE department_id IN (SELECT public.training_visible_dept_ids());
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- 12.2 我是否可以写某个计划（用于计划适用范围的写权限校验）
+CREATE OR REPLACE FUNCTION public.training_can_write_plan(p_plan_id UUID)
+RETURNS BOOLEAN AS $$
+  SELECT public.is_admin() AND EXISTS (
+    SELECT 1 FROM public.training_plans p
+    WHERE p.id = p_plan_id
+      AND (p.department_id IS NULL
+           OR p.department_id IN (SELECT public.training_visible_dept_ids()))
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- 12.3 培训计划读策略：改用 12.1 的函数，不再直接查 training_plan_targets
+DROP POLICY IF EXISTS "tr_plan_select" ON public.training_plans;
+CREATE POLICY "tr_plan_select" ON public.training_plans
+  FOR SELECT TO authenticated
+  USING (
+    department_id IN (SELECT public.training_visible_dept_ids())
+    OR level = 'company'
+    OR id IN (SELECT public.training_shared_plan_ids())
+  );
+
+-- 12.4 计划适用范围写策略：改用 12.2 的函数，不再直接查 training_plans
+DROP POLICY IF EXISTS "tr_target_select" ON public.training_plan_targets;
+CREATE POLICY "tr_target_select" ON public.training_plan_targets
+  FOR SELECT TO authenticated
+  USING (department_id IN (SELECT public.training_visible_dept_ids()));
+
+DROP POLICY IF EXISTS "tr_target_insert" ON public.training_plan_targets;
+CREATE POLICY "tr_target_insert" ON public.training_plan_targets
+  FOR INSERT TO authenticated
+  WITH CHECK (public.training_can_write_plan(plan_id));
+
+DROP POLICY IF EXISTS "tr_target_update" ON public.training_plan_targets;
+CREATE POLICY "tr_target_update" ON public.training_plan_targets
+  FOR UPDATE TO authenticated
+  USING (public.training_can_write_plan(plan_id));
+
+DROP POLICY IF EXISTS "tr_target_delete" ON public.training_plan_targets;
+CREATE POLICY "tr_target_delete" ON public.training_plan_targets
+  FOR DELETE TO authenticated
+  USING (public.training_can_write_plan(plan_id));
+
+-- 12.5 清理历史遗留的 FOR ALL 策略（若存在）
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_policies
+             WHERE schemaname='public' AND tablename='training_plan_targets'
+               AND policyname='tr_target_write') THEN
+    EXECUTE 'DROP POLICY "tr_target_write" ON public.training_plan_targets';
+  END IF;
+END $$;
+
+-- ==========================================================================
 -- 执行完成后请做三件事：
 --   1. 给现有管理员账号设置级别（超级管理员无需设置）：
 --      UPDATE public.profiles SET admin_level = 'dept' WHERE email = '某部门管理员@qq.com';
