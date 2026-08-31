@@ -712,6 +712,62 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 GRANT EXECUTE ON FUNCTION public.training_employees_batch_delete(UUID[]) TO authenticated;
 
+-- --------------------------------------------------------------------------
+-- 17. Excel 导入时按名称自动建档部门
+--     表格里出现的部门名如果系统里没有，直接新建（编码自动生成，同 create_department 的规则）；
+--     已存在的按名称复用，不会建重。返回 名称 → 部门ID 的对照表。
+-- --------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.training_ensure_departments(TEXT[]);
+CREATE FUNCTION public.training_ensure_departments(p_names TEXT[])
+RETURNS TABLE (name TEXT, department_id UUID, created BOOLEAN)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_one    TEXT;
+  v_id     UUID;
+  v_sort   INT;
+  v_code   TEXT;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION '只有管理员才能新建部门';
+  END IF;
+  IF p_names IS NULL OR array_length(p_names, 1) IS NULL THEN
+    RETURN;
+  END IF;
+
+  FOREACH v_one IN ARRAY p_names LOOP
+    v_one := btrim(COALESCE(v_one, ''));
+    CONTINUE WHEN v_one = '';
+
+    -- 已存在：直接复用
+    SELECT d.id INTO v_id FROM public.departments d WHERE d.name = v_one LIMIT 1;
+    IF v_id IS NOT NULL THEN
+      RETURN QUERY SELECT v_one, v_id, FALSE;
+      CONTINUE;
+    END IF;
+
+    -- 不存在：新建（编码 DEPT- + 随机 6 位十六进制，与 create_department 保持一致）
+    SELECT COALESCE(MAX(sort_order), 0) + 1 INTO v_sort FROM public.departments;
+    v_code := 'DEPT-' || upper(substr(md5(gen_random_uuid()::text), 1, 6));
+
+    INSERT INTO public.departments (name, code, sort_order)
+    VALUES (v_one, v_code, v_sort)
+    ON CONFLICT (name) DO NOTHING
+    RETURNING id INTO v_id;
+
+    IF v_id IS NULL THEN
+      -- 并发下被别人先建了，取回来复用
+      SELECT d.id INTO v_id FROM public.departments d WHERE d.name = v_one LIMIT 1;
+      RETURN QUERY SELECT v_one, v_id, FALSE;
+    ELSE
+      RETURN QUERY SELECT v_one, v_id, TRUE;
+    END IF;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.training_ensure_departments(TEXT[]) TO authenticated;
+
 -- ==========================================================================
 -- 执行完成后：
 --   1. 管理员在「员工档案」里批量导入员工（姓名 / 部门 / 手机号 / 身份证号必填）

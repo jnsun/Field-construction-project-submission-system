@@ -510,7 +510,7 @@ const TrainingEmployees = {
       [''],
       ['1. 姓名必填；带 * 的为必填列'],
       ['2. 性别填「男」或「女」，留空也可以'],
-      ['3. 所属部门要和系统里的部门名称完全一致，填错或留空会归为「未指定」'],
+      ['3. 所属部门在系统里不存在时会自动新建（按名称匹配，已存在的直接复用）；留空则归为「未指定」'],
       ['4. 身份证号与手机号用于员工登录：登录名=手机号，初始密码=身份证后6位'],
       ['5. 身份证号 / 手机号必须唯一，重复的整行会被跳过'],
       ['6. 入职日期格式 YYYY-MM-DD，例如 2024-01-15'],
@@ -538,7 +538,8 @@ const TrainingEmployees = {
           <div class="modal-body">
             <p class="text-muted" style="margin-bottom:8px">
               先点「导入模板」下载表格，按说明填好后在这里选择文件。
-              身份证号与手机号用于员工登录，请务必填写准确。
+              身份证号与手机号用于员工登录，请务必填写准确。<br>
+              表格里的部门名如果在系统里还不存在，<b>会自动新建该部门</b>，不会中断导入。
             </p>
             <div class="form-group">
               <input type="file" id="emp-file" accept=".xlsx,.xls" class="form-control">
@@ -592,8 +593,9 @@ const TrainingEmployees = {
       if (idNo && seenIdNo[idNo]) errors.push('身份证号重复');
       if (phone && !/^1[3-9]\d{9}$/.test(phone)) errors.push('手机号格式不对');
       if (idNo && idNo.length < 15) errors.push('身份证号太短');
-      if (deptName && !deptByName[deptName]) errors.push('部门名称不匹配');
       if (genderRaw && !gender) errors.push('性别只能填男或女');
+      // 系统里没有的部门不再算错误，导入时自动新建
+      const newDept = !!(deptName && !deptByName[deptName]);
 
       if (phone) seenPhone[phone] = true;
       if (idNo) seenIdNo[idNo] = true;
@@ -604,6 +606,7 @@ const TrainingEmployees = {
         employee_no: String(r[2] == null ? '' : r[2]).trim() || null,
         department_id: deptByName[deptName] || null,
         dept_raw: deptName,
+        new_dept: newDept,
         position: String(r[4] == null ? '' : r[4]).trim() || null,
         id_number: idNo || null,
         phone: phone || null,
@@ -634,6 +637,7 @@ const TrainingEmployees = {
     const rows = this.state.importRows || [];
     const bad = rows.filter(r => r.errors.length);
     const good = rows.filter(r => !r.errors.length);
+    const newDepts = [...new Set(good.filter(r => r.new_dept).map(r => r.dept_raw))];
     const box = document.getElementById('emp-import-preview');
     if (!box) return;
 
@@ -643,6 +647,10 @@ const TrainingEmployees = {
         <b style="color:#22c55e">可导入 ${good.length}</b>
         ${bad.length ? `｜<b style="color:#ef4444">有问题的 ${bad.length}</b>` : ''}
       </p>
+      ${newDepts.length ? `
+      <p style="margin:0 0 8px;color:#b45309;font-size:13px">
+        将自动新建 ${newDepts.length} 个部门：${Utils.escapeHtml(newDepts.join('、'))}
+      </p>` : ''}
       ${rows.length ? `
       <div style="max-height:280px;overflow:auto;border:1px solid #e5e7eb;border-radius:6px">
         <table class="data-table">
@@ -658,8 +666,10 @@ const TrainingEmployees = {
                 <td>${Utils.escapeHtml(r.gender || '—')}</td>
                 <td>${Utils.escapeHtml(r.dept_raw || '未指定')}</td>
                 <td>${Utils.escapeHtml(r.phone || '')}</td>
-                <td style="color:${r.errors.length ? '#ef4444' : '#22c55e'}">
-                  ${r.errors.length ? Utils.escapeHtml(r.errors.join('；')) : '通过'}
+                <td style="color:${r.errors.length ? '#ef4444' : (r.new_dept ? '#b45309' : '#22c55e')}">
+                  ${r.errors.length
+                    ? Utils.escapeHtml(r.errors.join('；'))
+                    : (r.new_dept ? '通过（将自动新建该部门）' : '通过')}
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -676,11 +686,32 @@ const TrainingEmployees = {
     const rows = (this.state.importRows || []).filter(r => !r.errors.length);
     if (!rows.length) return;
 
+    // 1) 表格里出现的新部门先自动建档，拿到名称 → 部门ID 对照
+    const byName = {};
+    TrainingModule.state.depts.forEach(d => { byName[(d.name || '').trim()] = d.id; });
+    const missing = [...new Set(rows.map(r => r.dept_raw).filter(Boolean))].filter(n => !byName[n]);
+
+    let createdNames = [];
+    if (missing.length) {
+      const { data, error } = await sb.rpc('training_ensure_departments', { p_names: missing });
+      if (error) {
+        alert('自动新建部门失败：' + (error.message || '')
+          + '\n\n若提示函数不存在，请先在 Supabase 执行 sql/training-online-v2.sql 的第 17 节。');
+        return;
+      }
+      (data || []).forEach(x => { byName[x.name] = x.department_id; });
+      createdNames = (data || []).filter(x => x.created).map(x => x.name);
+      // 部门列表变了，刷新缓存与下拉框
+      TrainingModule.state.depts = [];
+      await TrainingModule.loadDepartments();
+    }
+
+    // 2) 回填部门 ID 后写入员工
     const payload = rows.map(r => ({
       name: r.name,
       gender: r.gender,
       employee_no: r.employee_no,
-      department_id: r.department_id,
+      department_id: r.dept_raw ? (byName[r.dept_raw] || null) : null,
       position: r.position,
       id_number: r.id_number,
       phone: r.phone,
@@ -697,6 +728,10 @@ const TrainingEmployees = {
     this.closeForm();
     await this.load();
     if (Utils.toast) Utils.toast(`已导入 ${payload.length} 名员工`);
-    alert(`已导入 ${payload.length} 名员工。\n\n记得点「批量开通账号」，员工才能登录参加在线培训。`);
+
+    let msg = `已导入 ${payload.length} 名员工。`;
+    if (createdNames.length) msg += `\n\n自动新建了 ${createdNames.length} 个部门：${createdNames.join('、')}`;
+    msg += '\n\n记得点「批量开通账号」，员工才能登录参加在线培训。';
+    alert(msg);
   },
 };
