@@ -24,6 +24,7 @@ const TrainingModule = {
     { key: 'records',   label: '培训记录' },
     { key: 'exams',     label: '考试登记' },
     { key: 'qbank',     label: '题库管理' },
+    { key: 'papers',    label: '试卷管理' },
     { key: 'stats',     label: '统计概览' },
   ],
 
@@ -126,6 +127,7 @@ const TrainingModule = {
         case 'records':   await TrainingRecords.render(box);   break;
         case 'exams':     await TrainingExams.render(box);     break;
         case 'qbank':     await TrainingQuestions.render(box); break;
+        case 'papers':    await ExamPapers.render(box);        break;
         default:          await this.renderStats(box);
       }
     } catch (e) {
