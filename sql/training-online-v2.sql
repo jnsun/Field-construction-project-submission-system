@@ -169,8 +169,9 @@ $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 -- --------------------------------------------------------------------------
 -- 7. 发布计划：按层级自动展开参训名单
 --    覆盖规则（优先级从高到低）：
---      ① level = 'company'                → 全体在职员工
---      ② training_plan_targets 有记录      → 这些部门及其所有下级部门
+--      ① training_plan_targets 有记录      → 这些部门及其所有下级部门
+--                                           （即使公司级计划，指定了范围也严格按范围，不放大成全员）
+--      ② level = 'company' 且无 targets     → 全体在职员工
 --      ③ 否则                              → 计划所属部门及其所有下级部门
 -- --------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.training_publish_plan(UUID);
@@ -212,7 +213,10 @@ BEGIN
   FROM public.training_employees e
   WHERE e.status = 'active'
     AND (
-      v_plan.level = 'company'
+      (
+        v_plan.level = 'company'
+        AND NOT EXISTS (SELECT 1 FROM public.training_plan_targets WHERE plan_id = p_plan_id)
+      )
       OR e.department_id IN (SELECT id FROM covered WHERE id IS NOT NULL)
     )
   ON CONFLICT (plan_id, employee_id) DO NOTHING;
