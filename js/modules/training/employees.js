@@ -8,6 +8,41 @@ const TrainingEmployees = {
     list: [],
     filters: { dept: '', status: '', keyword: '' },
     selected: new Set(),     // 批量删除勾选的员工 id
+    view: localStorage.getItem('emp-view') || 'table',   // table 表格 | card 方块
+    expanded: new Set(JSON.parse(localStorage.getItem('emp-expanded') || '[]')), // 展开的部门组（默认全折叠）
+    profileMap: {},          // user_id -> profiles 行（管理员标识，读不到时静默降级）
+  },
+
+  setView(v) {
+    this.state.view = v;
+    localStorage.setItem('emp-view', v);
+    this.renderTable();
+  },
+
+  toggleGroup(key) {
+    if (this.state.expanded.has(key)) this.state.expanded.delete(key);
+    else this.state.expanded.add(key);
+    localStorage.setItem('emp-expanded', JSON.stringify([...this.state.expanded]));
+    this.renderTable();
+  },
+
+  /** 按部门分组；未分配部门单独一组 */
+  grouped() {
+    const groups = {};
+    this.filtered().forEach(e => {
+      const key = e.department_id || '_none';
+      (groups[key] = groups[key] || []).push(e);
+    });
+    return Object.entries(groups).map(([key, emps]) => ({
+      key,
+      name: key === '_none' ? '未分配部门' : TrainingModule.deptName(emps[0].department_id),
+      emps,
+    })).sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  },
+
+  isGroupOpen(key) {
+    const kw = (this.state.filters.keyword || '').toLowerCase();
+    return kw ? true : this.state.expanded.has(key);   // 搜索时自动展开匹配组
   },
 
   async render(box) {
@@ -24,6 +59,12 @@ const TrainingEmployees = {
             <option value="active"${this.state.filters.status === 'active' ? ' selected' : ''}>在职</option>
             <option value="left"${this.state.filters.status === 'left' ? ' selected' : ''}>离职</option>
           </select>
+          <span style="margin-left:10px;display:inline-flex;background:#e9edf3;border-radius:999px;padding:3px;vertical-align:middle">
+            <button type="button" class="cat-tab${this.state.view === 'table' ? ' active' : ''}"
+              style="padding:4px 14px;font-size:12px" onclick="TrainingEmployees.setView('table')">表格</button>
+            <button type="button" class="cat-tab${this.state.view === 'card' ? ' active' : ''}"
+              style="padding:4px 14px;font-size:12px" onclick="TrainingEmployees.setView('card')">方块</button>
+          </span>
         </div>
         <div class="toolbar-right">
           <input type="search" id="emp-search" class="toolbar-search" placeholder="搜索姓名/工号/岗位/手机号"
@@ -36,6 +77,7 @@ const TrainingEmployees = {
             <button class="btn btn-primary btn-sm" onclick="TrainingEmployees.openForm()">+ 新增员工</button>` : ''}
         </div>
       </div>
+      <div id="emp-legend"></div>
       <div id="emp-table"></div>
     `;
     await this.load();
@@ -76,6 +118,15 @@ const TrainingEmployees = {
       .order('name');
     if (error) throw error;
     this.state.list = data || [];
+
+    // 管理员标识（profiles 不可读时静默降级，不影响主流程）
+    try {
+      const { data: profs } = await sb.from('profiles').select('id, role');
+      const map = {};
+      (profs || []).forEach(p => { map[p.id] = p; });
+      this.state.profileMap = map;
+    } catch (_) { this.state.profileMap = {}; }
+
     this.renderTable();
   },
 
@@ -96,7 +147,19 @@ const TrainingEmployees = {
     const rows = this.filtered();
     const canEdit = TrainingModule.canEdit();
     const selCount = rows.filter(e => this.state.selected.has(e.id)).length;
-    const allChecked = rows.length > 0 && selCount === rows.length;
+    const groups = this.grouped();
+    const isCard = this.state.view === 'card';
+
+    // 方块视图的颜色图例
+    const legend = document.getElementById('emp-legend');
+    if (legend) legend.innerHTML = isCard ? `
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#64748b;margin:6px 2px">
+        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#ecfdf5;border:1px solid #22c55e;margin-right:4px;vertical-align:-1px"></span>已开通账号</span>
+        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#fff;border:1px solid #e5e7eb;margin-right:4px;vertical-align:-1px"></span>未开通账号</span>
+        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#eef2ff;border:1px solid #4f46e5;margin-right:4px;vertical-align:-1px"></span>管理员</span>
+        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#f3f4f6;border:1px solid #9ca3af;margin-right:4px;vertical-align:-1px"></span>离职</span>
+        <span style="margin-left:auto">默认按部门折叠，点击部门名展开</span>
+      </div>` : '';
 
     box.innerHTML = `
       <div class="card">
@@ -109,68 +172,126 @@ const TrainingEmployees = {
             : ''}
         </div>
         <div class="card-body" style="padding:0">
-          <table class="data-table">
-            <thead>
-              <tr>
-                ${canEdit ? `<th style="width:36px">
-                  <input type="checkbox" ${allChecked ? 'checked' : ''}
-                    onchange="TrainingEmployees.toggleAll(this.checked)"
-                    style="width:15px;height:15px">
-                </th>` : ''}
-                <th style="width:100px">姓名</th>
-                <th style="width:60px">性别</th>
-                <th style="width:100px">工号</th>
-                <th style="width:150px">所属部门</th>
-                <th style="width:130px">岗位/工种</th>
-                <th style="width:150px">身份证号</th>
-                <th style="width:120px">手机号</th>
-                <th style="width:110px">入职日期</th>
-                <th style="width:80px">类型</th>
-                <th style="width:70px">状态</th>
-                <th style="width:100px">登录账号</th>
-                <th style="width:${canEdit ? '240px' : '90px'}">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.length === 0
-                ? TrainingModule.emptyRow(canEdit ? 13 : 11, '暂无员工档案，可用上方「Excel 导入」批量建档')
-                : rows.map(e => `
-                  <tr>
-                    ${canEdit ? `<td>
-                      <input type="checkbox" ${this.state.selected.has(e.id) ? 'checked' : ''}
-                        onchange="TrainingEmployees.toggleOne('${e.id}', this.checked)"
-                        style="width:15px;height:15px">
-                    </td>` : ''}
-                    <td>${Utils.escapeHtml(e.name)}</td>
-                    <td>${Utils.escapeHtml(e.gender || '—')}</td>
-                    <td>${Utils.escapeHtml(e.employee_no || '')}</td>
-                    <td>${Utils.escapeHtml(TrainingModule.deptName(e.department_id))}</td>
-                    <td>${Utils.escapeHtml(e.position || '')}</td>
-                    <td>${Utils.escapeHtml(Utils.maskIdNumber ? Utils.maskIdNumber(e.id_number) : (e.id_number || ''))}</td>
-                    <td>${Utils.escapeHtml(e.phone || '')}</td>
-                    <td>${Utils.escapeHtml(e.hire_date || '')}</td>
-                    <td>${this.typeLabel(e.emp_type)}</td>
-                    <td>${e.status === 'left'
-                        ? '<span class="badge badge-muted">离职</span>'
-                        : '<span class="badge badge-success">在职</span>'}</td>
-                    <td>${e.user_id
-                        ? '<span class="badge badge-success">已开通</span>'
-                        : '<span class="badge badge-muted">未开通</span>'}</td>
-                    <td>
-                      <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openHistory('${e.id}')">培训档案</button>
-                      ${canEdit ? `
-                        ${e.user_id
-                          ? `<button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.provision('${e.id}', true)" title="重置为身份证后6位">重置密码</button>`
-                          : `<button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.provision('${e.id}')">开通账号</button>`}
-                        <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openForm('${e.id}')">编辑</button>
-                        <button class="btn btn-sm btn-danger" onclick="TrainingEmployees.remove('${e.id}')">删除</button>` : ''}
-                    </td>
-                  </tr>`).join('')}
-            </tbody>
-          </table>
+          ${isCard ? this.renderCardGroups(groups, canEdit) : this.renderTableGroups(groups, canEdit)}
         </div>
       </div>
     `;
+  },
+
+  /** 组头（两种视图共用） */
+  groupHead(g, open) {
+    const active = g.emps.filter(e => e.status === 'active').length;
+    const opened = g.emps.filter(e => e.user_id).length;
+    return `
+      <span style="display:inline-block;transform:rotate(${open ? '90deg' : '0deg'});transition:transform .15s;color:#64748b">▸</span>
+      <b style="font-size:13px">${Utils.escapeHtml(g.name)}</b>
+      <span style="color:#64748b;font-weight:400;font-size:12px;margin-left:8px">
+        ${g.emps.length} 人 · 在职 ${active}${opened ? ` · 已开通 ${opened}` : ''}
+      </span>`;
+  },
+
+  renderTableGroups(groups, canEdit) {
+    const kwEmpty = !(this.state.filters.keyword || '').trim();
+    if (!groups.length) {
+      return `<table class="data-table"><tbody>
+        ${TrainingModule.emptyRow(canEdit ? 13 : 11, '暂无员工档案，可用上方「Excel 导入」批量建档')}
+      </tbody></table>`;
+    }
+    return groups.map(g => {
+      const open = kwEmpty ? this.isGroupOpen(g.key) : this.isGroupOpen(g.key);
+      return `
+        <table class="data-table" style="margin-bottom:2px">
+          <thead>
+            <tr style="cursor:pointer;background:#f4f6fa" onclick="TrainingEmployees.toggleGroup('${g.key}')">
+              <th colspan="${canEdit ? 13 : 11}" style="text-align:left">${this.groupHead(g, open)}</th>
+            </tr>
+          </thead>
+          ${open ? `<tbody>${g.emps.map(e => this.empRow(e, canEdit)).join('')}</tbody>` : ''}
+        </table>`;
+    }).join('');
+  },
+
+  empRow(e, canEdit) {
+    return `
+      <tr>
+        ${canEdit ? `<td>
+          <input type="checkbox" ${this.state.selected.has(e.id) ? 'checked' : ''}
+            onchange="TrainingEmployees.toggleOne('${e.id}', this.checked)"
+            style="width:15px;height:15px">
+        </td>` : ''}
+        <td>${Utils.escapeHtml(e.name)}</td>
+        <td>${Utils.escapeHtml(e.gender || '—')}</td>
+        <td>${Utils.escapeHtml(e.employee_no || '')}</td>
+        <td>${Utils.escapeHtml(TrainingModule.deptName(e.department_id))}</td>
+        <td>${Utils.escapeHtml(e.position || '')}</td>
+        <td>${Utils.escapeHtml(Utils.maskIdNumber ? Utils.maskIdNumber(e.id_number) : (e.id_number || ''))}</td>
+        <td>${Utils.escapeHtml(e.phone || '')}</td>
+        <td>${Utils.escapeHtml(e.hire_date || '')}</td>
+        <td>${this.typeLabel(e.emp_type)}</td>
+        <td>${e.status === 'left'
+            ? '<span class="badge badge-muted">离职</span>'
+            : '<span class="badge badge-success">在职</span>'}</td>
+        <td>${e.user_id
+            ? '<span class="badge badge-success">已开通</span>'
+            : '<span class="badge badge-muted">未开通</span>'}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openHistory('${e.id}')">培训档案</button>
+          ${canEdit ? `
+            ${e.user_id
+              ? `<button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.provision('${e.id}', true)" title="重置为身份证后6位">重置密码</button>`
+              : `<button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.provision('${e.id}')">开通账号</button>`}
+            <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openForm('${e.id}')">编辑</button>
+            <button class="btn btn-sm btn-danger" onclick="TrainingEmployees.remove('${e.id}')">删除</button>` : ''}
+        </td>
+      </tr>`;
+  },
+
+  renderCardGroups(groups, canEdit) {
+    if (!groups.length) {
+      return '<p class="text-muted" style="text-align:center;padding:24px">暂无员工档案，可用上方「Excel 导入」批量建档</p>';
+    }
+    return groups.map(g => {
+      const open = this.isGroupOpen(g.key);
+      return `
+        <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9">
+          <div style="cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none"
+            onclick="TrainingEmployees.toggleGroup('${g.key}')">
+            ${this.groupHead(g, open)}
+          </div>
+          ${open ? `
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+              ${g.emps.map(e => this.empCard(e, canEdit)).join('')}
+            </div>` : ''}
+        </div>`;
+    }).join('');
+  },
+
+  empCard(e, canEdit) {
+    const prof = e.user_id ? this.state.profileMap[e.user_id] : null;
+    const isAdmin = prof && prof.role === 'admin';
+    let bg = '#ffffff', bd = '#e5e7eb', nameColor = '#111827';
+    if (e.status === 'left')      { bg = '#f3f4f6'; bd = '#9ca3af'; nameColor = '#9ca3af'; }
+    else if (isAdmin)             { bg = '#eef2ff'; bd = '#4f46e5'; }
+    else if (e.user_id)           { bg = '#ecfdf5'; bd = '#22c55e'; }
+    return `
+      <div style="width:150px;border:1.5px solid ${bd};background:${bg};border-radius:10px;padding:8px 10px;font-size:12px">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <b style="font-size:13px;color:${nameColor}">${Utils.escapeHtml(e.name)}</b>
+          ${isAdmin ? '<span class="badge badge-primary" style="font-size:10px;padding:1px 5px">管理员</span>' : ''}
+          ${e.status === 'left' ? '<span class="badge badge-muted" style="font-size:10px;padding:1px 5px">离职</span>' : ''}
+        </div>
+        <div style="color:#6b7280;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${Utils.escapeHtml(e.position || '')}">${Utils.escapeHtml(e.position || '—')}</div>
+        <div style="color:#9ca3af;margin-top:2px;font-size:11px">
+          ${e.user_id ? '✓ 已开通' : '未开通'}${e.phone ? ' · ' + Utils.escapeHtml(e.phone) : ''}
+        </div>
+        <div style="margin-top:6px;display:flex;gap:4px">
+          <button class="btn btn-sm btn-secondary" style="padding:2px 8px;font-size:11px"
+            onclick="event.stopPropagation();TrainingEmployees.openHistory('${e.id}')">档案</button>
+          ${canEdit ? `<button class="btn btn-sm btn-secondary" style="padding:2px 8px;font-size:11px"
+            onclick="event.stopPropagation();TrainingEmployees.openForm('${e.id}')">编辑</button>` : ''}
+        </div>
+      </div>`;
   },
 
   typeLabel(t) {
