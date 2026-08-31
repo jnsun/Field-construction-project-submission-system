@@ -657,6 +657,61 @@ ALTER TABLE public.training_employees
 
 COMMENT ON COLUMN public.training_employees.gender IS '性别：男 / 女（可为空）';
 
+-- --------------------------------------------------------------------------
+-- 16. 批量删除员工档案（导入错了要重来时用）
+--
+--     一个事务内完成：删员工 → 级联清掉参训名单与学习进度 → 连登录账号一起删。
+--     ⚠️ 必须连带删除 auth 账号：否则重新导入同一个人时会因为
+--        "该手机号已开通 / 登录账号已存在" 而失败。
+--     参训明细 training_participants 是 ON DELETE SET NULL，会保留姓名快照行，
+--     历史培训记录不受影响。
+-- --------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.training_employees_batch_delete(UUID[]);
+CREATE FUNCTION public.training_employees_batch_delete(p_ids UUID[])
+RETURNS JSONB AS $$
+DECLARE
+  v_users    UUID[];
+  v_acct     INT := 0;
+  v_deleted  INT := 0;
+  v_acct_err TEXT := NULL;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION '只有管理员才能批量删除员工';
+  END IF;
+  IF p_ids IS NULL OR array_length(p_ids, 1) IS NULL THEN
+    RAISE EXCEPTION '请先选择要删除的员工';
+  END IF;
+
+  SELECT array_agg(user_id) INTO v_users
+  FROM public.training_employees
+  WHERE id = ANY(p_ids) AND user_id IS NOT NULL;
+
+  DELETE FROM public.training_employees WHERE id = ANY(p_ids);
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+
+  -- 连带清理登录账号；个别账号若被其他业务表引用导致删不掉，
+  -- 只记录原因，不影响员工档案已经删除的结果
+  IF v_users IS NOT NULL AND array_length(v_users, 1) > 0 THEN
+    BEGIN
+      DELETE FROM auth.identities WHERE user_id = ANY(v_users);
+      DELETE FROM auth.users      WHERE id      = ANY(v_users);
+      v_acct := array_length(v_users, 1);
+    EXCEPTION WHEN OTHERS THEN
+      v_acct := 0;
+      v_acct_err := SQLERRM;
+    END;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'deleted',      v_deleted,
+    'accounts',     v_acct,
+    'account_error', v_acct_err
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.training_employees_batch_delete(UUID[]) TO authenticated;
+
 -- ==========================================================================
 -- 执行完成后：
 --   1. 管理员在「员工档案」里批量导入员工（姓名 / 部门 / 手机号 / 身份证号必填）
