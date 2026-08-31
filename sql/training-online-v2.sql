@@ -719,7 +719,7 @@ GRANT EXECUTE ON FUNCTION public.training_employees_batch_delete(UUID[]) TO auth
 -- --------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.training_ensure_departments(TEXT[]);
 CREATE FUNCTION public.training_ensure_departments(p_names TEXT[])
-RETURNS TABLE (name TEXT, department_id UUID, created BOOLEAN)
+RETURNS TABLE (dept_name TEXT, department_id UUID, created BOOLEAN)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
@@ -739,10 +739,10 @@ BEGIN
     v_one := btrim(COALESCE(v_one, ''));
     CONTINUE WHEN v_one = '';
 
-    -- 已存在：直接复用
+    -- 已存在：直接复用（d.name 限定引用，避免与返回列名冲突）
     SELECT d.id INTO v_id FROM public.departments d WHERE d.name = v_one LIMIT 1;
     IF v_id IS NOT NULL THEN
-      RETURN QUERY SELECT v_one, v_id, FALSE;
+      RETURN QUERY SELECT v_one AS dept_name, v_id AS department_id, FALSE AS created;
       CONTINUE;
     END IF;
 
@@ -758,9 +758,9 @@ BEGIN
     IF v_id IS NULL THEN
       -- 并发下被别人先建了，取回来复用
       SELECT d.id INTO v_id FROM public.departments d WHERE d.name = v_one LIMIT 1;
-      RETURN QUERY SELECT v_one, v_id, FALSE;
+      RETURN QUERY SELECT v_one AS dept_name, v_id AS department_id, FALSE AS created;
     ELSE
-      RETURN QUERY SELECT v_one, v_id, TRUE;
+      RETURN QUERY SELECT v_one AS dept_name, v_id AS department_id, TRUE AS created;
     END IF;
   END LOOP;
 END;

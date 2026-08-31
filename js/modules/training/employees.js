@@ -699,8 +699,8 @@ const TrainingEmployees = {
           + '\n\n若提示函数不存在，请先在 Supabase 执行 sql/training-online-v2.sql 的第 17 节。');
         return;
       }
-      (data || []).forEach(x => { byName[x.name] = x.department_id; });
-      createdNames = (data || []).filter(x => x.created).map(x => x.name);
+      (data || []).forEach(x => { byName[x.dept_name] = x.department_id; });
+      createdNames = (data || []).filter(x => x.created).map(x => x.dept_name);
       // 部门列表变了，刷新缓存与下拉框
       TrainingModule.state.depts = [];
       await TrainingModule.loadDepartments();
