@@ -53,7 +53,7 @@ const TrainingEmployees = {
   async load() {
     const { data, error } = await sb
       .from('training_employees')
-      .select('id, name, employee_no, department_id, position, id_number, phone, hire_date, emp_type, status, remark, user_id')
+      .select('id, name, gender, employee_no, department_id, position, id_number, phone, hire_date, emp_type, status, remark, user_id')
       .order('name');
     if (error) throw error;
     this.state.list = data || [];
@@ -84,7 +84,8 @@ const TrainingEmployees = {
           <table class="data-table">
             <thead>
               <tr>
-                <th style="width:110px">姓名</th>
+                <th style="width:100px">姓名</th>
+                <th style="width:60px">性别</th>
                 <th style="width:100px">工号</th>
                 <th style="width:150px">所属部门</th>
                 <th style="width:130px">岗位/工种</th>
@@ -99,10 +100,11 @@ const TrainingEmployees = {
             </thead>
             <tbody>
               ${rows.length === 0
-                ? TrainingModule.emptyRow(canEdit ? 11 : 10, '暂无员工档案，可用上方「Excel 导入」批量建档')
+                ? TrainingModule.emptyRow(canEdit ? 12 : 11, '暂无员工档案，可用上方「Excel 导入」批量建档')
                 : rows.map(e => `
                   <tr>
                     <td>${Utils.escapeHtml(e.name)}</td>
+                    <td>${Utils.escapeHtml(e.gender || '—')}</td>
                     <td>${Utils.escapeHtml(e.employee_no || '')}</td>
                     <td>${Utils.escapeHtml(TrainingModule.deptName(e.department_id))}</td>
                     <td>${Utils.escapeHtml(e.position || '')}</td>
@@ -217,9 +219,19 @@ const TrainingEmployees = {
             </div>
             <div class="form-row">
               <div class="form-group">
+                <label>性别</label>
+                <select id="emp-gender" class="form-control">
+                  <option value="">未填写</option>
+                  <option value="男"${e && e.gender === '男' ? ' selected' : ''}>男</option>
+                  <option value="女"${e && e.gender === '女' ? ' selected' : ''}>女</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label>工号</label>
                 <input id="emp-no" class="form-control" value="${Utils.escapeHtml(e ? (e.employee_no || '') : '')}">
               </div>
+            </div>
+            <div class="form-row">
               <div class="form-group">
                 <label>所属部门</label>
                 <select id="emp-dept" class="form-control">
@@ -227,12 +239,12 @@ const TrainingEmployees = {
                   ${TrainingModule.deptOptions(e ? e.department_id : '', false)}
                 </select>
               </div>
-            </div>
-            <div class="form-row">
               <div class="form-group">
                 <label>岗位/工种</label>
                 <input id="emp-position" class="form-control" value="${Utils.escapeHtml(e ? (e.position || '') : '')}">
               </div>
+            </div>
+            <div class="form-row">
               <div class="form-group">
                 <label>人员类型</label>
                 <select id="emp-type" class="form-control">
@@ -240,6 +252,10 @@ const TrainingEmployees = {
                   <option value="special"${e && e.emp_type === 'special' ? ' selected' : ''}>特种作业</option>
                   <option value="manager"${e && e.emp_type === 'manager' ? ' selected' : ''}>管理人员</option>
                 </select>
+              </div>
+              <div class="form-group">
+                <label>入职日期</label>
+                <input id="emp-hire" type="date" class="form-control" value="${e ? (e.hire_date || '') : ''}">
               </div>
             </div>
             <div class="form-row">
@@ -253,10 +269,6 @@ const TrainingEmployees = {
               </div>
             </div>
             <div class="form-row">
-              <div class="form-group">
-                <label>入职日期</label>
-                <input id="emp-hire" type="date" class="form-control" value="${e ? (e.hire_date || '') : ''}">
-              </div>
               <div class="form-group">
                 <label>状态</label>
                 <select id="emp-status" class="form-control">
@@ -287,6 +299,7 @@ const TrainingEmployees = {
   async submit(id) {
     const payload = {
       name: document.getElementById('emp-name').value.trim(),
+      gender: document.getElementById('emp-gender').value || null,
       employee_no: document.getElementById('emp-no').value.trim() || null,
       department_id: document.getElementById('emp-dept').value || null,
       position: document.getElementById('emp-position').value.trim() || null,
@@ -358,25 +371,26 @@ const TrainingEmployees = {
   },
 
   // ------------------------------------------------------------ Excel 导入
-  HEADERS: ['姓名*', '工号', '所属部门', '岗位/工种', '身份证号', '手机号', '入职日期', '人员类型', '状态', '备注'],
+  HEADERS: ['姓名*', '性别', '工号', '所属部门', '岗位/工种', '身份证号', '手机号', '入职日期', '人员类型', '状态', '备注'],
 
   downloadTemplate() {
     if (typeof XLSX === 'undefined') { alert('Excel 组件未加载，请刷新页面重试'); return; }
-    const sample = [['张三', 'GY001', '工程物探所', '物探工程师', '110101199001011234', '13800138000', '2024-01-15', '普通员工', '在职', '']];
+    const sample = [['张三', '男', 'GY001', '工程物探所', '物探工程师', '110101199001011234', '13800138000', '2024-01-15', '普通员工', '在职', '']];
     const ws = XLSX.utils.aoa_to_sheet([this.HEADERS, ...sample]);
-    ws['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 10 }, { wch: 6 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 20 }];
 
     const help = XLSX.utils.aoa_to_sheet([
       ['填写说明'],
       [''],
       ['1. 姓名必填；带 * 的为必填列'],
-      ['2. 所属部门要和系统里的部门名称完全一致，填错或留空会归为「未指定」'],
-      ['3. 身份证号与手机号用于员工登录：登录名=手机号，初始密码=身份证后6位'],
-      ['4. 身份证号 / 手机号必须唯一，重复的整行会被跳过'],
-      ['5. 入职日期格式 YYYY-MM-DD，例如 2024-01-15'],
-      ['6. 人员类型：普通员工 / 特种作业 / 管理人员（留空按普通员工）'],
-      ['7. 状态：在职 / 离职（留空按在职）'],
-      ['8. 第一行是表头，请勿删除；不要修改列名'],
+      ['2. 性别填「男」或「女」，留空也可以'],
+      ['3. 所属部门要和系统里的部门名称完全一致，填错或留空会归为「未指定」'],
+      ['4. 身份证号与手机号用于员工登录：登录名=手机号，初始密码=身份证后6位'],
+      ['5. 身份证号 / 手机号必须唯一，重复的整行会被跳过'],
+      ['6. 入职日期格式 YYYY-MM-DD，例如 2024-01-15'],
+      ['7. 人员类型：普通员工 / 特种作业 / 管理人员（留空按普通员工）'],
+      ['8. 状态：在职 / 离职（留空按在职）'],
+      ['9. 第一行是表头，请勿删除；不要修改列名'],
     ]);
     help['!cols'] = [{ wch: 60 }];
 
@@ -441,9 +455,11 @@ const TrainingEmployees = {
       const name = String(r[0] == null ? '' : r[0]).trim();
       if (!name) continue;
 
-      const phone = String(r[5] == null ? '' : r[5]).trim();
-      const idNo = String(r[4] == null ? '' : r[4]).trim();
-      const deptName = String(r[2] == null ? '' : r[2]).trim();
+      const phone = String(r[6] == null ? '' : r[6]).trim();
+      const idNo = String(r[5] == null ? '' : r[5]).trim();
+      const deptName = String(r[3] == null ? '' : r[3]).trim();
+      const genderRaw = String(r[1] == null ? '' : r[1]).trim();
+      const gender = { 男: '男', 女: '女', M: '男', F: '女' }[genderRaw.toUpperCase()] || null;
       const errors = [];
 
       if (phone && seenPhone[phone]) errors.push('手机号重复');
@@ -451,22 +467,24 @@ const TrainingEmployees = {
       if (phone && !/^1[3-9]\d{9}$/.test(phone)) errors.push('手机号格式不对');
       if (idNo && idNo.length < 15) errors.push('身份证号太短');
       if (deptName && !deptByName[deptName]) errors.push('部门名称不匹配');
+      if (genderRaw && !gender) errors.push('性别只能填男或女');
 
       if (phone) seenPhone[phone] = true;
       if (idNo) seenIdNo[idNo] = true;
 
       parsed.push({
         name,
-        employee_no: String(r[1] == null ? '' : r[1]).trim() || null,
+        gender,
+        employee_no: String(r[2] == null ? '' : r[2]).trim() || null,
         department_id: deptByName[deptName] || null,
         dept_raw: deptName,
-        position: String(r[3] == null ? '' : r[3]).trim() || null,
+        position: String(r[4] == null ? '' : r[4]).trim() || null,
         id_number: idNo || null,
         phone: phone || null,
-        hire_date: this.toDateStr(r[6]),
-        emp_type: { 特种作业: 'special', 管理人员: 'manager' }[String(r[7] == null ? '' : r[7]).trim()] || 'employee',
-        status: String(r[8] == null ? '' : r[8]).trim() === '离职' ? 'left' : 'active',
-        remark: String(r[9] == null ? '' : r[9]).trim() || null,
+        hire_date: this.toDateStr(r[7]),
+        emp_type: { 特种作业: 'special', 管理人员: 'manager' }[String(r[8] == null ? '' : r[8]).trim()] || 'employee',
+        status: String(r[9] == null ? '' : r[9]).trim() === '离职' ? 'left' : 'active',
+        remark: String(r[10] == null ? '' : r[10]).trim() || null,
         errors,
       });
     }
@@ -503,13 +521,15 @@ const TrainingEmployees = {
       <div style="max-height:280px;overflow:auto;border:1px solid #e5e7eb;border-radius:6px">
         <table class="data-table">
           <thead><tr>
-            <th style="width:90px">姓名</th><th style="width:130px">部门</th>
+            <th style="width:90px">姓名</th><th style="width:50px">性别</th>
+            <th style="width:130px">部门</th>
             <th style="width:120px">手机号</th><th>校验结果</th>
           </tr></thead>
           <tbody>
             ${rows.map(r => `
               <tr>
                 <td>${Utils.escapeHtml(r.name)}</td>
+                <td>${Utils.escapeHtml(r.gender || '—')}</td>
                 <td>${Utils.escapeHtml(r.dept_raw || '未指定')}</td>
                 <td>${Utils.escapeHtml(r.phone || '')}</td>
                 <td style="color:${r.errors.length ? '#ef4444' : '#22c55e'}">
@@ -532,6 +552,7 @@ const TrainingEmployees = {
 
     const payload = rows.map(r => ({
       name: r.name,
+      gender: r.gender,
       employee_no: r.employee_no,
       department_id: r.department_id,
       position: r.position,

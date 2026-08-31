@@ -648,6 +648,15 @@ CREATE POLICY "training_courses_delete" ON storage.objects
   FOR DELETE TO authenticated
   USING (bucket_id = 'training-courses');
 
+-- --------------------------------------------------------------------------
+-- 15. 员工性别（Excel 导入模板新增列）
+--     本脚本整体幂等，重复执行不会破坏已有数据
+-- --------------------------------------------------------------------------
+ALTER TABLE public.training_employees
+  ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('男', '女'));
+
+COMMENT ON COLUMN public.training_employees.gender IS '性别：男 / 女（可为空）';
+
 -- ==========================================================================
 -- 执行完成后：
 --   1. 管理员在「员工档案」里批量导入员工（姓名 / 部门 / 手机号 / 身份证号必填）
