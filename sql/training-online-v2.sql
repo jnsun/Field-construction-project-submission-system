@@ -67,7 +67,12 @@ ALTER TABLE public.training_plans
   ADD COLUMN IF NOT EXISTS publish_status TEXT NOT NULL DEFAULT 'draft'
     CHECK (publish_status IN ('draft', 'published', 'closed')),
   ADD COLUMN IF NOT EXISTS published_at   TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS published_by   UUID REFERENCES auth.users(id);
+  ADD COLUMN IF NOT EXISTS published_by   UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS exam_mode      TEXT NOT NULL DEFAULT 'none'
+    CHECK (exam_mode IN ('none', 'auto', 'manual'));
+
+COMMENT ON COLUMN public.training_plans.exam_mode IS
+  '考试关联模式：none=仅培训不考试 / auto=课件完成自动触发 / manual=管理员手动发起（考试流程见 exam-module.sql）';
 
 -- --------------------------------------------------------------------------
 -- 3. 课件
@@ -123,6 +128,12 @@ CREATE INDEX IF NOT EXISTS idx_tr_asg_state ON public.training_assignments(statu
 DROP TRIGGER IF EXISTS trg_tr_asg_updated ON public.training_assignments;
 CREATE TRIGGER trg_tr_asg_updated BEFORE UPDATE ON public.training_assignments
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- 考试状态字段（答题/判分流程在 sql/exam-module.sql）
+ALTER TABLE public.training_assignments
+  ADD COLUMN IF NOT EXISTS exam_status   TEXT NOT NULL DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS exam_score    NUMERIC(5,1),
+  ADD COLUMN IF NOT EXISTS exam_attempts INT NOT NULL DEFAULT 0;
 
 -- --------------------------------------------------------------------------
 -- 5. 课件进度（每人每课件一行）
@@ -274,6 +285,7 @@ DECLARE
   v_all_done BOOLEAN := FALSE;
   v_record_id UUID;
   v_hours    NUMERIC;
+  v_exam_mode TEXT;
 BEGIN
   v_emp := public.training_my_employee_id();
   IF v_emp IS NULL THEN RAISE EXCEPTION '当前账号未绑定员工档案，请联系管理员'; END IF;
@@ -316,20 +328,33 @@ BEGIN
 
   SELECT required_hours INTO v_hours FROM public.training_plans WHERE id = v_plan_id;
 
+  -- 考试模式：none=课件完成即完成；auto/manual=课件完成只推进考试状态，
+  -- 最终完成由「考试通过 + 手写签字」驱动（sql/exam-module.sql）
+  SELECT COALESCE(exam_mode, 'none') INTO v_exam_mode
+  FROM public.training_plans WHERE id = v_plan_id;
+
   UPDATE public.training_assignments SET
     status = CASE
-               WHEN v_all_done THEN 'completed'
+               WHEN v_all_done AND v_exam_mode = 'none' THEN 'completed'
                WHEN v_avg > 0  THEN 'learning'
                ELSE status
              END,
+    exam_status = CASE
+               WHEN v_all_done AND v_exam_mode = 'auto'
+                    AND exam_status = 'none' THEN 'pending'
+               ELSE exam_status
+             END,
     progress     = v_avg,
-    completed_at = CASE WHEN v_all_done THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
-    hours_earned = CASE WHEN v_all_done THEN COALESCE(v_hours, hours_earned) ELSE hours_earned END,
+    completed_at = CASE WHEN v_all_done AND v_exam_mode = 'none'
+                        THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
+    hours_earned = CASE WHEN v_all_done AND v_exam_mode = 'none'
+                        THEN COALESCE(v_hours, hours_earned) ELSE hours_earned END,
     updated_at   = NOW()
   WHERE id = v_asg.id;
 
   -- 完成后同步到参训明细（供统计与一人一档读取）
-  IF v_all_done THEN
+  -- 有考试的计划改由 exam_submit / 签字环节写入，此处跳过
+  IF v_all_done AND v_exam_mode = 'none' THEN
     SELECT id INTO v_record_id
     FROM public.training_records WHERE plan_id = v_plan_id AND source = 'auto' LIMIT 1;
 
