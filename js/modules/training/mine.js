@@ -297,13 +297,15 @@ const TrainingMine = {
 
   async renderPdf(stage, c, p) {
     stage.innerHTML = `
-      <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
-      <div id="pdf-stage" class="text-muted">正在加载 PDF…</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
-        <button class="btn btn-sm btn-secondary" onclick="TrainingMine.pdfPage(-1)">上一页</button>
-        <span id="pdf-page-label" style="font-size:13px">—</span>
-        <button class="btn btn-sm btn-secondary" onclick="TrainingMine.pdfPage(1)">下一页</button>
-        <span class="text-muted" style="font-size:12px;margin-left:8px">需翻到最后几页才算学完</span>
+      <div style="max-width:760px;margin:0 auto">
+        <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
+        <div id="pdf-stage" class="text-muted">正在加载 PDF…</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+          <button class="btn btn-sm btn-secondary" onclick="TrainingMine.pdfPage(-1)">上一页</button>
+          <span id="pdf-page-label" style="font-size:13px">—</span>
+          <button class="btn btn-sm btn-secondary" onclick="TrainingMine.pdfPage(1)">下一页</button>
+          <span class="text-muted" style="font-size:12px;margin-left:8px">需翻到最后几页才算学完</span>
+        </div>
       </div>
     `;
 
@@ -349,17 +351,28 @@ const TrainingMine = {
     const s = this.state.pdf;
     const box = document.getElementById('pdf-stage');
     if (!s || !box) return;
+    // 等一帧让布局稳定后再量宽，避免初次渲染量到 0 或错误宽度
+    await new Promise(r => requestAnimationFrame(r));
     const page = await s.doc.getPage(s.page);
-    const containerWidth = box.clientWidth || 600;
+    let containerWidth = box.clientWidth;
+    if (!containerWidth) {
+      const wrap = box.parentElement;
+      containerWidth = (wrap && wrap.clientWidth)
+        || Math.min(600, (window.innerWidth || 600) - 48);
+    }
     const base = page.getViewport({ scale: 1 });
-    const scale = containerWidth / base.width;
+    const scale = Math.max(0.2, containerWidth / base.width);
     const viewport = page.getViewport({ scale });
 
     box.innerHTML = '';
     const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
     canvas.style.width = '100%';
+    canvas.style.maxWidth = '760px';
+    canvas.style.height = 'auto';
+    canvas.style.display = 'block';
+    canvas.style.margin = '0 auto';
     canvas.style.border = '1px solid #e5e7eb';
     canvas.style.borderRadius = '4px';
     box.appendChild(canvas);
