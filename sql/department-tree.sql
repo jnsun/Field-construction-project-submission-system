@@ -20,13 +20,16 @@ ALTER TABLE public.departments ADD COLUMN IF NOT EXISTS parent_id UUID
 
 ALTER TABLE public.departments ADD COLUMN IF NOT EXISTS dept_type TEXT NOT NULL DEFAULT 'entity';
 
+-- dept_type 取值：company / entity / internal / project
+-- （internal = 内设机构，二级叶子，2026-08-31 增补）
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'departments_dept_type_check') THEN
-    ALTER TABLE public.departments
-      ADD CONSTRAINT departments_dept_type_check
-      CHECK (dept_type IN ('company', 'entity', 'project'));
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'departments_dept_type_check') THEN
+    ALTER TABLE public.departments DROP CONSTRAINT departments_dept_type_check;
   END IF;
+  ALTER TABLE public.departments
+    ADD CONSTRAINT departments_dept_type_check
+    CHECK (dept_type IN ('company', 'entity', 'internal', 'project'));
 END $$;
 
 -- --------------------------------------------------------------------------

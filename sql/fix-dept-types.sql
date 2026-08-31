@@ -2,8 +2,8 @@
 -- 二级部门双类型修正：经营实体(entity) vs 内设机构(internal)
 -- ==========================================================================
 -- 依据（用户 2026-08-31 确认）：
---   * 公司二级部门分两类：经营实体(entity) + 内设机构(internal)
---   * 部门编号 DEPT-1 ~ DEPT-19 共 19 个为「经营实体」
+--   * 二级部门分两类：经营实体(entity) + 内设机构(internal)
+--   * 部门编号 DEPT-01 ~ DEPT-19（带前导零）共 19 个为「经营实体」
 --   * 其余二级部门为「内设机构」（二级叶子，不再建下级，不报送野外项目）
 --   * 只有经营实体可建/挂项目部(project)
 -- 前置：必须先执行 sql/department-tree.sql（departments 表需有 parent_id / dept_type）
@@ -21,11 +21,23 @@ BEGIN
   END IF;
 END $$;
 
--- 1. DEPT-1 ~ DEPT-19 → 经营实体（entity）
---    防御：dept_type <> 'company' 避免误改公司根（实际不可能）
+-- 0.5 修正 CHECK 约束，允许 internal
+--     原约束仅 company/entity/project，会导致 UPDATE 成 internal 报 23514
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'departments_dept_type_check') THEN
+    ALTER TABLE public.departments DROP CONSTRAINT departments_dept_type_check;
+  END IF;
+  ALTER TABLE public.departments
+    ADD CONSTRAINT departments_dept_type_check
+    CHECK (dept_type IN ('company', 'entity', 'internal', 'project'));
+END $$;
+
+-- 1. DEPT-01 ~ DEPT-19（编号带前导零）→ 经营实体（entity）
+--    用 regexp_replace 归一化编号：无论库里存 DEPT-1 还是 DEPT-01 都能命中
 UPDATE public.departments
 SET dept_type = 'entity'
-WHERE code IN (
+WHERE regexp_replace(code, '^DEPT-0*', 'DEPT-') IN (
   'DEPT-1','DEPT-2','DEPT-3','DEPT-4','DEPT-5','DEPT-6','DEPT-7','DEPT-8','DEPT-9',
   'DEPT-10','DEPT-11','DEPT-12','DEPT-13','DEPT-14','DEPT-15','DEPT-16','DEPT-17','DEPT-18','DEPT-19'
 )
@@ -36,7 +48,7 @@ AND dept_type <> 'company';
 UPDATE public.departments
 SET dept_type = 'internal'
 WHERE dept_type = 'entity'
-  AND code NOT IN (
+  AND regexp_replace(code, '^DEPT-0*', 'DEPT-') NOT IN (
     'DEPT-1','DEPT-2','DEPT-3','DEPT-4','DEPT-5','DEPT-6','DEPT-7','DEPT-8','DEPT-9',
     'DEPT-10','DEPT-11','DEPT-12','DEPT-13','DEPT-14','DEPT-15','DEPT-16','DEPT-17','DEPT-18','DEPT-19'
   );

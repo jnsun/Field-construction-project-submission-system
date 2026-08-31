@@ -46,7 +46,7 @@ BEGIN
   ) THEN
     ALTER TABLE public.departments
       ADD COLUMN dept_type TEXT NOT NULL DEFAULT 'entity'
-      CHECK (dept_type IN ('company', 'entity', 'project'));
+      CHECK (dept_type IN ('company', 'entity', 'internal', 'project'));
   END IF;
 END $$;
 
