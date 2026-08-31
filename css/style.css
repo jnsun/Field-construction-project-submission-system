@@ -400,6 +400,7 @@ a:hover { text-decoration: underline; }
 .badge-warning { background: var(--color-accent-light); color: var(--color-accent-dark); }
 .badge-muted   { background: #f1f5f9; color: var(--color-text-muted); }
 .badge-info    { background: var(--color-secondary-light); color: var(--color-secondary); }
+.badge-primary { background: var(--color-primary-light); color: var(--color-primary-dark); }
 .text-muted    { color: var(--color-text-muted); }
 
 /* 表单控件禁用状态（内置字段类型锁定） */

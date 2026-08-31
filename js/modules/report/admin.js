@@ -38,6 +38,7 @@ const Admin = {
    */
   async render(container, opts = {}) {
     this.state.readOnly = !!(opts && opts.readOnly);
+    this.state.entityMode = !!(opts && opts.entityMode);
     const ym = Utils.getCurrentYearMonth();
     this.state.year = ym.year;
     this.state.month = ym.month;
@@ -102,12 +103,17 @@ const Admin = {
       { key: 'reports',     label: '报送管理' },
       { key: 'completed',   label: '完工项目' },
     ];
-    // 仅管理员可见：账号管理、部门管理、报送配置（内设机构等无报送部门不可见）
+    // 管理员可见：账号管理、部门管理、报送配置
+    // 经营实体可见：部门管理（仅能在本部门下建/改/删项目部）
     if (Auth.isAdmin()) {
       views.push(
         { key: 'users',       label: '账号管理' },
         { key: 'departments', label: '部门管理' },
         { key: 'config',      label: '报送配置' },
+      );
+    } else if (Auth.isEntityManager()) {
+      views.push(
+        { key: 'departments', label: '部门管理' },
       );
     }
     return `
@@ -125,9 +131,10 @@ const Admin = {
    * @param {'reports'|'users'|'departments'} view
    */
   async switchView(view) {
-    // 非管理员不能进入账号/部门/配置三个后台管理页（仅管理员可见）
-    const adminOnlyViews = ['users', 'departments', 'config'];
-    if (adminOnlyViews.includes(view) && !Auth.isAdmin()) return;
+    // 账号管理 / 报送配置 仅管理员可进入
+    if ((view === 'users' || view === 'config') && !Auth.isAdmin()) return;
+    // 部门管理：管理员或经营实体可进入
+    if (view === 'departments' && !Auth.isAdmin() && !Auth.isEntityManager()) return;
 
     this.state.view = view;
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -181,7 +188,7 @@ const Admin = {
             <h1 class="page-title">野外施工项目报送</h1>
           </div>
           <div class="header-right">
-            <span class="badge ${this.state.readOnly ? 'badge-muted' : 'badge-success'}">${this.state.readOnly ? '只读查看' : '管理员'}</span>
+            <span class="badge ${this.state.readOnly ? 'badge-muted' : (this.state.entityMode ? 'badge-info' : 'badge-success')}">${this.state.readOnly ? '只读查看' : (this.state.entityMode ? '经营实体' : '管理员')}</span>
             ${!this.state.readOnly && Auth.isSuperAdmin() ? '<span class="badge badge-danger">超级管理员</span>' : ''}
             <div class="user-info">
               <span class="user-name">${Utils.escapeHtml(Auth.currentProfile.full_name || Auth.currentProfile.email || '管理员')}</span>
@@ -1539,6 +1546,94 @@ const Admin = {
   // 部门管理
   // ========================================================================
 
+  // ------------------------------------------------------------------------
+  // 部门管理 - 辅助方法（三级组织树：公司 → 经营实体 → 项目部）
+  // ------------------------------------------------------------------------
+
+  /**
+   * 当前经营实体账号的所属部门 ID（非实体模式返回 null）
+   */
+  myDeptId() {
+    return (this.state.entityMode && Auth.currentProfile) ? (Auth.currentProfile.department_id || null) : null;
+  },
+
+  /**
+   * 公司根节点 ID（dept_type='company'）
+   */
+  companyRootId() {
+    const root = (this.state.departments || []).find(d => d.dept_type === 'company');
+    return root ? root.id : null;
+  },
+
+  /**
+   * 部门类型中文名
+   */
+  deptTypeName(t) {
+    if (t === 'company') return '公司';
+    if (t === 'entity') return '经营实体';
+    if (t === 'project') return '项目部';
+    return '经营实体';
+  },
+
+  /**
+   * 上级部门名称（用于列表展示）
+   */
+  parentName(d) {
+    if (!d.parent_id) return d.dept_type === 'company' ? '— 公司根' : '（无上级）';
+    const p = (this.state.departments || []).find(x => x.id === d.parent_id);
+    return p ? p.name : '（未知）';
+  },
+
+  /**
+   * 当前账号可见的部门列表：
+   *   - 管理员：全部部门
+   *   - 经营实体：仅本部门 + 本部门下的项目部（本部门子树）
+   */
+  visibleDepts() {
+    if (!this.state.entityMode) return this.state.departments || [];
+    const myId = this.myDeptId();
+    if (!myId) return [];
+    return (this.state.departments || []).filter(d => d.id === myId || d.parent_id === myId);
+  },
+
+  /**
+   * 上级部门下拉选项（含层级缩进；排除自身及其后代以防循环）
+   * @param {string|null} selectedId 当前选中
+   * @param {string|null} excludeId  编辑时排除自身及其后代
+   */
+  buildParentOptions(selectedId = null, excludeId = null) {
+    const depts = this.state.departments || [];
+    const byId = {};
+    depts.forEach(d => { byId[d.id] = d; });
+    const depthOf = (d) => {
+      let n = 0, cur = d;
+      while (cur && cur.parent_id && byId[cur.parent_id] && n <= 10) {
+        n++; cur = byId[cur.parent_id];
+      }
+      return n;
+    };
+    const excludeSet = new Set();
+    if (excludeId) {
+      excludeSet.add(excludeId);
+      const stack = [excludeId];
+      while (stack.length) {
+        const id = stack.pop();
+        depts.forEach(d => {
+          if (d.parent_id === id && !excludeSet.has(d.id)) { excludeSet.add(d.id); stack.push(d.id); }
+        });
+      }
+    }
+    return depts
+      .filter(d => !excludeSet.has(d.id))
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      .map(d => {
+        const depth = depthOf(d);
+        const indent = '　'.repeat(depth);
+        const label = (depth > 0 ? indent + '└ ' : '') + d.name;
+        return `<option value="${d.id}" ${d.id === selectedId ? 'selected' : ''}>${Utils.escapeHtml(label)}</option>`;
+      }).join('');
+  },
+
   /**
    * 加载部门列表 + 各部门的账号数 / 报送记录数
    */
@@ -1594,21 +1689,22 @@ const Admin = {
     const container = document.getElementById('admin-departments-content');
     if (!container) return;
 
-    const depts = this.state.departments;
+    const depts = this.visibleDepts();
+    const isEntity = this.state.entityMode;
 
     container.innerHTML = `
       <div class="toolbar">
         <div class="toolbar-left">
-          <span class="toolbar-hint">共 ${depts.length} 个部门</span>
+          <span class="toolbar-hint">${isEntity ? '本部门及下属项目部' : '共 ' + depts.length + ' 个部门'}（三级组织：公司 → 经营实体 → 项目部）</span>
         </div>
         <div class="toolbar-right">
-          <button class="btn btn-primary" onclick="Admin.openDeptModal()">+ 新增部门</button>
+          <button class="btn btn-primary" onclick="Admin.openDeptModal()">${isEntity ? '+ 新建项目部' : '+ 新增部门'}</button>
           <button class="btn btn-secondary" onclick="Admin.loadDepartments()">刷新</button>
         </div>
       </div>
       <div class="card">
         <div class="card-header">
-          <h2>公司部门管理</h2>
+          <h2>${isEntity ? '部门管理（经营实体）' : '公司部门管理'}</h2>
         </div>
         <div class="card-body">
           <div class="table-wrapper">
@@ -1617,6 +1713,8 @@ const Admin = {
                 <tr>
                   <th>序号</th>
                   <th>部门名称</th>
+                  <th>上级部门</th>
+                  <th>部门类型</th>
                   <th>部门编码</th>
                   <th>排序</th>
                   <th>账号数</th>
@@ -1628,16 +1726,20 @@ const Admin = {
               </thead>
               <tbody>
                 ${depts.length === 0 ? `
-                  <tr class="empty-row"><td colspan="9">暂无部门，点击右上角"新增部门"创建</td></tr>
+                  <tr class="empty-row"><td colspan="11">${isEntity ? '您本部门下暂无项目部，点击右上角"新建项目部"创建' : '暂无部门，点击右上角"新增部门"创建'}</td></tr>
                 ` : depts.map((d, i) => this.renderDeptRow(d, i)).join('')}
               </tbody>
             </table>
           </div>
         </div>
       </div>
+      ${isEntity ? `
       <div class="alert alert-info" style="margin-top:12px;">
-        ⚠️ 删除部门前，该部门下不能存在账号和报送记录。有数据的部门请先在「账号管理」中转移账号后再删除。
-      </div>
+        ℹ️ 经营实体账号仅可在本部门下新建 / 编辑 / 删除「项目部」，上级部门与部门类型已锁定。
+      </div>` : `
+      <div class="alert alert-info" style="margin-top:12px;">
+        ⚠️ 删除部门前，该部门下不能存在账号、报送记录和下级部门。有数据的部门请先转移账号 / 删除下级部门后再删除。
+      </div>`}
     `;
   },
 
@@ -1659,20 +1761,54 @@ const Admin = {
         ? '<span class="badge badge-muted">禁止（默认）</span>'
         : '<span class="badge badge-info">允许（默认）</span>';
     }
+    // 部门类型徽章
+    const typeBadge = d.dept_type === 'company'
+      ? '<span class="badge badge-primary">公司</span>'
+      : d.dept_type === 'entity'
+        ? '<span class="badge badge-info">经营实体</span>'
+        : '<span class="badge badge-warning">项目部</span>';
+
+    // 操作按钮权限
+    let actions;
+    if (this.state.entityMode) {
+      // 经营实体：仅本部门下的项目部可编辑 / 删除
+      const myId = this.myDeptId();
+      if (d.dept_type === 'project' && d.parent_id === myId) {
+        actions = `
+          <button class="btn btn-secondary btn-sm" onclick="Admin.openDeptModal('${d.id}')">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="Admin.handleDeleteDept('${d.id}')">删除</button>
+        `;
+      } else {
+        actions = '<span class="dept-meta">不可操作</span>';
+      }
+    } else {
+      // 管理员：公司根节点不可删除，其余可编辑 / 删除
+      if (d.dept_type === 'company') {
+        actions = `
+          <button class="btn btn-secondary btn-sm" onclick="Admin.openDeptModal('${d.id}')">编辑</button>
+          <span class="dept-meta" title="公司根节点不可删除">根节点</span>
+        `;
+      } else {
+        actions = `
+          <button class="btn btn-secondary btn-sm" onclick="Admin.openDeptModal('${d.id}')">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="Admin.handleDeleteDept('${d.id}')">删除</button>
+        `;
+      }
+    }
+
     return `
       <tr>
         <td>${index + 1}</td>
         <td><strong>${Utils.escapeHtml(d.name)}</strong></td>
+        <td>${Utils.escapeHtml(this.parentName(d))}</td>
+        <td>${typeBadge}</td>
         <td>${Utils.escapeHtml(d.code || '-')}</td>
         <td>${d.sort_order ?? 0}</td>
         <td>${userCount > 0 ? `<span class="badge badge-warning">${userCount}</span>` : userCount}</td>
         <td>${reportCount > 0 ? `<span class="badge badge-warning">${reportCount}</span>` : reportCount}</td>
         <td>${reportBadge}</td>
         <td>${viewBadge}</td>
-        <td style="white-space:nowrap;">
-          <button class="btn btn-secondary btn-sm" onclick="Admin.openDeptModal('${d.id}')">编辑</button>
-          <button class="btn btn-danger btn-sm" onclick="Admin.handleDeleteDept('${d.id}')">删除</button>
-        </td>
+        <td style="white-space:nowrap;">${actions}</td>
       </tr>
     `;
   },
@@ -1692,16 +1828,87 @@ const Admin = {
     this.state.editingDeptId = deptId;
     const v = dept || {};
     const isEdit = !!deptId;
+    const isEntity = this.state.entityMode;
+    const myId = this.myDeptId();
     // 新部门默认排到当前最后
     const nextSort = this.state.departments.length > 0
       ? Math.max(...this.state.departments.map(d => Number(d.sort_order || 0))) + 1
       : 1;
 
+    // 预填：上级部门 / 部门类型
+    const isCompanyRoot = !isEntity && isEdit && v.dept_type === 'company';
+    const initParent = v.parent_id != null ? v.parent_id
+      : (isEntity ? myId : this.companyRootId());
+    const initType = v.dept_type || (isEntity ? 'project' : 'entity');
+
+    // 上级部门字段
+    let parentFieldHTML;
+    if (isEntity) {
+      const myName = (this.state.departments.find(d => d.id === myId) || {}).name || '本部门';
+      parentFieldHTML = `
+        <div class="form-group">
+          <label>上级部门</label>
+          <input type="text" value="${Utils.escapeHtml(myName)}（本部门）" disabled>
+          <input type="hidden" name="parent_id" value="${myId || ''}">
+          <p class="hint">经营实体只能在本部门下新建项目部，上级已锁定</p>
+        </div>`;
+    } else if (isCompanyRoot) {
+      parentFieldHTML = `
+        <div class="form-group">
+          <label>上级部门</label>
+          <input type="text" value="（公司根节点，无上级）" disabled>
+          <p class="hint">公司根节点没有上级部门</p>
+        </div>`;
+    } else {
+      parentFieldHTML = `
+        <div class="form-group">
+          <label>上级部门</label>
+          <select name="parent_id">
+            ${this.buildParentOptions(initParent, isEdit ? deptId : null)}
+          </select>
+          <p class="hint">选择该部门的上级部门，构成「公司 → 经营实体 → 项目部」三级树</p>
+        </div>`;
+    }
+
+    // 部门类型字段
+    let typeFieldHTML;
+    if (isEntity) {
+      typeFieldHTML = `
+        <div class="form-group">
+          <label>部门类型</label>
+          <input type="text" value="项目部" disabled>
+          <input type="hidden" name="dept_type" value="project">
+          <p class="hint">经营实体新建的部门固定为「项目部」</p>
+        </div>`;
+    } else if (isCompanyRoot) {
+      typeFieldHTML = `
+        <div class="form-group">
+          <label>部门类型</label>
+          <input type="text" value="公司" disabled>
+          <input type="hidden" name="dept_type" value="company">
+          <p class="hint">公司根节点类型固定为「公司」</p>
+        </div>`;
+    } else {
+      const t = (val, label) => `<option value="${val}" ${initType === val ? 'selected' : ''}>${label}</option>`;
+      typeFieldHTML = `
+        <div class="form-group">
+          <label>部门类型</label>
+          <select name="dept_type">
+            ${t('entity', '经营实体')}
+            ${t('project', '项目部')}
+            ${t('company', '公司')}
+          </select>
+          <p class="hint">company=公司根 / entity=经营实体 / project=项目部（公司已存在时不可再选公司）</p>
+        </div>`;
+    }
+
+    const title = isEntity ? (isEdit ? '编辑项目部' : '新建项目部') : (isEdit ? '编辑部门' : '新增部门');
+
     const modalHTML = `
       <div class="modal-overlay" id="dept-modal" onclick="Admin.onDeptModalOverlayClick(event)">
         <div class="modal-card">
           <div class="modal-header">
-            <h2>${isEdit ? '编辑部门' : '新增部门'}</h2>
+            <h2>${title}</h2>
             <button class="modal-close" onclick="Admin.closeDeptModal()">&times;</button>
           </div>
           <div class="modal-body">
@@ -1711,8 +1918,10 @@ const Admin = {
                 <div class="form-group col-span-2">
                   <label>部门名称 <span class="required">*</span></label>
                   <input type="text" name="name" value="${Utils.escapeHtml(v.name || '')}" required
-                    placeholder="如：工程六部 / 市政三部" ${isEdit ? '' : 'autocomplete="off"'}>
+                    placeholder="如：工程六部 / 某项目部" ${isEdit ? '' : 'autocomplete="off"'}>
                 </div>
+                ${parentFieldHTML}
+                ${typeFieldHTML}
                 <div class="form-group">
                   <label>排序号</label>
                   <input type="number" name="sort_order" value="${v.sort_order != null ? v.sort_order : nextSort}" min="0">
@@ -1743,7 +1952,7 @@ const Admin = {
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary" onclick="Admin.closeDeptModal()">取消</button>
-            <button class="btn btn-primary" onclick="Admin.submitDept()">${isEdit ? '保存修改' : '创建部门'}</button>
+            <button class="btn btn-primary" onclick="Admin.submitDept()">${isEdit ? '保存修改' : (isEntity ? '创建项目部' : '创建部门')}</button>
           </div>
         </div>
       </div>
@@ -1780,6 +1989,11 @@ const Admin = {
     const sortOrder = parseInt(fd.get('sort_order'), 10);
     const needsReport = fd.get('needs_report') === '1';
     const canViewAdmin = fd.get('can_view_admin') === '1';
+    // 上级部门 / 部门类型（经营实体模式下由隐藏域锁定为 本部门 / 项目部）
+    const parentIdRaw = fd.get('parent_id');
+    const parentId = (parentIdRaw && String(parentIdRaw).trim() !== '') ? parentIdRaw : null;
+    const deptTypeRaw = fd.get('dept_type');
+    const deptType = (deptTypeRaw && String(deptTypeRaw).trim() !== '') ? deptTypeRaw : null;
 
     if (!name) { Utils.toast('请填写部门名称', 'error'); return; }
     if (isNaN(sortOrder) || sortOrder < 0) { Utils.toast('排序号必须为非负整数', 'error'); return; }
@@ -1799,12 +2013,16 @@ const Admin = {
             p_sort_order: sortOrder,
             p_needs_report: needsReport,
             p_can_view_admin: canViewAdmin,
+            p_parent_id: parentId,
+            p_dept_type: deptType,
           })
         : await sb.rpc('create_department', {
             p_name: name,
             p_sort_order: sortOrder,
             p_needs_report: needsReport,
             p_can_view_admin: canViewAdmin,
+            p_parent_id: parentId,
+            p_dept_type: deptType,
           });
 
       if (result.error) {

@@ -34,6 +34,9 @@ const ModuleRegistry = (() => {
       renderer: (app) => {
         if (Auth.isAdmin()) {
           Admin.render(app, { readOnly: false });
+        } else if (Auth.isEntityManager()) {
+          // 经营实体：进入部门管理（非只读，但仅暴露部门管理页，且受模块内权限约束只能建/改/删本部门项目部）
+          Admin.render(app, { entityMode: true });
         } else if (Auth.canViewAdmin()) {
           Admin.render(app, { readOnly: true });
         } else {
