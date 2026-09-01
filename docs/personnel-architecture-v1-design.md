@@ -1,6 +1,7 @@
 # 人员与组织中心 · 架构设计 v1
 
-> 状态：设计确认中（未实施）
+> 状态：P1 已实施（待用户执行 sql/personnel-center-v1.sql 后跑 tests/e2e/verify-people.js 回归）
+> 实施偏差说明：特种作业标记未新增 is_special 列——training_employees.emp_type='special' 已承担，直接复用
 > 2026-09-01 与用户三轮问答确认的需求边界，见文末「决策记录」
 
 ## 一、问题：现在有三个管人的地方、两套人员数据

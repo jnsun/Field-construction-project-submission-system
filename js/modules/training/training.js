@@ -3,7 +3,8 @@
 //
 // v1 范围（2026-08-31 与用户确认）：
 //   · Web 版，并入现有系统；员工只建档案不登录；三级管理员权限
-//   · 五个页签：员工档案 / 培训计划 / 培训记录 / 考试登记 / 统计概览
+//   · 员工档案管理已移至九宫格「人员与组织」模块；本模块页签：
+//     培训计划 / 培训记录 / 考试登记 / 题库 / 试卷 / 统计分析 / 统计概览
 //
 // 布局约定（与资质证照管理页一致）：
 //   header-left 仅「← 返回上级菜单」 / header-center 标题居中 /
@@ -12,14 +13,13 @@
 const TrainingModule = {
 
   state: {
-    view: 'employees',     // employees | plans | records | exams | stats
+    view: 'plans',         // plans | records | exams | qbank | papers | analytics | stats
     depts: [],             // 全部部门（id/name/code/dept_type/parent_id）
     deptMap: {},           // id -> 部门对象
     profile: null,
   },
 
   TABS: [
-    { key: 'employees', label: '员工档案' },
     { key: 'plans',     label: '培训计划' },
     { key: 'records',   label: '培训记录' },
     { key: 'exams',     label: '考试登记' },
@@ -27,6 +27,7 @@ const TrainingModule = {
     { key: 'papers',    label: '试卷管理' },
     { key: 'analytics', label: '统计分析' },
     { key: 'stats',     label: '统计概览' },
+    // 员工档案页签已移至九宫格「人员与组织」模块（js/modules/people/people.js）
   ],
 
   // ---------------------------------------------------------------- 入口
@@ -123,7 +124,6 @@ const TrainingModule = {
     if (!box) return;
     try {
       switch (this.state.view) {
-        case 'employees': await TrainingEmployees.render(box); break;
         case 'plans':     await TrainingPlans.render(box);     break;
         case 'records':   await TrainingRecords.render(box);   break;
         case 'exams':     await TrainingExams.render(box);     break;

@@ -23,6 +23,7 @@ const ModuleRegistry = (() => {
     contract: '📁',
     training: '🎓',
     notice: '📢',
+    people: '👥',
   };
 
 
@@ -62,6 +63,9 @@ const ModuleRegistry = (() => {
       desc: '培训计划 / 培训记录 / 考试管理', renderer: (app) => TrainingModule.render(app) },
     { id: 'notice', name: '公告通知中心', icon: ICON.notice,
       desc: '内部公告与消息通知', renderer: (app)  => NoticeModule.render(app) },
+    { id: 'people', name: '人员与组织', icon: ICON.people, ready: true,
+      desc: '组织架构 / 员工台账 / 账号管理（全系统唯一管人入口）',
+      renderer: (app) => PeopleModule.render(app) },
     // 统计分析模块不单独占九宫格：作为「培训教育」模块的内页签，
     // 经 TrainingModule（TABS.analytics）渲染 StatsModule.render(box, { embedded: true })
   ];
