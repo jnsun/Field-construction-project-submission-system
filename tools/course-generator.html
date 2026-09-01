@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>培训课件生成器 · Markdown → 单文件 HTML</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", system-ui, sans-serif; background: #f3f4f6; color: #111827; }
+  .toolbar {
+    position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid #e5e7eb;
+    padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  }
+  .toolbar h1 { font-size: 16px; margin-right: auto; }
+  .toolbar .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .toolbar input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+  .btn {
+    padding: 7px 14px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff;
+    font-size: 13px; cursor: pointer;
+  }
+  .btn-primary { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+  .btn-primary:hover { background: #4338ca; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .split { display: flex; height: calc(100vh - 53px); }
+  .pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .pane + .pane { border-left: 1px solid #e5e7eb; }
+  .pane-head {
+    padding: 8px 14px; font-size: 12px; color: #6b7280; background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb; display: flex; gap: 10px; align-items: center;
+  }
+  #md-input {
+    flex: 1; border: none; resize: none; padding: 14px; font-size: 13px; line-height: 1.7;
+    font-family: Consolas, "Courier New", monospace; outline: none;
+  }
+  #preview { flex: 1; border: none; background: #fff; }
+  .tip { color: #9ca3af; }
+  @media (max-width: 900px) { .split { flex-direction: column; } .pane + .pane { border-left: none; border-top: 1px solid #e5e7eb; } }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>培训课件生成器</h1>
+  <div class="meta">
+    <input id="meta-title" placeholder="课件标题（自动取 Markdown 一级标题）" style="width:260px">
+    <input id="meta-org" placeholder="单位/部门署名（选填）" style="width:180px">
+    <button class="btn" onclick="loadSample()">载入示例</button>
+    <button class="btn btn-primary" id="btn-download" onclick="downloadHtml()" disabled>下载 HTML 课件</button>
+  </div>
+</div>
+
+<div class="split">
+  <div class="pane">
+    <div class="pane-head">
+      <b>Markdown 源文</b>
+      <span class="tip">用 <code>## </code> 二级标题分节（每节独立解锁，防一滑到底）；一级标题 = 课件标题</span>
+      <label class="btn" style="margin-left:auto">打开 .md 文件
+        <input type="file" accept=".md,.markdown,.txt" style="display:none" onchange="openMdFile(this)">
+      </label>
+    </div>
+    <textarea id="md-input" spellcheck="false" placeholder="# 课件标题
+
+## 第一节 标题
+
+正文……
+
+## 第二节 标题
+
+正文……" oninput="render()"></textarea>
+  </div>
+  <div class="pane">
+    <div class="pane-head"><b>预览</b><span class="tip" id="sec-count">—</span><span class="tip">（预览里可体验解锁门控）</span></div>
+    <iframe id="preview" title="课件预览"></iframe>
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+ * 培训课件生成器（纯前端，无需服务器）
+ * --------------------------------------------------------------------------
+ * 输入：Markdown 文本（# 为课件标题，## 为节边界）
+ * 输出：单文件响应式 HTML 课件，内嵌运行时：
+ *   · 分节门控防"一滑到底"：滚动到本节底部 + 驻留时长达标（按字数自适应，
+ *     8s~90s）才能点「下一节」，逐节解锁
+ *   · 计时与心跳：可见时累计阅读时长；挂进培训系统时每 20s postMessage
+ *     上报宿主（宿主转 training_course_heartbeat 记有效学时，失焦自动暂停）
+ *   · 进度/完成上报：已解锁节数 / 总节数，最后一节读完 = 100%
+ *   · 双模式：检测到宿主（培训系统 iframe）→ 联机上报；独立打开 → 本地模式
+ *     （localStorage 记进度，可离线自学，未来小程序 webview 同理）
+ * ========================================================================== */
+
+/* ---------------- Markdown 解析（紧凑实现，够用即可） ---------------- */
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function inlineMd(s) {
+  s = escapeHtml(s);
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%">');
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+  return s;
+}
+/* 块级解析：返回 {title, sections:[{title, html}]} */
+function parseMarkdown(md) {
+  const lines = md.replace(/\r\n/g, '\n').split('\n');
+  let title = '';
+  const sections = [];
+  let cur = null;          // 当前节 {title, blocks:[]}
+  let para = [];           // 段落缓冲
+  let i = 0;
+
+  const flushPara = () => {
+    if (para.length && cur) { cur.blocks.push('<p>' + inlineMd(para.join(' ')) + '</p>'); para = []; }
+    else para = [];
+  };
+  const ensureCur = () => {
+    if (!cur) { cur = { title: '', blocks: [] }; }
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // 围栏代码块
+    if (/^```/.test(line.trim())) {
+      flushPara(); ensureCur();
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i].trim())) { buf.push(lines[i]); i++; }
+      i++;
+      cur.blocks.push('<pre><code>' + escapeHtml(buf.join('\n')) + '</code></pre>');
+      continue;
+    }
+    // 表格（| 开头，下一行含 ---）
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      flushPara(); ensureCur();
+      const cells = h => h.trim().replace(/^\||\|$/g, '').split('|').map(x => x.trim());
+      const head = cells(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i++; }
+      cur.blocks.push('<table><thead><tr>' + head.map(h => '<th>' + inlineMd(h) + '</th>').join('') +
+        '</tr></thead><tbody>' + rows.map(r => '<tr>' + r.map(c => '<td>' + inlineMd(c) + '</td>').join('') + '</tr>').join('') +
+        '</tbody></table>');
+      continue;
+    }
+    // 标题
+    const hm = line.match(/^(#{1,4})\s+(.+)$/);
+    if (hm) {
+      flushPara();
+      const level = hm[1].length;
+      const text = hm[2].trim();
+      if (level === 1 && !title) { title = text; i++; continue; }
+      if (level <= 2) {
+        if (cur && (cur.blocks.length || cur.title)) sections.push(cur);
+        cur = { title: text, blocks: [] };
+        i++; continue;
+      }
+      ensureCur();
+      cur.blocks.push('<h' + (level + 1) + '>' + inlineMd(text) + '</h' + (level + 1) + '>');
+      i++; continue;
+    }
+    // 分隔线
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { flushPara(); ensureCur(); cur.blocks.push('<hr>'); i++; continue; }
+    // 引用
+    if (/^\s*>\s?/.test(line)) {
+      flushPara(); ensureCur();
+      const buf = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+      cur.blocks.push('<blockquote>' + buf.map(b => inlineMd(b)).join('<br>') + '</blockquote>');
+      continue;
+    }
+    // 无序列表
+    if (/^\s*[-*]\s+/.test(line)) {
+      flushPara(); ensureCur();
+      const items = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push('<li>' + inlineMd(lines[i].replace(/^\s*[-*]\s+/, '')) + '</li>'); i++;
+      }
+      cur.blocks.push('<ul>' + items.join('') + '</ul>');
+      continue;
+    }
+    // 有序列表
+    if (/^\s*\d+[.、]\s+/.test(line)) {
+      flushPara(); ensureCur();
+      const items = [];
+      while (i < lines.length && /^\s*\d+[.、]\s+/.test(lines[i])) {
+        items.push('<li>' + inlineMd(lines[i].replace(/^\s*\d+[.、]\s+/, '')) + '</li>'); i++;
+      }
+      cur.blocks.push('<ol>' + items.join('') + '</ol>');
+      continue;
+    }
+    // 空行
+    if (!line.trim()) { flushPara(); i++; continue; }
+    // 普通段落
+    ensureCur();
+    para.push(line.trim());
+    i++;
+  }
+  flushPara();
+  if (cur && (cur.blocks.length || cur.title)) sections.push(cur);
+
+  if (!sections.length) sections.push({ title: '', blocks: ['<p>（空课件）</p>'] });
+  return { title: title || '未命名课件', sections };
+}
+
+/* ---------------- 课件运行时 JS（嵌入产物文件） ----------------
+ * 约束：不使用反引号与 ${}，便于以字符串模板嵌入 */
+const RUNTIME_JS = [
+'(function () {',
+'  "use strict";',
+'  var secs = Array.prototype.slice.call(document.querySelectorAll(".cw-sec"));',
+'  var N = secs.length;',
+'  var total = document.getElementById("cw-total");',
+'  var bar = document.getElementById("cw-bar");',
+'  var nowLabel = document.getElementById("cw-now");',
+'  var studyLabel = document.getElementById("cw-study");',
+'  if (!N) return;',
+'',
+'  /* ---------- 状态 ---------- */',
+'  var state = secs.map(function () { return { dwell: 0, bottom: false, done: false }; });',
+'  var requiredMs = secs.map(function (sec) {',
+'    var words = (sec.querySelector(".cw-sec-body").textContent || "").replace(/\\s/g, "").length;',
+'    return Math.max(8000, Math.min(90000, Math.round(words / 6 * 1000)));  /* 约 360 字/分钟 */',
+'  });',
+'  var online = false;      /* 宿主握手成功 = 联机模式 */',
+'  var totalMs = 0;         /* 累计可见学习时长 */',
+'  var hbAccumMs = 0;       /* 距上次心跳的可见时长 */',
+'  var lsKey = "tr-course:" + (document.title || "untitled");',
+'',
+'  /* ---------- 工具 ---------- */',
+'  function send(msg) {',
+'    msg.source = "tr-courseware";',
+'    /* 被嵌在 iframe 里就上报（hello 握手在 online 置位前发出，不能按 online 门控）；',
+'       独立打开时 parent === window，静默跳过 */',
+'    if (window.parent && window.parent !== window) {',
+'      window.parent.postMessage(msg, "*");',
+'    }',
+'  }',
+'  function doneCount() { return state.filter(function (s) { return s.done; }).length; }',
+'  function fmt(sec) {',
+'    var m = Math.floor(sec / 60), s = Math.round(sec % 60);',
+'    return (m ? m + " 分 " : "") + s + " 秒";',
+'  }',
+'  function saveLocal() {',
+'    try {',
+'      localStorage.setItem(lsKey, JSON.stringify({',
+'        done: doneCount(), dwell: state.map(function (s) { return s.dwell; })',
+'      }));',
+'    } catch (e) { /* 隐私模式忽略 */ }',
+'  }',
+'  function refreshHeader() {',
+'    var d = doneCount();',
+'    var pct = Math.round(d / N * 100);',
+'    if (bar) bar.style.width = pct + "%";',
+'    if (nowLabel) nowLabel.textContent = "已解锁 " + Math.min(d + 1, N) + " / " + N + " 节";',
+'    if (total) total.textContent = pct + "%";',
+'  }',
+'  function postProgress() {',
+'    var d = doneCount();',
+'    saveLocal();',
+'    send({ type: "progress", progress: Math.round(d / N * 100), position: d });',
+'  }',
+'',
+'  /* ---------- 节门控 ---------- */',
+'  function refreshGate(i) {',
+'    var s = state[i];',
+'    var foot = secs[i].querySelector(".cw-sec-foot");',
+'    if (!foot) return;',
+'    var btn = foot.querySelector(".cw-btn-next");',
+'    var msg = foot.querySelector(".cw-gate-msg");',
+'    if (!btn) return;',
+'    if (s.done) {',
+'      foot.classList.add("cw-done");',
+'      msg.textContent = "本节已完成" + (i < N - 1 ? "，可返回复习" : "");',
+'      btn.style.display = "none";',
+'      return;',
+'    }',
+'    var needSec = Math.round(requiredMs[i] / 1000);',
+'    var gotSec = Math.floor(s.dwell / 1000);',
+'    var okDwell = s.dwell >= requiredMs[i];',
+'    var okScroll = s.bottom;',
+'    btn.disabled = !(okDwell && okScroll);',
+'    btn.textContent = i === N - 1 ? "完成学习 ✓" : "下一节 ▶";',
+'    var parts = [];',
+'    parts.push(okScroll ? "已读至本节底部 ✓" : "请滚动读完本节");',
+'    parts.push("驻留 " + Math.min(gotSec, needSec) + "/" + needSec + " 秒" + (okDwell ? " ✓" : ""));',
+'    msg.textContent = parts.join(" · ");',
+'  }',
+'  function unlockNext(i) {',
+'    state[i].done = true;',
+'    secs[i].classList.add("cw-unlocked");',
+'    if (i + 1 < N) {',
+'      secs[i + 1].classList.add("cw-unlocked");',
+'      setTimeout(function () {',
+'        secs[i + 1].scrollIntoView({ behavior: "smooth", block: "start" });',
+'      }, 60);',
+'    } else {',
+'      var done0 = document.getElementById("cw-finish");',
+'      if (done0) done0.style.display = "block";',
+'    }',
+'    refreshHeader(); refreshGate(i);',
+'    if (i + 1 < N) refreshGate(i + 1);',
+'    postProgress();',
+'  }',
+'',
+'  /* ---------- 滚动与驻留采样 ---------- */',
+'  function centerSection() {',
+'    var mid = window.innerHeight / 2;',
+'    for (var i = 0; i < N; i++) {',
+'      var r = secs[i].getBoundingClientRect();',
+'      if (r.top <= mid && r.bottom > mid) return i;',
+'    }',
+'    return -1;',
+'  }',
+'  /* 底部判定：节底边进入视口即算读到底（短于一屏的节无滚动事件，靠定时采样兜底） */',
+'  function checkBottomAll() {',
+'    for (var i = 0; i < N; i++) {',
+'      if (state[i].bottom) continue;',
+'      if (!secs[i].classList.contains("cw-unlocked")) continue;  /* 锁定节不可见，rect 全 0 不能参与判定 */',
+'      var r = secs[i].getBoundingClientRect();',
+'      if (r.top < window.innerHeight && r.bottom <= window.innerHeight + 80) {',
+'        state[i].bottom = true; refreshGate(i);',
+'      }',
+'    }',
+'  }',
+'  var scrollTimer = null;',
+'  window.addEventListener("scroll", function () {',
+'    if (scrollTimer) return;',
+'    scrollTimer = setTimeout(function () { scrollTimer = null; checkBottomAll(); }, 200);',
+'  }, { passive: true });',
+'',
+'  setInterval(function () {',
+'    if (document.visibilityState !== "visible") return;   /* 失焦/切后台不计时 */',
+'    var i = centerSection();',
+'    if (i >= 0 && !state[i].done) {',
+'      state[i].dwell += 500;',
+'      refreshGate(i);',
+'    }',
+'    checkBottomAll();',
+'    totalMs += 500; hbAccumMs += 500;',
+'    if (studyLabel && totalMs % 5000 === 0) {',
+'      studyLabel.textContent = "本次已学 " + fmt(totalMs / 1000);',
+'    }',
+'  }, 500);',
+'',
+'  /* ---------- 心跳：联机模式下每 20s 上报一次有效时长 ---------- */',
+'  setInterval(function () {',
+'    if (!online || document.visibilityState !== "visible") return;',
+'    var delta = Math.floor(hbAccumMs / 1000);',
+'    hbAccumMs = 0;',
+'    if (delta <= 0) return;',
+'    send({ type: "heartbeat", deltaSec: Math.min(delta, 60),',
+'           position: doneCount(), progress: Math.round(doneCount() / N * 100) });',
+'  }, 20000);',
+'',
+'  /* ---------- 宿主握手 / 本地恢复 ---------- */',
+'  window.addEventListener("message", function (e) {',
+'    var d = e.data;',
+'    if (!d || d.source !== "tr-host") return;',
+'    online = true;',
+'    if (d.type === "hello" && d.position > 0) {',
+'      var upto = Math.min(d.position, N);',
+'      for (var i = 0; i < upto; i++) {',
+'        state[i].done = true;',
+'        secs[i].classList.add("cw-unlocked");',
+'        if (i + 1 < N) secs[i + 1].classList.add("cw-unlocked");',
+'      }',
+'      refreshHeader();',
+'      for (var j = 0; j < N; j++) refreshGate(j);',
+'      var nxt = secs[upto];',
+'      if (upto < N && nxt) nxt.scrollIntoView({ block: "start" });',
+'    }',
+'    send({ type: "hello-ack", online: true });',
+'  });',
+'',
+'  /* 本地模式（独立打开 / 微信直接打开）：从 localStorage 恢复 */',
+'  window.addEventListener("load", function () {',
+'    refreshHeader();',
+'    for (var j = 0; j < N; j++) refreshGate(j);',
+'    secs[0].classList.add("cw-unlocked");',
+'    if (!online) {',
+'      var saved = null;',
+'      try { saved = JSON.parse(localStorage.getItem(lsKey) || "null"); } catch (e) {}',
+'      if (saved && saved.done > 0) {',
+'        var upto = Math.min(saved.done, N);',
+'        for (var i = 0; i < upto; i++) {',
+'          state[i].done = true; state[i].bottom = true;',
+'          if (saved.dwell && saved.dwell[i]) state[i].dwell = saved.dwell[i];',
+'          secs[i].classList.add("cw-unlocked");',
+'          if (i + 1 < N) secs[i + 1].classList.add("cw-unlocked");',
+'        }',
+'        refreshHeader();',
+'        for (var k = 0; k < N; k++) refreshGate(k);',
+'      }',
+'      postProgress();   /* 本地落一次盘 */',
+'    }',
+'    send({ type: "hello" });   /* 请求宿主握手（独立打开时无人应答，静默） */',
+'  });',
+'',
+'  /* 绑定按钮 */',
+'  secs.forEach(function (sec, i) {',
+'    var btn = sec.querySelector(".cw-btn-next");',
+'    if (btn) btn.addEventListener("click", function () { unlockNext(i); });',
+'  });',
+'})();',
+].join('\n');
+
+/* ---------------- 课件 HTML 模板 ---------------- */
+function buildCourseHtml(title, sections, org) {
+  const body = sections.map((s, i) => {
+    const last = i === sections.length - 1;
+    return [
+      '<section class="cw-sec" data-i="' + i + '">',
+      '<div class="cw-sec-head"><span class="cw-sec-no">第 ' + (i + 1) + ' / ' + sections.length + ' 节</span>',
+      (s.title ? '<h2>' + inlineMd(s.title) + '</h2>' : ''),
+      '</div>',
+      '<div class="cw-sec-body">' + s.blocks.join('\n') + '</div>',
+      '<div class="cw-sec-foot"><span class="cw-gate-msg">正在读取本节…</span>',
+      '<button type="button" class="cw-btn-next" disabled>' + (last ? '完成学习 ✓' : '下一节 ▶') + '</button>',
+      '</div>',
+      '</section>',
+    ].join('\n');
+  }).join('\n');
+
+  const css = [
+    '*{box-sizing:border-box;margin:0;padding:0}',
+    'body{font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;color:#1f2937;',
+    '  background:#f8fafc;line-height:1.85;font-size:16px}',
+    '.cw-wrap{max-width:760px;margin:0 auto;padding:0 16px 80px}',
+    '.cw-header{position:sticky;top:0;z-index:9;background:rgba(255,255,255,.96);',
+    '  backdrop-filter:blur(4px);border-bottom:1px solid #e5e7eb;padding:12px 4px 10px}',
+    '.cw-header h1{font-size:20px;line-height:1.4}',
+    '.cw-meta{font-size:12px;color:#6b7280;margin-top:4px;display:flex;gap:14px;flex-wrap:wrap}',
+    '.cw-progress{height:6px;background:#e5e7eb;border-radius:3px;margin-top:8px;overflow:hidden}',
+    '.cw-progress i{display:block;height:100%;width:0;background:#4f46e5;transition:width .3s}',
+    '.cw-sec{display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 22px;',
+    '  margin-top:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}',
+    '.cw-sec.cw-unlocked{display:block}',
+    '.cw-sec-head .cw-sec-no{font-size:12px;color:#4f46e5;font-weight:600}',
+    '.cw-sec-head h2{font-size:18px;margin-top:2px;line-height:1.4}',
+    '.cw-sec-body h3{font-size:16px;margin:14px 0 6px}',
+    '.cw-sec-body h4{font-size:15px;margin:12px 0 4px}',
+    '.cw-sec-body p{margin:8px 0;text-align:justify}',
+    '.cw-sec-body ul,.cw-sec-body ol{margin:8px 0 8px 22px}',
+    '.cw-sec-body li{margin:4px 0}',
+    '.cw-sec-body blockquote{border-left:3px solid #4f46e5;background:#eef2ff;',
+    '  padding:8px 14px;border-radius:0 8px 8px 0;margin:10px 0;color:#3730a3}',
+    '.cw-sec-body pre{background:#0f172a;color:#e2e8f0;padding:12px 14px;border-radius:8px;',
+    '  overflow:auto;font-size:13px;margin:10px 0}',
+    '.cw-sec-body code{background:#eef2ff;color:#3730a3;padding:1px 5px;border-radius:4px;font-size:.9em}',
+    '.cw-sec-body pre code{background:none;color:inherit;padding:0}',
+    '.cw-sec-body table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px}',
+    '.cw-sec-body th,.cw-sec-body td{border:1px solid #e5e7eb;padding:6px 10px;text-align:left}',
+    '.cw-sec-body th{background:#f9fafb}',
+    '.cw-sec-body img{border-radius:8px;border:1px solid #e5e7eb;margin:6px 0}',
+    '.cw-sec-body hr{border:none;border-top:1px dashed #d1d5db;margin:14px 0}',
+    '.cw-sec-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;',
+    '  border-top:1px dashed #e5e7eb;margin-top:16px;padding-top:12px;flex-wrap:wrap}',
+    '.cw-gate-msg{font-size:12px;color:#6b7280}',
+    '.cw-btn-next{padding:8px 20px;border-radius:8px;border:none;background:#4f46e5;color:#fff;',
+    '  font-size:14px;cursor:pointer}',
+    '.cw-btn-next:disabled{background:#cbd5e1;cursor:not-allowed}',
+    '.cw-sec-foot.cw-done .cw-gate-msg{color:#16a34a;font-weight:600}',
+    '#cw-finish{display:none;background:#ecfdf5;border:1px solid #86efac;border-radius:12px;',
+    '  padding:16px 20px;margin-top:18px;color:#166534;font-weight:600;text-align:center}',
+    '@media (max-width:520px){.cw-sec{padding:14px}.cw-header h1{font-size:17px}}',
+    '@media print{.cw-sec{display:block}.cw-sec-foot,.cw-progress{display:none}}',
+  ].join('\n');
+
+  const esc = escapeHtml;
+  const orgLine = org ? ' · ' + esc(org) : '';
+  return [
+    '<!DOCTYPE html>',
+    '<html lang="zh-CN">',
+    '<head>',
+    '<meta charset="UTF-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    '<title>' + esc(title) + '</title>',
+    '<style>' + css + '</style>',
+    '</head>',
+    '<body>',
+    '<div class="cw-wrap">',
+    '<header class="cw-header">',
+    '<h1>' + esc(title) + '</h1>',
+    '<div class="cw-meta"><span id="cw-now">—</span><span id="cw-study">本次已学 0 秒</span>',
+    '<span>完成度 <b id="cw-total">0%</b></span><span>' + new Date().toLocaleDateString("zh-CN") + orgLine + '</span></div>',
+    '<div class="cw-progress"><i id="cw-bar"></i></div>',
+    '</header>',
+    body,
+    '<div id="cw-finish">🎉 恭喜，全部小节学习完成！本页可关闭或返回培训系统查看完成状态。</div>',
+    '</div>',
+    '<script>' + RUNTIME_JS + '<\/script>',
+    '</body>',
+    '</html>',
+  ].join('\n');
+}
+
+/* ---------------- 生成器交互 ---------------- */
+let currentHtml = '';
+
+function render() {
+  const md = document.getElementById('md-input').value;
+  const titleInput = document.getElementById('meta-title');
+  const org = document.getElementById('meta-org').value.trim();
+  if (!titleInput.value || titleInput.dataset.auto !== '0') {
+    const m = md.match(/^#\s+(.+)$/m);
+    if (m) { titleInput.value = m[1].trim(); titleInput.dataset.auto = '1'; }
+  }
+  const parsed = parseMarkdown(md);
+  const title = titleInput.value.trim() || parsed.title;
+  currentHtml = buildCourseHtml(title, parsed.sections, org);
+  document.getElementById('preview').srcdoc = currentHtml;
+  document.getElementById('sec-count').textContent =
+    parsed.sections.length + ' 节 · ' + md.replace(/\s/g, '').length + ' 字';
+  document.getElementById('btn-download').disabled = !md.trim();
+}
+document.getElementById('meta-title').addEventListener('input', function () { this.dataset.auto = '0'; render(); });
+document.getElementById('meta-org').addEventListener('input', render);
+
+function downloadHtml() {
+  const name = (document.getElementById('meta-title').value.trim() || '培训课件') + '.html';
+  const blob = new Blob([currentHtml], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function openMdFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('md-input').value = reader.result;
+    const t = document.getElementById('meta-title');
+    t.value = ''; t.dataset.auto = '1';
+    render();
+  };
+  reader.readAsText(f, 'utf-8');
+  input.value = '';
+}
+
+function loadSample() {
+  document.getElementById('md-input').value = SAMPLE_MD;
+  const t = document.getElementById('meta-title');
+  t.value = ''; t.dataset.auto = '1';
+  render();
+}
+
+/* ---------------- 内置示例 ---------------- */
+const SAMPLE_MD = [
+'# 高处作业安全培训',
+'',
+'本课件面向进入施工现场的所有高处作业人员，学习完毕后方可参加在线考试。',
+'',
+'## 一、高处作业的定义与分级',
+'',
+'凡在坠落高度基准面 **2 米以上（含 2 米）** 有可能坠落的作业，均称为高处作业。',
+'',
+'| 级别 | 作业高度 | 标记 |',
+'|---|---|---|',
+'| 一级 | 2~5 米 | 一级 |',
+'| 二级 | 5~15 米 | 二级 |',
+'| 三级 | 15~30 米 | 三级 |',
+'| 特级 | 30 米以上 | 特级 |',
+'',
+'> 口诀：两五八三零，一二三特级。',
+'',
+'## 二、个体防护要求',
+'',
+'1. 正确佩戴**安全帽**，系紧下颚带',
+'2. 悬挂**安全带**，做到高挂低用，挂点牢固',
+'3. 穿防滑鞋，禁止穿拖鞋、硬底鞋上岗',
+'4. 患有高血压、心脏病、贫血、癫痫者**严禁**从事高处作业',
+'',
+'## 三、作业前检查清单',
+'',
+'- 作业票是否已审批',
+'- 脚手架、防护栏杆是否牢固',
+'- 安全网是否完好有效',
+'- 天气条件：六级以上大风、雷雨、大雾**必须停止作业**',
+'',
+'```',
+'检查不合格 → 停止作业 → 上报班组长 → 整改复查',
+'```',
+'',
+'## 四、事故案例警示',
+'',
+'某项目一名工人未系安全带在 6 米高屋面临边作业，失足坠落身亡。',
+'',
+'* 教训一：安全带就是生命带，2 米以上必须挂设',
+'* 教训二：班前交底不能走过场',
+'* 教训三：临边防护缺失时任何人有权停止作业',
+'',
+'---',
+'',
+'学习完以上四节内容后，请返回培训系统开始考试。祝考试顺利！',
+].join('\n');
+
+/* 初始渲染：默认载入示例，所见即所得 */
+document.getElementById('md-input').value = SAMPLE_MD;
+render();
+</script>
+</body>
+</html>

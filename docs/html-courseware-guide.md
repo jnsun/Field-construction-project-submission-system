@@ -1,0 +1,45 @@
+# HTML 培训课件使用指引
+
+> 2026-09-01 决策：培训课件以 **Markdown 生成的单文件响应式 HTML** 为主（PDF 备用）。
+> web 端先行，小程序申请下来后 webview 直接加载同一批文件，无需改造。
+
+## 一、管理员流程（发一份课件 = 3 步）
+
+1. **写 Markdown**
+   - `# 标题` = 课件标题（自动填入）
+   - `## xxx` = 一节。**每一节独立解锁，是防"一滑到底"的基本单位**，建议 3~10 节
+   - 支持表格、列表、代码块、引用、图片外链、粗体斜体
+2. **生成课件**：浏览器打开 `tools/course-generator.html`（纯本地运行，不上传任何数据）
+   - 粘贴 Markdown（或「载入示例」体验）→ 右侧实时预览 → 可填单位署名
+   - 点「下载 HTML 课件」得到 `课件名.html` 单文件（样式+运行时全部内嵌，无外部依赖）
+3. **上传**：培训计划 → 课件管理 → 添加课件 → 类型选 **HTML 课件** → 上传 .html
+   - ⚠️ 前置：先执行 `sql/training-html-course.sql`（course_type CHECK 放开 'html'）
+
+## 二、员工端体验（自动生效）
+
+- 「我的培训 → 开始学习」里 HTML 课件以 iframe 打开，逐节学习：
+  - **节门控（防一滑到底）**：当前节读完 = ①滚动到本节底部 ②驻留时长 ≥ 按字数自适应的
+    阈值（约 360 字/分钟，8 秒~90 秒封顶）。「下一节」按钮才会亮起
+  - **计时**：课件顶部实时显示"本次已学"；切走页面/最小化自动暂停不计时
+  - **进度**：已完成节数 / 总节数；最后一节点「完成学习」= 100%
+  - **学时上报**：联机模式下每 20 秒心跳一次有效时长 → 服务端
+    `training_course_heartbeat`（15s~60s 增量上限 / 墙钟间隔校验 / 5 分钟断会话三重防刷）
+  - **断点续学**：重开课件自动跳到第一个未完成的节
+- 课件被单独转发（微信里直接打开）时自动降级**本地模式**：进度存 localStorage，
+  纯自学不计学时，不影响系统内记录
+
+## 三、完成与考试联动
+
+HTML 课件进度走原有 `training_save_course_progress`，必修课件 ≥90% 计入完成；
+auto 考试模式下课件完成 ≠ 培训归档，仍需考试通过 + 签字（与 PDF 课件完全一致）。
+
+## 四、技术要点（维护备忘）
+
+| 项 | 说明 |
+|---|---|
+| 生成器 | `tools/course-generator.html`，纯前端；Markdown 解析器/运行时模板均内嵌 |
+| 运行时协议 | 课件 → 宿主 postMessage：`hello` / `progress{progress,position}` / `heartbeat{deltaSec,position,progress}`；宿主 → 课件：`{source:'tr-host',type:'hello',position}`（断点恢复） |
+| 宿主端 | `mine.js` `renderHtml/onCourseMessage`；message 校验 `e.source === iframe.contentWindow`，只信当前课件 |
+| 进度语义 | `max_position` = 已完成节数；`progress` = 节数/总节数 ×100 |
+| 心跳会话 | `state.hbSessions[courseId]` 记 session_id；关弹窗置空 `htmlCourse` 停止接收 |
+| 测试 | `tests/e2e/build-sample-course.js`（生成器抽取+产物校验）、`test-courseware-runtime.js`（门控行为 10 项，headless Chrome）、宿主协议模拟（临时脚本，见 git 历史） |

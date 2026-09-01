@@ -16,6 +16,7 @@ const TrainingCourses = {
     image: '图片',
     text: '图文',
     link: '外链',
+    html: 'HTML 课件',
   },
 
   BUCKET: 'training-courses',
@@ -147,8 +148,11 @@ const TrainingCourses = {
             <div class="form-group" id="cs-file-wrap">
               <label>课件文件</label>
               <input id="cs-file" type="file" class="form-control"
-                accept="${c && c.course_type === 'video' ? 'video/*' : (c && c.course_type === 'image' ? 'image/*' : '.pdf,.ppt,.pptx,.doc,.docx')}">
+                accept="${c && c.course_type === 'video' ? 'video/*' : (c && c.course_type === 'image' ? 'image/*' : (c && c.course_type === 'html' ? '.html' : '.pdf,.ppt,.pptx,.doc,.docx'))}">
               ${c && c.file_path ? `<p class="text-muted" style="font-size:12px;margin-top:4px">已上传：${Utils.escapeHtml(c.file_path.split('/').pop())}（不重选则保持不变）</p>` : ''}
+              <p class="text-muted" id="cs-html-hint" style="font-size:12px;margin-top:4px;display:none">
+                HTML 课件请先用 <b>tools/course-generator.html</b> 生成（粘贴 Markdown → 下载 .html）再上传
+              </p>
             </div>
 
             <div class="form-group" id="cs-url-wrap" style="display:none">
@@ -194,9 +198,10 @@ const TrainingCourses = {
       const el = document.getElementById(id);
       if (el) el.style.display = on ? '' : 'none';
     };
-    show('cs-file-wrap', t === 'pdf' || t === 'video' || t === 'image');
+    show('cs-file-wrap', t === 'pdf' || t === 'video' || t === 'image' || t === 'html');
     show('cs-url-wrap', t === 'link');
     show('cs-content-wrap', t === 'text');
+    show('cs-html-hint', t === 'html');
   },
 
   async submit(id) {
@@ -219,7 +224,7 @@ const TrainingCourses = {
 
     // 上传文件
     const fileInput = document.getElementById('cs-file');
-    if ((type === 'pdf' || type === 'video' || type === 'image')
+    if ((type === 'pdf' || type === 'video' || type === 'image' || type === 'html')
         && fileInput && fileInput.files.length) {
       const file = fileInput.files[0];
       // Storage key 白名单不含中文等非 ASCII 字符（否则报 Invalid key），

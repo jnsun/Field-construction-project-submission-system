@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高处作业安全培训</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;color:#1f2937;
+  background:#f8fafc;line-height:1.85;font-size:16px}
+.cw-wrap{max-width:760px;margin:0 auto;padding:0 16px 80px}
+.cw-header{position:sticky;top:0;z-index:9;background:rgba(255,255,255,.96);
+  backdrop-filter:blur(4px);border-bottom:1px solid #e5e7eb;padding:12px 4px 10px}
+.cw-header h1{font-size:20px;line-height:1.4}
+.cw-meta{font-size:12px;color:#6b7280;margin-top:4px;display:flex;gap:14px;flex-wrap:wrap}
+.cw-progress{height:6px;background:#e5e7eb;border-radius:3px;margin-top:8px;overflow:hidden}
+.cw-progress i{display:block;height:100%;width:0;background:#4f46e5;transition:width .3s}
+.cw-sec{display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 22px;
+  margin-top:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.cw-sec.cw-unlocked{display:block}
+.cw-sec-head .cw-sec-no{font-size:12px;color:#4f46e5;font-weight:600}
+.cw-sec-head h2{font-size:18px;margin-top:2px;line-height:1.4}
+.cw-sec-body h3{font-size:16px;margin:14px 0 6px}
+.cw-sec-body h4{font-size:15px;margin:12px 0 4px}
+.cw-sec-body p{margin:8px 0;text-align:justify}
+.cw-sec-body ul,.cw-sec-body ol{margin:8px 0 8px 22px}
+.cw-sec-body li{margin:4px 0}
+.cw-sec-body blockquote{border-left:3px solid #4f46e5;background:#eef2ff;
+  padding:8px 14px;border-radius:0 8px 8px 0;margin:10px 0;color:#3730a3}
+.cw-sec-body pre{background:#0f172a;color:#e2e8f0;padding:12px 14px;border-radius:8px;
+  overflow:auto;font-size:13px;margin:10px 0}
+.cw-sec-body code{background:#eef2ff;color:#3730a3;padding:1px 5px;border-radius:4px;font-size:.9em}
+.cw-sec-body pre code{background:none;color:inherit;padding:0}
+.cw-sec-body table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px}
+.cw-sec-body th,.cw-sec-body td{border:1px solid #e5e7eb;padding:6px 10px;text-align:left}
+.cw-sec-body th{background:#f9fafb}
+.cw-sec-body img{border-radius:8px;border:1px solid #e5e7eb;margin:6px 0}
+.cw-sec-body hr{border:none;border-top:1px dashed #d1d5db;margin:14px 0}
+.cw-sec-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  border-top:1px dashed #e5e7eb;margin-top:16px;padding-top:12px;flex-wrap:wrap}
+.cw-gate-msg{font-size:12px;color:#6b7280}
+.cw-btn-next{padding:8px 20px;border-radius:8px;border:none;background:#4f46e5;color:#fff;
+  font-size:14px;cursor:pointer}
+.cw-btn-next:disabled{background:#cbd5e1;cursor:not-allowed}
+.cw-sec-foot.cw-done .cw-gate-msg{color:#16a34a;font-weight:600}
+#cw-finish{display:none;background:#ecfdf5;border:1px solid #86efac;border-radius:12px;
+  padding:16px 20px;margin-top:18px;color:#166534;font-weight:600;text-align:center}
+@media (max-width:520px){.cw-sec{padding:14px}.cw-header h1{font-size:17px}}
+@media print{.cw-sec{display:block}.cw-sec-foot,.cw-progress{display:none}}</style>
+</head>
+<body>
+<div class="cw-wrap">
+<header class="cw-header">
+<h1>高处作业安全培训</h1>
+<div class="cw-meta"><span id="cw-now">—</span><span id="cw-study">本次已学 0 秒</span>
+<span>完成度 <b id="cw-total">0%</b></span><span>2026/9/1 · 示例单位</span></div>
+<div class="cw-progress"><i id="cw-bar"></i></div>
+</header>
+<section class="cw-sec" data-i="0">
+<div class="cw-sec-head"><span class="cw-sec-no">第 1 / 5 节</span>
+
+</div>
+<div class="cw-sec-body"><p>本课件面向进入施工现场的所有高处作业人员，学习完毕后方可参加在线考试。</p></div>
+<div class="cw-sec-foot"><span class="cw-gate-msg">正在读取本节…</span>
+<button type="button" class="cw-btn-next" disabled>下一节 ▶</button>
+</div>
+</section>
+<section class="cw-sec" data-i="1">
+<div class="cw-sec-head"><span class="cw-sec-no">第 2 / 5 节</span>
+<h2>一、高处作业的定义与分级</h2>
+</div>
+<div class="cw-sec-body"><p>凡在坠落高度基准面 <b>2 米以上（含 2 米）</b> 有可能坠落的作业，均称为高处作业。</p>
+<table><thead><tr><th>级别</th><th>作业高度</th><th>标记</th></tr></thead><tbody><tr><td>一级</td><td>2~5 米</td><td>一级</td></tr><tr><td>二级</td><td>5~15 米</td><td>二级</td></tr><tr><td>三级</td><td>15~30 米</td><td>三级</td></tr><tr><td>特级</td><td>30 米以上</td><td>特级</td></tr></tbody></table>
+<blockquote>口诀：两五八三零，一二三特级。</blockquote></div>
+<div class="cw-sec-foot"><span class="cw-gate-msg">正在读取本节…</span>
+<button type="button" class="cw-btn-next" disabled>下一节 ▶</button>
+</div>
+</section>
+<section class="cw-sec" data-i="2">
+<div class="cw-sec-head"><span class="cw-sec-no">第 3 / 5 节</span>
+<h2>二、个体防护要求</h2>
+</div>
+<div class="cw-sec-body"><ol><li>正确佩戴<b>安全帽</b>，系紧下颚带</li><li>悬挂<b>安全带</b>，做到高挂低用，挂点牢固</li><li>穿防滑鞋，禁止穿拖鞋、硬底鞋上岗</li><li>患有高血压、心脏病、贫血、癫痫者<b>严禁</b>从事高处作业</li></ol></div>
+<div class="cw-sec-foot"><span class="cw-gate-msg">正在读取本节…</span>
+<button type="button" class="cw-btn-next" disabled>下一节 ▶</button>
+</div>
+</section>
+<section class="cw-sec" data-i="3">
+<div class="cw-sec-head"><span class="cw-sec-no">第 4 / 5 节</span>
+<h2>三、作业前检查清单</h2>
+</div>
+<div class="cw-sec-body"><ul><li>作业票是否已审批</li><li>脚手架、防护栏杆是否牢固</li><li>安全网是否完好有效</li><li>天气条件：六级以上大风、雷雨、大雾<b>必须停止作业</b></li></ul>
+<pre><code>检查不合格 → 停止作业 → 上报班组长 → 整改复查</code></pre></div>
+<div class="cw-sec-foot"><span class="cw-gate-msg">正在读取本节…</span>
+<button type="button" class="cw-btn-next" disabled>下一节 ▶</button>
+</div>
+</section>
+<section class="cw-sec" data-i="4">
+<div class="cw-sec-head"><span class="cw-sec-no">第 5 / 5 节</span>
+<h2>四、事故案例警示</h2>
+</div>
+<div class="cw-sec-body"><p>某项目一名工人未系安全带在 6 米高屋面临边作业，失足坠落身亡。</p>
+<ul><li>教训一：安全带就是生命带，2 米以上必须挂设</li><li>教训二：班前交底不能走过场</li><li>教训三：临边防护缺失时任何人有权停止作业</li></ul>
+<hr>
+<p>学习完以上四节内容后，请返回培训系统开始考试。祝考试顺利！</p></div>
+<div class="cw-sec-foot"><span class="cw-gate-msg">正在读取本节…</span>
+<button type="button" class="cw-btn-next" disabled>完成学习 ✓</button>
+</div>
+</section>
+<div id="cw-finish">🎉 恭喜，全部小节学习完成！本页可关闭或返回培训系统查看完成状态。</div>
+</div>
+<script>(function () {
+  "use strict";
+  var secs = Array.prototype.slice.call(document.querySelectorAll(".cw-sec"));
+  var N = secs.length;
+  var total = document.getElementById("cw-total");
+  var bar = document.getElementById("cw-bar");
+  var nowLabel = document.getElementById("cw-now");
+  var studyLabel = document.getElementById("cw-study");
+  if (!N) return;
+
+  /* ---------- 状态 ---------- */
+  var state = secs.map(function () { return { dwell: 0, bottom: false, done: false }; });
+  var requiredMs = secs.map(function (sec) {
+    var words = (sec.querySelector(".cw-sec-body").textContent || "").replace(/\s/g, "").length;
+    return Math.max(8000, Math.min(90000, Math.round(words / 6 * 1000)));  /* 约 360 字/分钟 */
+  });
+  var online = false;      /* 宿主握手成功 = 联机模式 */
+  var totalMs = 0;         /* 累计可见学习时长 */
+  var hbAccumMs = 0;       /* 距上次心跳的可见时长 */
+  var lsKey = "tr-course:" + (document.title || "untitled");
+
+  /* ---------- 工具 ---------- */
+  function send(msg) {
+    msg.source = "tr-courseware";
+    /* 被嵌在 iframe 里就上报（hello 握手在 online 置位前发出，不能按 online 门控）；
+       独立打开时 parent === window，静默跳过 */
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(msg, "*");
+    }
+  }
+  function doneCount() { return state.filter(function (s) { return s.done; }).length; }
+  function fmt(sec) {
+    var m = Math.floor(sec / 60), s = Math.round(sec % 60);
+    return (m ? m + " 分 " : "") + s + " 秒";
+  }
+  function saveLocal() {
+    try {
+      localStorage.setItem(lsKey, JSON.stringify({
+        done: doneCount(), dwell: state.map(function (s) { return s.dwell; })
+      }));
+    } catch (e) { /* 隐私模式忽略 */ }
+  }
+  function refreshHeader() {
+    var d = doneCount();
+    var pct = Math.round(d / N * 100);
+    if (bar) bar.style.width = pct + "%";
+    if (nowLabel) nowLabel.textContent = "已解锁 " + Math.min(d + 1, N) + " / " + N + " 节";
+    if (total) total.textContent = pct + "%";
+  }
+  function postProgress() {
+    var d = doneCount();
+    saveLocal();
+    send({ type: "progress", progress: Math.round(d / N * 100), position: d });
+  }
+
+  /* ---------- 节门控 ---------- */
+  function refreshGate(i) {
+    var s = state[i];
+    var foot = secs[i].querySelector(".cw-sec-foot");
+    if (!foot) return;
+    var btn = foot.querySelector(".cw-btn-next");
+    var msg = foot.querySelector(".cw-gate-msg");
+    if (!btn) return;
+    if (s.done) {
+      foot.classList.add("cw-done");
+      msg.textContent = "本节已完成" + (i < N - 1 ? "，可返回复习" : "");
+      btn.style.display = "none";
+      return;
+    }
+    var needSec = Math.round(requiredMs[i] / 1000);
+    var gotSec = Math.floor(s.dwell / 1000);
+    var okDwell = s.dwell >= requiredMs[i];
+    var okScroll = s.bottom;
+    btn.disabled = !(okDwell && okScroll);
+    btn.textContent = i === N - 1 ? "完成学习 ✓" : "下一节 ▶";
+    var parts = [];
+    parts.push(okScroll ? "已读至本节底部 ✓" : "请滚动读完本节");
+    parts.push("驻留 " + Math.min(gotSec, needSec) + "/" + needSec + " 秒" + (okDwell ? " ✓" : ""));
+    msg.textContent = parts.join(" · ");
+  }
+  function unlockNext(i) {
+    state[i].done = true;
+    secs[i].classList.add("cw-unlocked");
+    if (i + 1 < N) {
+      secs[i + 1].classList.add("cw-unlocked");
+      setTimeout(function () {
+        secs[i + 1].scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 60);
+    } else {
+      var done0 = document.getElementById("cw-finish");
+      if (done0) done0.style.display = "block";
+    }
+    refreshHeader(); refreshGate(i);
+    if (i + 1 < N) refreshGate(i + 1);
+    postProgress();
+  }
+
+  /* ---------- 滚动与驻留采样 ---------- */
+  function centerSection() {
+    var mid = window.innerHeight / 2;
+    for (var i = 0; i < N; i++) {
+      var r = secs[i].getBoundingClientRect();
+      if (r.top <= mid && r.bottom > mid) return i;
+    }
+    return -1;
+  }
+  /* 底部判定：节底边进入视口即算读到底（短于一屏的节无滚动事件，靠定时采样兜底） */
+  function checkBottomAll() {
+    for (var i = 0; i < N; i++) {
+      if (state[i].bottom) continue;
+      if (!secs[i].classList.contains("cw-unlocked")) continue;  /* 锁定节不可见，rect 全 0 不能参与判定 */
+      var r = secs[i].getBoundingClientRect();
+      if (r.top < window.innerHeight && r.bottom <= window.innerHeight + 80) {
+        state[i].bottom = true; refreshGate(i);
+      }
+    }
+  }
+  var scrollTimer = null;
+  window.addEventListener("scroll", function () {
+    if (scrollTimer) return;
+    scrollTimer = setTimeout(function () { scrollTimer = null; checkBottomAll(); }, 200);
+  }, { passive: true });
+
+  setInterval(function () {
+    if (document.visibilityState !== "visible") return;   /* 失焦/切后台不计时 */
+    var i = centerSection();
+    if (i >= 0 && !state[i].done) {
+      state[i].dwell += 500;
+      refreshGate(i);
+    }
+    checkBottomAll();
+    totalMs += 500; hbAccumMs += 500;
+    if (studyLabel && totalMs % 5000 === 0) {
+      studyLabel.textContent = "本次已学 " + fmt(totalMs / 1000);
+    }
+  }, 500);
+
+  /* ---------- 心跳：联机模式下每 20s 上报一次有效时长 ---------- */
+  setInterval(function () {
+    if (!online || document.visibilityState !== "visible") return;
+    var delta = Math.floor(hbAccumMs / 1000);
+    hbAccumMs = 0;
+    if (delta <= 0) return;
+    send({ type: "heartbeat", deltaSec: Math.min(delta, 60),
+           position: doneCount(), progress: Math.round(doneCount() / N * 100) });
+  }, 20000);
+
+  /* ---------- 宿主握手 / 本地恢复 ---------- */
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || d.source !== "tr-host") return;
+    online = true;
+    if (d.type === "hello" && d.position > 0) {
+      var upto = Math.min(d.position, N);
+      for (var i = 0; i < upto; i++) {
+        state[i].done = true;
+        secs[i].classList.add("cw-unlocked");
+        if (i + 1 < N) secs[i + 1].classList.add("cw-unlocked");
+      }
+      refreshHeader();
+      for (var j = 0; j < N; j++) refreshGate(j);
+      var nxt = secs[upto];
+      if (upto < N && nxt) nxt.scrollIntoView({ block: "start" });
+    }
+    send({ type: "hello-ack", online: true });
+  });
+
+  /* 本地模式（独立打开 / 微信直接打开）：从 localStorage 恢复 */
+  window.addEventListener("load", function () {
+    refreshHeader();
+    for (var j = 0; j < N; j++) refreshGate(j);
+    secs[0].classList.add("cw-unlocked");
+    if (!online) {
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(lsKey) || "null"); } catch (e) {}
+      if (saved && saved.done > 0) {
+        var upto = Math.min(saved.done, N);
+        for (var i = 0; i < upto; i++) {
+          state[i].done = true; state[i].bottom = true;
+          if (saved.dwell && saved.dwell[i]) state[i].dwell = saved.dwell[i];
+          secs[i].classList.add("cw-unlocked");
+          if (i + 1 < N) secs[i + 1].classList.add("cw-unlocked");
+        }
+        refreshHeader();
+        for (var k = 0; k < N; k++) refreshGate(k);
+      }
+      postProgress();   /* 本地落一次盘 */
+    }
+    send({ type: "hello" });   /* 请求宿主握手（独立打开时无人应答，静默） */
+  });
+
+  /* 绑定按钮 */
+  secs.forEach(function (sec, i) {
+    var btn = sec.querySelector(".cw-btn-next");
+    if (btn) btn.addEventListener("click", function () { unlockNext(i); });
+  });
+})();</script>
+</body>
+</html>

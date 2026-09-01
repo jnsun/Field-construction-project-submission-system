@@ -9,6 +9,10 @@
 //   PDF   按翻到的最大页码 / 总页数（pdf.js 逐页渲染，vendor/pdf.min.js）
 //   图文  正文滚动到底部
 //   图片 / 外链  由员工确认「已学习完毕」
+//   HTML  Markdown 生成的单文件课件（tools/course-generator.html 产出），
+//         iframe 加载，课件内按「节」门控防一滑到底；postMessage 上报：
+//         progress(已解锁节/总节) → training_save_course_progress；
+//         heartbeat(20s 有效时长) → training_course_heartbeat（学时/防刷）
 // =============================================================
 const TrainingMine = {
 
@@ -21,10 +25,13 @@ const TrainingMine = {
     progress: {},           // course_id -> { progress, max_position, finished }
     saving: false,
     pending: null,
+    htmlCourse: null,       // 当前打开的 HTML 课件 { courseId }（message 校验用）
+    hbSessions: {},         // course_id -> 心跳会话 id（training_study_logs.id）
   },
 
   TYPE_LABEL: {
     pdf: 'PDF 文档', video: '视频', image: '图片', text: '图文', link: '外链',
+    html: 'HTML 课件', ppt: 'PPT',
   },
 
   // ---------------------------------------------------------------- 列表
@@ -178,6 +185,63 @@ const TrainingMine = {
   close() {
     const d = document.getElementById('training-modal-host');
     if (d) d.innerHTML = '';
+    this.state.htmlCourse = null;   // 停止接收 HTML 课件 postMessage
+  },
+
+  // ------------------------------------------------- HTML 课件宿主（iframe）
+  // 消息监听只绑一次；只处理「当前打开的 HTML 课件 iframe」发来的消息
+  bindCourseMessage() {
+    if (this._msgBound) return;
+    this._msgBound = true;
+    window.addEventListener('message', e => this.onCourseMessage(e));
+  },
+
+  onCourseMessage(e) {
+    const d = e.data;
+    if (!d || d.source !== 'tr-courseware' || !this.state.htmlCourse) return;
+    const frame = document.getElementById('learn-html-frame');
+    if (!frame || e.source !== frame.contentWindow) return;   // 只信当前课件窗口
+    const cid = this.state.htmlCourse.courseId;
+
+    if (d.type === 'hello') {
+      // 握手应答：带上已学到的节号（max_position），课件据此恢复进度
+      const p = this.state.progress[cid] || {};
+      frame.contentWindow.postMessage({
+        source: 'tr-host', type: 'hello', position: Number(p.max_position || 0),
+      }, '*');
+      return;
+    }
+    if (d.type === 'progress') {
+      this.report(cid, Number(d.progress || 0), Number(d.position || 0));
+      return;
+    }
+    if (d.type === 'heartbeat') {
+      const delta = Math.max(1, Math.min(60, parseInt(d.deltaSec, 10) || 0));
+      sb.rpc('training_course_heartbeat', {
+        p_session_id: this.state.hbSessions[cid] || null,
+        p_course_id: cid,
+        p_delta_sec: delta,
+        p_position: Number(d.position || 0),
+        p_progress: d.progress == null ? null : Number(d.progress),
+      }).then(({ data, error }) => {
+        if (error) { console.warn('心跳失败：', error.message); return; }
+        if (data && data.session_id) this.state.hbSessions[cid] = data.session_id;
+      }).catch(() => { /* 静默，下个心跳继续 */ });
+    }
+  },
+
+  renderHtml(stage, c, p) {
+    this.bindCourseMessage();
+    this.state.htmlCourse = { courseId: c.id };
+    stage.innerHTML = `
+      <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
+      <iframe id="learn-html-frame" src="${Utils.escapeHtml(this.fileUrl(c))}"
+        title="courseware" style="width:100%;height:66vh;border:1px solid #e5e7eb;border-radius:6px;background:#fff">
+      </iframe>
+      <p class="text-muted" style="font-size:12px;margin-top:6px">
+        课件按节解锁：读完本节（滚动到底 + 停留足够时间）才能进入下一节，离开页面会自动暂停计时。
+      </p>
+    `;
   },
 
   // ---------------------------------------------------------------- 学习页
@@ -286,6 +350,7 @@ const TrainingMine = {
     else if (c.course_type === 'pdf') this.renderPdf(stage, c, p);
     else if (c.course_type === 'image') this.renderImage(stage, c, p);
     else if (c.course_type === 'text') this.renderText(stage, c, p);
+    else if (c.course_type === 'html') this.renderHtml(stage, c, p);
     else this.renderLink(stage, c, p);
   },
 
