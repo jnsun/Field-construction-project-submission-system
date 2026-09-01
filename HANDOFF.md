@@ -1,7 +1,16 @@
-# 资质证照管理模块 — 跨对话交接文档
+# 项目跨对话交接文档
 
 > 用途：当对话上下文过长需要另开新对话时，本文件帮助智能体（与人类）快速恢复本项目的背景、约定与待办，无需重述历史。
-> 最近更新：2026-08-27（对应最新 commit `e66569f`）
+> 最近更新：2026-09-01（training-module 分支，最新 commit `b734ddf`；工作区已迁至 E 盘）
+
+---
+
+## 〇、当前状态速览
+
+- **工作区根**：`E:\OneDrive\WorkBuddy\` → 实际为 `E:\OneDrive\工作目录\2026\WORKBUDDY\`（已从 C 盘迁出；C 盘旧目录 `C:\Users\sjn\WorkBuddy\workbuddynewweb` 待用户手动删除）
+- **当前开发主线**：培训教育模块（`training-module` 分支，仅 GitHub Pages 测试；服务器 main 尚未合入）
+- **最新完成**：HTML 课件体系（生成器双模式 + 宿主接线 + 预分节识别，e2e 25/25 + 运行时 10/10）
+- **用户侧待执行 SQL**：`sql/training-html-course.sql`（HTML 课件类型放开，**仍未执行**）、`sql/certificate-management.sql`（更早遗留）
 
 ---
 
@@ -21,7 +30,24 @@
 
 ---
 
-## 二、权限模型
+## 一、培训教育模块（当前开发主线，training-module 分支）
+
+- **前端**：`js/modules/training/`（training / employees / plans / records / exams / courses / questions / papers / mine）+ `css/training-module.css`（弹窗/胶囊作用域样式，勿用透明弹窗）
+- **SQL 执行顺序（仅云 Supabase exwsuwhqqpsqekzkmdol，用户手动执行）**：department-tree.sql（已跑）→ department-entity-permissions.sql → **account-rpc-v2.sql（最后，唯一权威版）** → training-management.sql + training-fix-v13.sql → training-online-v2.sql → training-content-library.sql → exam-module.sql → **training-html-course.sql（待跑）**
+- **业务流程（用户锁定）**：管理员按层级发任务（圈人严格按 targets 部门树）→ 员工自己账号在线学习 → 在线考试自动判分 → 错题本 → 手写签字 → 归档
+- **HTML 课件体系**（2026-09-01 完成，commit 7845deb → 6213813 → b734ddf）：
+  - 生成器 `tools/course-generator.html` 双页签：Markdown→课件 / **增强已有 HTML**（注入门控/计时/心跳，用户样式零改动）
+  - 增强模式三种结构识别：并列标题切节 / **预分节结构**（每个 h2 各包在 `<section>` 容器，豆包等 AI 生成 HTML 常见）/ 整页兜底（读到底+驻留≤10 分钟）
+  - 运行时：节门控（滚到底+驻留 360字/分钟 8~90s）、失焦暂停计时、20s 心跳→`training_course_heartbeat`、postMessage 握手断点恢复（`source: 'tr-courseware'/'tr-host'`）
+  - 单独打开降级 localStorage 本地模式；使用指引 `docs/html-courseware-guide.md`
+  - 测试：`tests/e2e/test-html-inject.js`（25 项，含真实地震手册 8 节用例）、`test-courseware-runtime.js`（10 项）；跑法：同一 bash 命令内「启动 headless Chrome(CDP 9333) → node 测试 → taskkill」（Chrome 后台启动会秒退）
+- **判分口径（用户锁定）**：多选全对才得分；案例分析=材料+子题均分；超时 120s 宽限；补考 3 次含首考
+- **账号**：培训自助注册（training_staff_register，手机号+身份证后6位）与报送账号共用 profiles；手机号全局唯一 → 升级用账号管理「编辑」
+- **暂不做（用户决策）**：视频/音频课件、离线缓存、学习中弹窗校验、摄像头监考、小程序（待注册跑通）
+
+---
+
+## 二、资质证照模块权限模型
 
 - `qualification.js` 入口：`Auth.isAdmin() ? CertAdmin.render(app) : Certs.render(app)`
 - **管理员**：登记 / 编辑 / 删除 / 换证 / 附件上传删除 / 证照类型字典维护 / 系统设置（预警天数）
@@ -30,7 +56,7 @@
 
 ---
 
-## 三、关键代码约定
+## 三、关键代码约定（资质证照模块）
 
 ### 1. 培训规则引擎（`js/utils.js`）
 
@@ -85,7 +111,7 @@
 
 ---
 
-## 四、今日（2026-08-27）优化里程碑（commit 链）
+## 四、历史里程碑（2026-08-27 资质证照优化 commit 链，详情见 `.workbuddy/memory/2026-08-27.md`）
 
 资质证照模块自整合进 `project-reporting` 后，今日连续迭代，完整链路：
 
@@ -112,14 +138,23 @@ e66569f  顶部导航/工具按钮/筛选区再优化（最新）
 
 ---
 
-## 五、待办与风险
+## 五、待办与风险（2026-09-01）
 
-- **必须手动执行**：`sql/certificate-management.sql` 需在 Supabase 控制台执行后，证照表 / RLS / Storage 桶才生效（前端已做表不存在的降级提示）。
-- **可选增强**（曾列为候选，未实现）：
-  - 注册安全工程师「达标 / 未达标」拆为独立统计卡片
-  - 回到顶部按钮换成图标
-- **已知限制**：`annual` 类型跨年依赖存储的 `training_status`；若要严格按自然年清零重计，需更大改造（用户已知悉）。
-- **import.js 缺口**：批量导入暂不含培训状态 / 培训记录，需在详情页单独维护；CSV 导出仍含证照编号（全量导出）。
+**用户侧必须手动做：**
+1. **执行 `sql/training-html-course.sql`**（云 Supabase）——执行后课件管理才能上传 HTML 类型课件；执行后可用已产出的《运城市地震安全手册（增强版）》实测上传+联机学习
+2. 顺手补跑更早遗留的 `sql/certificate-management.sql`
+3. 删除 C 盘旧目录 `C:\Users\sjn\WorkBuddy\workbuddynewweb`（AI 三条删除路径均被环境安全钩子拦截，需手动删）
+
+**下一步候选：**
+- HTML 课件联机端到端验证（跑完 SQL 后：生成器做课件 → 上传 → 卫红学账号实测学时/断点/完成标记）
+- 培训模块整体测试通过后合入 main → 部署腾讯云服务器（服务器自建库需补跑整条 SQL 链）
+- 可选：题库 Excel 批量导入；统计概览接入在线考试数据；注册安全工程师拆独立统计卡片
+
+**已知风险/约定：**
+- vendor/ 绝不能进 .gitignore（曾致线上 xlsx 404）；新加前端库确认 `git ls-files vendor/`
+- Storage key 不含中文：上传 key 一律 `时间戳_随机.ext`
+- 本地分支名不用 `/`（后台进程会干扰带斜杠的 refs）；.git 异常先怀疑此问题
+- 本地 tracking ref 可能卡旧值（假 ahead）→ 判断远端真实状态用 `git ls-remote`
 
 ---
 
@@ -127,15 +162,16 @@ e66569f  顶部导航/工具按钮/筛选区再优化（最新）
 
 开始新对话时，第一句话建议直接说：
 
-> 请先读取 `C:\Users\sjn\WorkBuddy\workbuddynewweb\.workbuddy\memory\2026-08-27.md`、`project-reporting/HANDOFF.md` 与本项目的 `MEMORY.md`，恢复资质证照模块的工作背景与代码约定，然后继续帮我优化 **[模块名 / 具体需求]**。
+> 请先读取 `E:\OneDrive\工作目录\2026\WORKBUDDY\project-reporting\HANDOFF.md` 与 `.workbuddy/memory/` 下最新日志（当前 `2026-09-01.md`），恢复培训教育模块的工作背景与代码约定，然后继续帮我 **[模块名 / 具体需求]**。
 
-智能体会据此恢复：项目结构、权限模型、培训规则引擎、统计卡片配色、导航布局约定、今日 commit 链与待办，无需你重述历史。
+智能体会据此恢复：项目结构、培训模块业务流程与判分口径、HTML 课件体系、账号与角色模型、部门修复补丁状态、commit 链与待办，无需你重述历史。
 
 ---
 
 ## 七、注意事项
 
-1. **当前模型不支持读图**：UI 优化需求请用**文字描述**期望效果或当前问题（如「返回按钮放左上角、无边框、其余靠右」），不要依赖截图——截图内容需文字转述。
-2. **改动校验**：所有 JS 改动后必须 `node --check` 通过；CSS 类命名集中在 `css/qualification-module.css`，避免散落到主表。
-3. **提交规范**：语义化 commit message，完成后 `git push origin main`。
-4. **环境**：Node 优先用托管版本 `C:\Users\sjn\.workbuddy\binaries\node\versions\22.22.2\node.exe`；PowerShell 命令需加引号处理含空格路径。
+1. **当前模型不支持读图**：UI 优化需求请用**文字描述**期望效果或当前问题，不要依赖截图。
+2. **改动校验**：所有 JS 改动后必须 `node --check` 通过；注意对象方法内"先引用后声明的 const"（TDZ）`node --check` 查不出，运行时才炸。
+3. **提交规范**：语义化 commit message；培训模块推 `training-module` 分支。
+4. **环境**：Node 用托管版本 `C:\Users\sjn\.workbuddy\binaries\node\versions\22.22.2-2\node.exe`；含空格路径加引号。
+5. **工作流**：AI 开发 → push GitHub Pages 测试 → 测试通过后部署腾讯云服务器正式环境（ubuntu@140.143.247.55，服务器访问 GitHub 经常卡死，配置改动用 sed/nano/scp）。
