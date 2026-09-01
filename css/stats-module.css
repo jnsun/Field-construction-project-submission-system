@@ -1,0 +1,141 @@
+/* =============================================================
+   css/stats-module.css —— 统计分析模块样式
+   指标卡复用 qualification-module.css 的 cert-stat-card / cert-stats-block
+   ============================================================= */
+
+/* 工具栏：时间胶囊 + 穿透面包屑 */
+.stats-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.stats-pills { display: flex; gap: 0; }
+
+.stats-pill {
+  padding: 5px 14px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  border-right-width: 0;
+}
+.stats-pill:first-child { border-radius: 999px 0 0 999px; }
+.stats-pill:last-child { border-radius: 0 999px 999px 0; border-right-width: 1px; }
+.stats-pill.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+.stats-crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.stats-crumb {
+  font-size: 13px;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.stats-crumb:hover { background: #eff6ff; }
+.stats-crumb.current { color: #374151; font-weight: 600; cursor: default; background: none; }
+.stats-crumb-sep { color: #9ca3af; font-size: 12px; }
+
+/* 看板卡片副标题 */
+.stats-card-sub {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* 完成率低于阈值的横幅 */
+.stats-alert-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+/* 部门明细表 */
+.stats-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.stats-table th, .stats-table td {
+  border-bottom: 1px solid #f0f1f3;
+  padding: 7px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+.stats-table thead th {
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 12px;
+  background: #fafbfc;
+  border-bottom: 1px solid #e5e7eb;
+}
+.stats-table tbody tr:hover { background: #f8fafc; }
+.stats-td-ellipsis { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+
+.stats-bar-row { display: flex; align-items: center; gap: 8px; }
+.stats-bar {
+  flex: 0 0 70px;
+  height: 8px;
+  background: #eef0f3;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.stats-bar-fill { height: 100%; border-radius: 4px; }
+.stats-bar-fill.success { background: #22c55e; }
+.stats-bar-fill.warning { background: #f59e0b; }
+.stats-bar-fill.danger  { background: #ef4444; }
+.stats-bar-fill.total   { background: #94a3b8; }
+.stats-bar-fill.info    { background: #3b82f6; }
+
+.stats-btn-ghost { color: #6b7280; }
+
+/* 口径说明折叠 */
+.stats-legend summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b7280;
+  padding: 6px 4px;
+}
+.stats-legend summary:hover { color: #374151; }
+
+/* 预警未读徽标 */
+.stats-unread-dot {
+  display: inline-block;
+  margin-left: 6px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  vertical-align: 1px;
+}
+
+/* 预警列表 */
+.stats-alert-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-bottom: 1px solid #f0f1f3;
+}
+.stats-alert-item:last-child { border-bottom: none; }
+.stats-alert-item.unread { background: #fffbeb; }
+.stats-alert-icon { font-size: 20px; }
+.stats-alert-main { flex: 1; min-width: 0; }
+.stats-alert-title { font-size: 13px; color: #1f2937; font-weight: 500; }
+.stats-alert-item.unread .stats-alert-title { font-weight: 700; }
+.stats-alert-detail { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.stats-alert-time { font-size: 12px; color: #9ca3af; white-space: nowrap; }
+
+/* 表单 */
+.stats-field-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+.stats-input-sm { width: 110px; }
+.stats-input-md { width: 320px; max-width: 100%; }
+
+/* 兼容：安全滚动 */
+.dashboard-content { scrollbar-gutter: stable; }

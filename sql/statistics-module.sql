@@ -554,6 +554,30 @@ BEGIN
 END;
 $$;
 
+-- ----------------------------------------------------------------------------
+-- 11. 预警阈值设置（仅公司级）
+-- ----------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.stats_set_settings(numeric, int);
+CREATE FUNCTION public.stats_set_settings(p_completion_threshold numeric, p_overdue_grace_days int)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.training_is_company_admin() THEN
+    RAISE EXCEPTION '仅公司级管理员可修改预警阈值' USING ERRCODE = '42501';
+  END IF;
+  IF p_completion_threshold IS NULL OR p_completion_threshold < 0 OR p_completion_threshold > 100
+     OR p_overdue_grace_days IS NULL OR p_overdue_grace_days < 0 OR p_overdue_grace_days > 365 THEN
+    RAISE EXCEPTION '阈值取值不合法（完成率 0~100，宽限 0~365 天）';
+  END IF;
+  UPDATE public.stats_settings
+     SET completion_threshold = p_completion_threshold,
+         overdue_grace_days   = p_overdue_grace_days,
+         updated_by = auth.uid(), updated_at = now()
+   WHERE id = 1;
+END;
+$$;
+
 GRANT EXECUTE ON FUNCTION public.stats_overview(uuid, date, date) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.stats_overdue_list(uuid, int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.stats_alert_sync() TO authenticated;
@@ -561,6 +585,7 @@ GRANT EXECUTE ON FUNCTION public.stats_alert_inbox(boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.stats_alert_ack(uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.stats_export_records(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.stats_set_cert_target(uuid, int) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.stats_set_settings(numeric, int) TO authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 11. 验证段（在 SQL 编辑器执行后应输出全部 OK）
@@ -576,12 +601,13 @@ BEGIN
   SELECT count(*) INTO v FROM pg_proc
    WHERE proname IN ('stats_overview','stats_overdue_list','stats_alert_sync',
                      'stats_alert_inbox','stats_alert_ack','stats_export_records',
-                     'stats_set_cert_target','stats_can_access','stats_scope_depts');
-  IF v < 9 THEN RAISE EXCEPTION '函数数量不符: %/9', v; END IF;
+                     'stats_set_cert_target','stats_can_access','stats_scope_depts',
+                     'stats_set_settings');
+  IF v < 10 THEN RAISE EXCEPTION '函数数量不符: %/10', v; END IF;
 
   IF NOT EXISTS (SELECT 1 FROM public.stats_settings WHERE id = 1) THEN
     RAISE EXCEPTION 'stats_settings 初始行缺失';
   END IF;
 
-  RAISE NOTICE 'statistics-module.sql 安装验证通过：4 表 / 9 函数 / settings 初始行 OK';
+  RAISE NOTICE 'statistics-module.sql 安装验证通过：4 表 / 10 函数 / settings 初始行 OK';
 END $$;

@@ -23,6 +23,7 @@ const ModuleRegistry = (() => {
     contract: '📁',
     training: '🎓',
     notice: '📢',
+    stats: '📈',
   };
 
 
@@ -62,6 +63,8 @@ const ModuleRegistry = (() => {
       desc: '培训计划 / 培训记录 / 考试管理', renderer: (app) => TrainingModule.render(app) },
     { id: 'notice', name: '公告通知中心', icon: ICON.notice,
       desc: '内部公告与消息通知', renderer: (app)  => NoticeModule.render(app) },
+    { id: 'stats', name: '统计分析', icon: ICON.stats, trial: true,
+      desc: '培训 / 证照统计看板 · 预警 · 报表导出', renderer: (app) => StatsModule.render(app) },
   ];
 
   const map = {};
