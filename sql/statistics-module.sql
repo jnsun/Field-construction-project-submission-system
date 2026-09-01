@@ -226,7 +226,7 @@ BEGIN
   END IF;
 
   ---------- 下级部门分组明细（逐级穿透的数据源） ----------
-  SELECT json_agg(row_to_json(d.*) ORDER BY d.completion_rate NULLS LAST, d.name)
+  SELECT json_agg(row_to_json(d.*) ORDER BY d.completion_rate NULLS LAST, d.dept_name)
     INTO v_detail
     FROM (
       SELECT a.department_id AS dept_id,

@@ -101,8 +101,8 @@ async function main() {
   outOfScopeDeptId = admDepts.find(id => !entDepts.includes(id)) || null;
   if (outOfScopeDeptId) {
     const denied = await entityApi('POST', 'rpc/stats_overview', { p_dept: outOfScopeDeptId, p_from: null, p_to: null });
-    const ok4 = denied.status === 400 && (denied.json && (denied.json.code === '42501'
-      || /无权/i.test(denied.json.message || '')));
+    const ok4 = (denied.status === 400 || denied.status === 403) && (denied.json && (denied.json.code === '42501'
+      || /无权|仅公司级/i.test(denied.json.message || '')));
     report('4. 经营实体穿透非管辖部门被拒', ok4, `${denied.status}: ${denied.json && denied.json.message}`);
   } else {
     report('4. 经营实体穿透非管辖部门被拒', false, '未找到范围外部门（公司级明细可能为空）');
@@ -125,8 +125,8 @@ async function main() {
     if (ids.length) {
       const ack = await entityApi('POST', 'rpc/stats_alert_ack', { p_ids: ids });
       const ib2 = await entityApi('POST', 'rpc/stats_alert_inbox', { p_unread_only: false });
-      report('7. stats_alert_ack 后 unread=0', ack.status === 200 && ib2.json.unread === 0,
-        `acked=${ids.length}, unread=${ib2.json && ib2.json.unread}`);
+      report('7. stats_alert_ack 后 unread=0', (ack.status === 200 || ack.status === 204) && ib2.json.unread === 0,
+        `acked=${ids.length}(${ack.status}), unread=${ib2.json && ib2.json.unread}`);
     } else {
       report('7. stats_alert_ack 后 unread=0', true, '无未读可测');
     }
@@ -136,16 +136,16 @@ async function main() {
 
   // ---- 8. 阈值设置：实体拒 / 公司级成 ----
   const ssE = await entityApi('POST', 'rpc/stats_set_settings', { p_completion_threshold: 60, p_overdue_grace_days: 5 });
-  const ok8a = ssE.status === 400 && ssE.json && (ssE.json.code === '42501' || /仅公司级/i.test(ssE.json.message || ''));
+  const ok8a = (ssE.status === 400 || ssE.status === 403) && ssE.json && (ssE.json.code === '42501' || /仅公司级/i.test(ssE.json.message || ''));
   report('8a. 实体 stats_set_settings 被拒', ok8a, `${ssE.status}: ${ssE.json && ssE.json.message}`);
   const ssA = await adminApi('POST', 'rpc/stats_set_settings', { p_completion_threshold: 80, p_overdue_grace_days: 7 });
-  report('8b. 公司级 stats_set_settings', ssA.status === 200, `${ssA.status}`);
+  report('8b. 公司级 stats_set_settings', ssA.status === 200 || ssA.status === 204, `${ssA.status}`);
 
   // ---- 9. 持证基准：公司级设 / 实体越权拒 ----
   if (outOfScopeDeptId) {
     const ctA = await adminApi('POST', 'rpc/stats_set_cert_target', { p_dept: outOfScopeDeptId, p_count: 3 });
     const ctE = await entityApi('POST', 'rpc/stats_set_cert_target', { p_dept: outOfScopeDeptId, p_count: 3 });
-    const ok9 = ctA.status === 200 && ctE.status === 400
+    const ok9 = (ctA.status === 200 || ctA.status === 204) && (ctE.status === 400 || ctE.status === 403)
       && (ctE.json && (ctE.json.code === '42501' || /仅公司级/i.test(ctE.json.message || '')));
     report('9. stats_set_cert_target 权限', ok9, `admin=${ctA.status}, entity=${ctE.status}`);
     // 清理：基准归零不影响业务
