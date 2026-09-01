@@ -94,6 +94,15 @@
 
 .stats-btn-ghost { color: #6b7280; }
 
+/* 穿透返回按钮 */
+.stats-btn-back {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  margin-right: 4px;
+}
+.stats-btn-back:hover { background: #dbeafe; }
+
 /* 口径说明折叠 */
 .stats-legend summary {
   cursor: pointer;

@@ -119,11 +119,15 @@ const StatsModule = {
     }
   },
 
-  /** RPC 报错信息提取 */
+  /** RPC 报错信息提取（附带 SQLSTATE 错误码，便于定位） */
   rpcError(e) {
     const err = e && (e.message || e.error_description || e);
-    if (/函数不存在|Could not find the function|404/.test(String(err))) return 'RPC 未安装（先执行 sql/statistics-module.sql）';
-    return String(err);
+    const code = (e && e.code) || '';
+    const s = String(err);
+    if (/Could not find the function|PGRST202/.test(s)) {
+      return 'RPC 未安装（先执行 sql/statistics-module.sql；若已执行请强制刷新页面后重试）';
+    }
+    return code ? `【${code}】${s}` : s;
   },
 
   /** 当前时间窗的 p_from（null=全部） */
@@ -227,6 +231,7 @@ const StatsModule = {
   buildToolbar() {
     const win = this.state.window;
     const crumbs = this.state.crumbs;
+    const rootLabel = Auth.isCompanyAdmin() ? '全公司' : '我的辖区';
     return `
       <div class="stats-toolbar">
         <div class="stats-pills">
@@ -235,11 +240,14 @@ const StatsModule = {
               onclick="StatsModule.setWindow('${k}')">${l}</button>`).join('')}
         </div>
         <div class="stats-crumbs">
-          ${crumbs.length
-            ? crumbs.map((c, i) => `
-              <span class="stats-crumb" onclick="StatsModule.crumbsTo(${i})">${Utils.escapeHtml(c.name)}</span>`)
-              .join('<span class="stats-crumb-sep">▸</span>')
-            : `<span class="stats-crumb current">${Auth.isCompanyAdmin() ? '全公司' : '我的辖区'}</span>`}
+          ${crumbs.length ? `<button type="button" class="btn btn-sm stats-btn-back"
+            onclick="StatsModule.crumbsRoot()">‹ 返回上级</button>` : ''}
+          <span class="stats-crumb${crumbs.length ? '' : ' current'}"
+            onclick="StatsModule.crumbsRoot()">${rootLabel}</span>
+          ${crumbs.map((c, i) => `
+            <span class="stats-crumb-sep">▸</span><span
+              class="stats-crumb${i === crumbs.length - 1 ? ' current' : ''}"
+              onclick="StatsModule.crumbsTo(${i})">${Utils.escapeHtml(c.name)}</span>`).join('')}
         </div>
       </div>`;
   },
@@ -252,6 +260,12 @@ const StatsModule = {
   async crumbsTo(i) {
     this.state.crumbs = this.state.crumbs.slice(0, i + 1);
     await this.renderDashboard(document.getElementById('stats-section'), true);
+  },
+
+  /** 返回穿透起点（我的辖区/全公司根节点），在看板与逾期名单页均可用 */
+  async crumbsRoot() {
+    this.state.crumbs = [];
+    await this.renderView();
   },
 
   buildDeptTable(depts) {
