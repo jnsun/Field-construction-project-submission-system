@@ -34,6 +34,19 @@
   }
   #preview { flex: 1; border: none; background: #fff; }
   .tip { color: #9ca3af; }
+  .tab.active { background: #eef2ff; border-color: #4f46e5; color: #4f46e5; font-weight: 600; }
+  #html-input {
+    flex: 1; border: none; resize: none; padding: 14px; font-size: 12px; line-height: 1.6;
+    font-family: Consolas, "Courier New", monospace; outline: none; display: none;
+  }
+  body.mode-inject #html-input { display: block; }
+  body.mode-inject #md-input,
+  body.mode-inject #meta-title,
+  body.mode-inject #meta-org,
+  body.mode-inject #btn-sample,
+  body.mode-inject .only-md { display: none; }
+  .only-inj { display: none; }
+  body.mode-inject .only-inj { display: flex; }
   @media (max-width: 900px) { .split { flex-direction: column; } .pane + .pane { border-left: none; border-top: 1px solid #e5e7eb; } }
 </style>
 </head>
@@ -41,10 +54,12 @@
 
 <div class="toolbar">
   <h1>培训课件生成器</h1>
+  <button class="btn tab active" id="tab-md" onclick="setMode('md')">Markdown → 课件</button>
+  <button class="btn tab" id="tab-inject" onclick="setMode('inject')">增强已有 HTML</button>
   <div class="meta">
     <input id="meta-title" placeholder="课件标题（自动取 Markdown 一级标题）" style="width:260px">
     <input id="meta-org" placeholder="单位/部门署名（选填）" style="width:180px">
-    <button class="btn" onclick="loadSample()">载入示例</button>
+    <button class="btn" id="btn-sample" onclick="loadSample()">载入示例</button>
     <button class="btn btn-primary" id="btn-download" onclick="downloadHtml()" disabled>下载 HTML 课件</button>
   </div>
 </div>
@@ -52,10 +67,15 @@
 <div class="split">
   <div class="pane">
     <div class="pane-head">
-      <b>Markdown 源文</b>
-      <span class="tip">用 <code>## </code> 二级标题分节（每节独立解锁，防一滑到底）；一级标题 = 课件标题</span>
-      <label class="btn" style="margin-left:auto">打开 .md 文件
+      <b class="only-md">Markdown 源文</b>
+      <b class="only-inj">你的 HTML 源码</b>
+      <span class="tip only-md">用 <code>## </code> 二级标题分节（每节独立解锁，防一滑到底）；一级标题 = 课件标题</span>
+      <span class="tip only-inj">粘贴完整 HTML（含 &lt;/html&gt;）；自动按顶层 h1/h2 切节注入门控，样式原样保留</span>
+      <label class="btn only-md" style="margin-left:auto">打开 .md 文件
         <input type="file" accept=".md,.markdown,.txt" style="display:none" onchange="openMdFile(this)">
+      </label>
+      <label class="btn only-inj" style="margin-left:auto">打开 .html 文件
+        <input type="file" accept=".html,.htm" style="display:none" onchange="openHtmlFile(this)">
       </label>
     </div>
     <textarea id="md-input" spellcheck="false" placeholder="# 课件标题
@@ -67,6 +87,10 @@
 ## 第二节 标题
 
 正文……" oninput="render()"></textarea>
+    <textarea id="html-input" spellcheck="false" placeholder="<!DOCTYPE html>
+<html>
+…你的完整 HTML 源码…
+</html>" oninput="render()"></textarea>
   </div>
   <div class="pane">
     <div class="pane-head"><b>预览</b><span class="tip" id="sec-count">—</span><span class="tip">（预览里可体验解锁门控）</span></div>
@@ -221,9 +245,18 @@ const RUNTIME_JS = [
 '',
 '  /* ---------- 状态 ---------- */',
 '  var state = secs.map(function () { return { dwell: 0, bottom: false, done: false }; });',
+'  var MAXMS = (window.__CW_CONF && window.__CW_CONF.maxMs) || 90000;',
 '  var requiredMs = secs.map(function (sec) {',
-'    var words = (sec.querySelector(".cw-sec-body").textContent || "").replace(/\\s/g, "").length;',
-'    return Math.max(8000, Math.min(90000, Math.round(words / 6 * 1000)));  /* 约 360 字/分钟 */',
+'    var bodyEl = sec.querySelector(".cw-sec-body");',
+'    var textSrc = bodyEl ? bodyEl.textContent : "";',
+'    if (!bodyEl) {   /* 注入模式：节体 = section 自身，剔除门控脚注与注入脚本避免计入字数 */',
+'      var clone = sec.cloneNode(true);',
+'      var rm = clone.querySelectorAll(".cw-sec-foot, script, style");',
+'      for (var rx = 0; rx < rm.length; rx++) rm[rx].remove();',
+'      textSrc = clone.textContent;',
+'    }',
+    '    var words = (textSrc || "").replace(/\\s/g, "").length;',
+'    return Math.max(8000, Math.min(MAXMS, Math.round(words / 6 * 1000)));  /* 约 360 字/分钟 */',
 '  });',
 '  var online = false;      /* 宿主握手成功 = 联机模式 */',
 '  var totalMs = 0;         /* 累计可见学习时长 */',
@@ -361,13 +394,18 @@ const RUNTIME_JS = [
 '    var d = e.data;',
 '    if (!d || d.source !== "tr-host") return;',
 '    online = true;',
-'    if (d.type === "hello" && d.position > 0) {',
-'      var upto = Math.min(d.position, N);',
-'      for (var i = 0; i < upto; i++) {',
-'        state[i].done = true;',
-'        secs[i].classList.add("cw-unlocked");',
-'        if (i + 1 < N) secs[i + 1].classList.add("cw-unlocked");',
+'    if (d.type === "hello") {',
+'      /* 以服务端进度为准：全量重置后再恢复，避免本地旧进度抢先生效 */',
+'      for (var i = 0; i < N; i++) {',
+'        state[i].done = false;',
+'        secs[i].classList.remove("cw-unlocked");',
 '      }',
+'      var upto = Math.min(d.position || 0, N);',
+'      for (var i2 = 0; i2 < upto; i2++) {',
+'        state[i2].done = true;',
+'        secs[i2].classList.add("cw-unlocked");',
+'      }',
+'      if (upto < N) secs[upto].classList.add("cw-unlocked");',
 '      refreshHeader();',
 '      for (var j = 0; j < N; j++) refreshGate(j);',
 '      var nxt = secs[upto];',
@@ -376,11 +414,13 @@ const RUNTIME_JS = [
 '    send({ type: "hello-ack", online: true });',
 '  });',
 '',
+'  /* 首节立即解锁（不等 window load）：注入模式下避免锁定 CSS 造成整页闪烁 */',
+'  refreshHeader();',
+'  for (var j0 = 0; j0 < N; j0++) refreshGate(j0);',
+'  secs[0].classList.add("cw-unlocked");',
+'',
 '  /* 本地模式（独立打开 / 微信直接打开）：从 localStorage 恢复 */',
 '  window.addEventListener("load", function () {',
-'    refreshHeader();',
-'    for (var j = 0; j < N; j++) refreshGate(j);',
-'    secs[0].classList.add("cw-unlocked");',
 '    if (!online) {',
 '      var saved = null;',
 '      try { saved = JSON.parse(localStorage.getItem(lsKey) || "null"); } catch (e) {}',
@@ -498,10 +538,205 @@ function buildCourseHtml(title, sections, org) {
   ].join('\n');
 }
 
+/* ---------------- HTML 增强模式：向已有 HTML 注入控制运行时 ----------------
+ * 用户自带精美 HTML → 保留全部样式，注入：
+ *   ① 分节门控（顶层 h1/h2 自动切节，逐节解锁防一滑到底）
+ *   ② 顶部进度条 + 已学时长（sticky，不干扰原样式）
+ *   ③ 心跳/进度 postMessage 协议（与 mine.js 宿主一致）
+ * 无顶层 h1/h2 → 整页模式：整页一节，读完+驻留≤10 分钟后完成 */
+const INJECT_CSS = [
+  '.cw-inj-header{position:sticky;top:0;z-index:9999;background:rgba(255,255,255,.97);',
+  '  border-bottom:1px solid #e5e7eb;padding:8px 16px;font-family:"Microsoft YaHei",system-ui,sans-serif;',
+  '  font-size:12px;color:#6b7280;box-shadow:0 1px 4px rgba(0,0,0,.06)}',
+  '.cw-inj-meta{display:flex;gap:14px;flex-wrap:wrap;align-items:center}',
+  '.cw-inj-header .cw-progress{flex:1;min-width:120px;height:6px;background:#e5e7eb;border-radius:3px;',
+  '  overflow:hidden;align-self:center;margin:0}',
+  '.cw-progress i{display:block;height:100%;width:0;background:#4f46e5;transition:width .3s}',
+  '.cw-sec:not(.cw-unlocked){display:none !important}',
+  '.cw-sec-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;',
+  '  border-top:1px dashed #e5e7eb;margin-top:20px;padding-top:12px;flex-wrap:wrap;',
+  '  font-family:"Microsoft YaHei",system-ui,sans-serif}',
+  '.cw-gate-msg{font-size:12px;color:#6b7280}',
+  '.cw-btn-next{padding:8px 20px;border-radius:8px;border:none;background:#4f46e5;color:#fff;',
+  '  font-size:14px;cursor:pointer}',
+  '.cw-btn-next:disabled{background:#cbd5e1;cursor:not-allowed}',
+  '.cw-sec-foot.cw-done .cw-gate-msg{color:#16a34a;font-weight:600}',
+  '#cw-finish{display:none;background:#ecfdf5;border:1px solid #86efac;border-radius:12px;',
+  '  padding:16px 20px;margin:18px 16px;color:#166534;font-weight:600;text-align:center;',
+  '  font-family:"Microsoft YaHei",system-ui,sans-serif}',
+  '@media print{.cw-sec{display:block !important}.cw-sec-foot,.cw-inj-header,#cw-finish{display:none !important}}',
+].join('\n');
+
+function enhanceExistingHtml(src) {
+  const doc = new DOMParser().parseFromString(src, 'text/html');
+  if (!doc.body || !doc.body.textContent.trim()) throw new Error('未解析到页面内容，请确认粘贴的是完整 HTML');
+  const body = doc.body;
+
+  /* 重复增强防护：拆掉上次注入的节/脚注/头，恢复原始流再处理 */
+  doc.querySelectorAll('.cw-inj-header, .cw-sec-foot, #cw-finish, style[data-cw-inject], script[data-cw-runtime]')
+    .forEach(el => el.remove());
+  doc.querySelectorAll('section.cw-sec').forEach(sec => {
+    while (sec.firstChild) sec.parentNode.insertBefore(sec.firstChild, sec);
+    sec.remove();
+  });
+  body.classList.remove('cw-sec', 'cw-whole');
+
+  const isHead = n => n.nodeType === 1 && /^(H1|H2)$/.test(n.tagName);
+  const isEmptyNode = n => n.nodeType === 3 && !n.textContent.trim();
+  /* 字数统计：剔除注入物（脚注/脚本/样式）后再数 */
+  const textCount = el => {
+    const c = el.cloneNode(true);
+    c.querySelectorAll('.cw-sec-foot, script, style').forEach(x => x.remove());
+    return (c.textContent || '').replace(/\s/g, '').length;
+  };
+  const buildFoot = () => {
+    const foot = doc.createElement('div');
+    foot.className = 'cw-sec-foot';
+    foot.innerHTML = '<span class="cw-gate-msg">正在读取本节…</span>'
+      + '<button type="button" class="cw-btn-next" disabled>下一节 ▶</button>';
+    return foot;
+  };
+
+  /* ---- 找"节根"容器：直接子元素中含 ≥2 个 h1/h2 的最浅元素（含 body 自身）。
+   * 用户的精美 HTML 标题常嵌在 .wrap/.container 类容器里，必须下探 ---- */
+  const directHeadCount = el => Array.from(el.children).filter(c => /^(H1|H2)$/.test(c.tagName)).length;
+  let root = null;
+  if (directHeadCount(body) >= 2) {
+    root = body;
+  } else {
+    const queue = Array.from(body.children);
+    while (queue.length && !root) {
+      const el = queue.shift();
+      if (directHeadCount(el) >= 2) { root = el; break; }
+      queue.push(...el.children);
+    }
+  }
+
+  let mode = 'whole', conf = { maxMs: 600000 }, secCount = 1;   /* 默认整页；找到节根才切换分节 */
+  if (root && root !== body) {
+    /* ---- 分节模式（容器内）：节 section 原地包裹在 root 内部，
+     * root 之前/之后的兄弟（封面、页脚）保持原位常驻，布局零破坏 ---- */
+    mode = 'sections';
+    conf = null;
+    const groups = [];
+    let cur = { head: null, nodes: [] };
+    Array.from(root.childNodes).forEach(n => {
+      if (isHead(n)) { groups.push(cur); cur = { head: n, nodes: [] }; }
+      else cur.nodes.push(n);
+    });
+    groups.push(cur);
+    /* 标题前的散内容并入下一个标题节开头；尾部散内容并入最后一节 */
+    const secsData = [];
+    let pending = [];
+    groups.forEach(g => {
+      if (g.head) { secsData.push({ head: g.head, nodes: [...pending, ...g.nodes] }); pending = []; }
+      else pending.push(...g.nodes);
+    });
+    if (secsData.length) pending.forEach(n => secsData[secsData.length - 1].nodes.push(n));
+    const valid = secsData.filter(g => g.head && g.nodes.concat(g.head).some(n => !isEmptyNode(n)));
+    root.textContent = '';
+    valid.forEach(g => {
+      const sec = doc.createElement('section');
+      sec.className = 'cw-sec';
+      sec.appendChild(g.head);
+      g.nodes.forEach(n => sec.appendChild(n));
+      sec.appendChild(buildFoot());
+      root.appendChild(sec);
+    });
+    secCount = valid.length;
+    if (!secCount) mode = 'whole';
+  } else if (root === body) {
+    /* ---- 分节模式（body 顶层） ---- */
+    mode = 'sections';
+    conf = null;
+    const groups = [];
+    let cur = { head: null, nodes: [] };
+    Array.from(body.childNodes).forEach(n => {
+      if (isHead(n)) { groups.push(cur); cur = { head: n, nodes: [] }; }
+      else cur.nodes.push(n);
+    });
+    groups.push(cur);
+    const secsData = [];
+    let pending = [];
+    groups.forEach(g => {
+      if (g.head) { secsData.push({ head: g.head, nodes: [...pending, ...g.nodes] }); pending = []; }
+      else pending.push(...g.nodes);
+    });
+    if (secsData.length) pending.forEach(n => secsData[secsData.length - 1].nodes.push(n));
+    const valid = secsData.filter(g => g.head);
+    body.textContent = '';
+    valid.forEach(g => {
+      const sec = doc.createElement('section');
+      sec.className = 'cw-sec';
+      sec.appendChild(g.head);
+      g.nodes.forEach(n => sec.appendChild(n));
+      sec.appendChild(buildFoot());
+      body.appendChild(sec);
+    });
+    secCount = valid.length;
+    if (!secCount) mode = 'whole';
+  }
+  if (mode === 'whole') {
+    /* ---- 整页模式：body 即唯一一节 ---- */
+    body.classList.add('cw-sec', 'cw-whole');
+    body.appendChild(buildFoot());
+    body.appendChild(doc.createElement('div')).id = 'cw-finish';
+    doc.getElementById('cw-finish').textContent = '🎉 恭喜，本课件学习完成！可关闭本页返回培训系统。';
+    conf = { maxMs: 600000 };
+    secCount = 1;
+  }
+
+  /* 顶部进度条 */
+  const hdr = doc.createElement('div');
+  hdr.className = 'cw-inj-header';
+  hdr.innerHTML = '<div class="cw-inj-meta"><span id="cw-now">—</span>'
+    + '<span id="cw-study">本次已学 0 秒</span>'
+    + '<span>完成度 <b id="cw-total">0%</b></span></div>'
+    + '<div class="cw-progress"><i id="cw-bar"></i></div>';
+  body.insertBefore(hdr, body.firstChild);
+  /* 完成提示（分节模式） */
+  if (mode === 'sections' && !doc.getElementById('cw-finish')) {
+    const fin = doc.createElement('div');
+    fin.id = 'cw-finish';
+    fin.textContent = '🎉 恭喜，全部小节学习完成！可关闭本页返回培训系统。';
+    body.appendChild(fin);
+  }
+  /* 注入样式 + 运行时（data 属性标记便于重复增强时清除） */
+  const styleEl = doc.createElement('style');
+  styleEl.setAttribute('data-cw-inject', '1');
+  styleEl.textContent = INJECT_CSS;
+  doc.head.appendChild(styleEl);
+  const confEl = doc.createElement('script');
+  confEl.textContent = 'window.__CW_CONF=' + JSON.stringify(conf || {}) + ';';
+  body.appendChild(confEl);
+  const rt = doc.createElement('script');
+  rt.setAttribute('data-cw-runtime', '1');
+  rt.textContent = RUNTIME_JS;
+  body.appendChild(rt);
+
+  return {
+    html: '<!DOCTYPE html>\n' + doc.documentElement.outerHTML,
+    mode, count: secCount, words: textCount(body),
+    title: (doc.title || '培训课件').trim(),
+  };
+}
+
 /* ---------------- 生成器交互 ---------------- */
 let currentHtml = '';
+let mode = 'md';          /* md = Markdown 模式 | inject = HTML 增强模式 */
+let injTitle = '培训课件';
 
-function render() {
+function setMode(m) {
+  mode = m;
+  document.body.classList.toggle('mode-inject', m === 'inject');
+  document.getElementById('tab-md').classList.toggle('active', m === 'md');
+  document.getElementById('tab-inject').classList.toggle('active', m === 'inject');
+  render();
+}
+
+function render() { if (mode === 'md') renderMd(); else renderInj(); }
+
+function renderMd() {
   const md = document.getElementById('md-input').value;
   const titleInput = document.getElementById('meta-title');
   const org = document.getElementById('meta-org').value.trim();
@@ -517,11 +752,37 @@ function render() {
     parsed.sections.length + ' 节 · ' + md.replace(/\s/g, '').length + ' 字';
   document.getElementById('btn-download').disabled = !md.trim();
 }
+
+function renderInj() {
+  const src = document.getElementById('html-input').value;
+  const info = document.getElementById('sec-count');
+  const btn = document.getElementById('btn-download');
+  if (!src.trim()) {
+    currentHtml = ''; btn.disabled = true;
+    info.textContent = '粘贴完整 HTML 源码（含 </html>），或点右侧打开 .html 文件';
+    return;
+  }
+  try {
+    const r = enhanceExistingHtml(src);
+    currentHtml = r.html;
+    injTitle = r.title;
+    document.getElementById('preview').srcdoc = currentHtml;
+    info.textContent = r.mode === 'sections'
+      ? '分节模式 · 检测到 ' + r.count + ' 个顶层标题 → ' + r.count + ' 节逐节解锁（全文约 ' + r.words + ' 字）'
+      : '整页模式 · 未检测到顶层 h1/h2 → 整页一节：读到底 + 驻留约 ' + Math.min(600, Math.round(r.words / 6)) + ' 秒后完成（要分节请把标题放到 body 顶层）';
+    btn.disabled = false;
+  } catch (e) {
+    currentHtml = ''; btn.disabled = true;
+    info.textContent = '解析失败：' + e.message;
+  }
+}
 document.getElementById('meta-title').addEventListener('input', function () { this.dataset.auto = '0'; render(); });
 document.getElementById('meta-org').addEventListener('input', render);
 
 function downloadHtml() {
-  const name = (document.getElementById('meta-title').value.trim() || '培训课件') + '.html';
+  const name = (mode === 'md'
+    ? (document.getElementById('meta-title').value.trim() || '培训课件')
+    : injTitle) + '.html';
   const blob = new Blob([currentHtml], { type: 'text/html;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -530,18 +791,29 @@ function downloadHtml() {
   URL.revokeObjectURL(a.href);
 }
 
-function openMdFile(input) {
+function openFileAsText(input, cb) {
   const f = input.files[0];
   if (!f) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    document.getElementById('md-input').value = reader.result;
+  reader.onload = () => cb(reader.result);
+  reader.readAsText(f, 'utf-8');
+  input.value = '';
+}
+
+function openMdFile(input) {
+  openFileAsText(input, (text) => {
+    document.getElementById('md-input').value = text;
     const t = document.getElementById('meta-title');
     t.value = ''; t.dataset.auto = '1';
     render();
-  };
-  reader.readAsText(f, 'utf-8');
-  input.value = '';
+  });
+}
+
+function openHtmlFile(input) {
+  openFileAsText(input, (text) => {
+    document.getElementById('html-input').value = text;
+    render();
+  });
 }
 
 function loadSample() {
