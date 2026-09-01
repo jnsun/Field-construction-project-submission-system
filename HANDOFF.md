@@ -38,7 +38,7 @@
 - **HTML 课件体系**（2026-09-01 完成，commit 7845deb → 6213813 → b734ddf）：
   - 生成器 `tools/course-generator.html` 双页签：Markdown→课件 / **增强已有 HTML**（注入门控/计时/心跳，用户样式零改动）
   - 增强模式三种结构识别：并列标题切节 / **预分节结构**（每个 h2 各包在 `<section>` 容器，豆包等 AI 生成 HTML 常见）/ 整页兜底（读到底+驻留≤10 分钟）
-  - 运行时：节门控（滚到底+驻留 450字/分钟 8~90s）、失焦暂停计时、20s 心跳→`training_course_heartbeat`、postMessage 握手断点恢复（`source: 'tr-courseware'/'tr-host'`）
+  - 运行时：节门控（滚到底+驻留 450字/分钟 8~45s）、失焦暂停计时、20s 心跳→`training_course_heartbeat`、postMessage 握手断点恢复（`source: 'tr-courseware'/'tr-host'`）
   - 单独打开降级 localStorage 本地模式；使用指引 `docs/html-courseware-guide.md`
   - 测试：`tests/e2e/test-html-inject.js`（25 项，含真实地震手册 8 节用例）、`test-courseware-runtime.js`（10 项）；跑法：同一 bash 命令内「启动 headless Chrome(CDP 9333) → node 测试 → taskkill」（Chrome 后台启动会秒退）
 - **判分口径（用户锁定）**：多选全对才得分；案例分析=材料+子题均分；超时 120s 宽限；补考 3 次含首考

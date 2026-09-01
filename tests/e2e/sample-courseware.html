@@ -120,7 +120,7 @@ body{font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;color:#1f2
 
   /* ---------- 状态 ---------- */
   var state = secs.map(function () { return { dwell: 0, bottom: false, done: false }; });
-  var MAXMS = (window.__CW_CONF && window.__CW_CONF.maxMs) || 90000;
+  var MAXMS = (window.__CW_CONF && window.__CW_CONF.maxMs) || 45000;
   var requiredMs = secs.map(function (sec) {
     var bodyEl = sec.querySelector(".cw-sec-body");
     var textSrc = bodyEl ? bodyEl.textContent : "";
