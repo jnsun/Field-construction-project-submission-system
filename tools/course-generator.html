@@ -256,7 +256,7 @@ const RUNTIME_JS = [
 '      textSrc = clone.textContent;',
 '    }',
     '    var words = (textSrc || "").replace(/\\s/g, "").length;',
-'    return Math.max(8000, Math.min(MAXMS, Math.round(words / 6 * 1000)));  /* 约 360 字/分钟 */',
+'    return Math.max(8000, Math.min(MAXMS, Math.round(words / 7.5 * 1000)));  /* 约 450 字/分钟 */',
 '  });',
 '  var online = false;      /* 宿主握手成功 = 联机模式 */',
 '  var totalMs = 0;         /* 累计可见学习时长 */',
@@ -825,7 +825,7 @@ function renderInj() {
       ? (r.pre
           ? '分节模式 · 检测到预分节结构（' + r.count + ' 个章节容器各含一个标题）→ ' + r.count + ' 节逐节解锁（全文约 ' + r.words + ' 字）'
           : '分节模式 · 检测到 ' + r.count + ' 个顶层标题 → ' + r.count + ' 节逐节解锁（全文约 ' + r.words + ' 字）')
-      : '整页模式 · 未检测到可分节的标题结构 → 整页一节：读到底 + 驻留约 ' + Math.min(600, Math.round(r.words / 6)) + ' 秒后完成（要分节请把各章标题放进各自独立的 <section> 容器，或并列放在同一容器下）';
+      : '整页模式 · 未检测到可分节的标题结构 → 整页一节：读到底 + 驻留约 ' + Math.min(600, Math.round(r.words / 7.5)) + ' 秒后完成（要分节请把各章标题放进各自独立的 <section> 容器，或并列放在同一容器下）';
     btn.disabled = false;
   } catch (e) {
     currentHtml = ''; btn.disabled = true;

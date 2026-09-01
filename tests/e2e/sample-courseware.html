@@ -120,9 +120,18 @@ body{font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;color:#1f2
 
   /* ---------- 状态 ---------- */
   var state = secs.map(function () { return { dwell: 0, bottom: false, done: false }; });
+  var MAXMS = (window.__CW_CONF && window.__CW_CONF.maxMs) || 90000;
   var requiredMs = secs.map(function (sec) {
-    var words = (sec.querySelector(".cw-sec-body").textContent || "").replace(/\s/g, "").length;
-    return Math.max(8000, Math.min(90000, Math.round(words / 6 * 1000)));  /* 约 360 字/分钟 */
+    var bodyEl = sec.querySelector(".cw-sec-body");
+    var textSrc = bodyEl ? bodyEl.textContent : "";
+    if (!bodyEl) {   /* 注入模式：节体 = section 自身，剔除门控脚注与注入脚本避免计入字数 */
+      var clone = sec.cloneNode(true);
+      var rm = clone.querySelectorAll(".cw-sec-foot, script, style");
+      for (var rx = 0; rx < rm.length; rx++) rm[rx].remove();
+      textSrc = clone.textContent;
+    }
+    var words = (textSrc || "").replace(/\s/g, "").length;
+    return Math.max(8000, Math.min(MAXMS, Math.round(words / 7.5 * 1000)));  /* 约 450 字/分钟 */
   });
   var online = false;      /* 宿主握手成功 = 联机模式 */
   var totalMs = 0;         /* 累计可见学习时长 */
@@ -260,13 +269,18 @@ body{font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;color:#1f2
     var d = e.data;
     if (!d || d.source !== "tr-host") return;
     online = true;
-    if (d.type === "hello" && d.position > 0) {
-      var upto = Math.min(d.position, N);
-      for (var i = 0; i < upto; i++) {
-        state[i].done = true;
-        secs[i].classList.add("cw-unlocked");
-        if (i + 1 < N) secs[i + 1].classList.add("cw-unlocked");
+    if (d.type === "hello") {
+      /* 以服务端进度为准：全量重置后再恢复，避免本地旧进度抢先生效 */
+      for (var i = 0; i < N; i++) {
+        state[i].done = false;
+        secs[i].classList.remove("cw-unlocked");
       }
+      var upto = Math.min(d.position || 0, N);
+      for (var i2 = 0; i2 < upto; i2++) {
+        state[i2].done = true;
+        secs[i2].classList.add("cw-unlocked");
+      }
+      if (upto < N) secs[upto].classList.add("cw-unlocked");
       refreshHeader();
       for (var j = 0; j < N; j++) refreshGate(j);
       var nxt = secs[upto];
@@ -275,11 +289,13 @@ body{font-family:"Microsoft YaHei",system-ui,-apple-system,sans-serif;color:#1f2
     send({ type: "hello-ack", online: true });
   });
 
+  /* 首节立即解锁（不等 window load）：注入模式下避免锁定 CSS 造成整页闪烁 */
+  refreshHeader();
+  for (var j0 = 0; j0 < N; j0++) refreshGate(j0);
+  secs[0].classList.add("cw-unlocked");
+
   /* 本地模式（独立打开 / 微信直接打开）：从 localStorage 恢复 */
   window.addEventListener("load", function () {
-    refreshHeader();
-    for (var j = 0; j < N; j++) refreshGate(j);
-    secs[0].classList.add("cw-unlocked");
     if (!online) {
       var saved = null;
       try { saved = JSON.parse(localStorage.getItem(lsKey) || "null"); } catch (e) {}
