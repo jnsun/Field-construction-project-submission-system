@@ -25,20 +25,24 @@ const StatsModule = {
   ],
 
   // ---------------------------------------------------------------- 入口
-  async render(app) {
+  // render(app, opts)：独立整页模式（带页头）；opts.embedded=true 时由培训教育模块
+  // 内页签调用，只渲染页签+内容区（页头/返回由 TrainingModule 提供）
+  async render(app, opts) {
     this.state.profile = Auth.currentProfile || {};
+    this.state.embedded = !!(opts && opts.embedded);
     if (!Auth.isAdmin()) {
       app.innerHTML = `
-        <div class="page">
-          <div class="page-header"><h1>统计分析</h1></div>
-          <div class="card"><div class="card-body">
-            <p class="text-muted">该模块仅对管理员开放。</p>
-          </div></div>
-        </div>`;
+        <div class="card"><div class="card-body">
+          <p class="text-muted">该页签仅对管理员开放。</p>
+        </div></div>`;
       return;
     }
 
-    app.innerHTML = `
+    app.innerHTML = this.state.embedded ? `
+      ${this.buildTabs()}
+      <div id="stats-section">
+        <div class="card"><div class="card-body">加载中...</div></div>
+      </div>` : `
       <div class="dashboard">
         ${this.buildHeader()}
         <div class="dashboard-content">
@@ -112,9 +116,10 @@ const StatsModule = {
       }
     } catch (e) {
       const msg = this.rpcError(e);
+      const needSql = /RPC 未安装|表|relation .* does not exist|PGRST202|PGRST205|42P01/.test(msg + ' ' + ((e && e.message) || ''));
       box.innerHTML = `<div class="card"><div class="card-body">
         <p style="color:#b91c1c">加载失败：${Utils.escapeHtml(msg)}</p>
-        <p class="text-muted" style="margin-top:8px">若提示函数不存在，请先在 Supabase 执行 sql/statistics-module.sql</p>
+        ${needSql ? '<p class="text-muted" style="margin-top:8px">若为函数/表缺失，请先在 Supabase 执行 sql/statistics-module.sql</p>' : ''}
       </div></div>`;
     }
   },
@@ -240,8 +245,6 @@ const StatsModule = {
               onclick="StatsModule.setWindow('${k}')">${l}</button>`).join('')}
         </div>
         <div class="stats-crumbs">
-          ${crumbs.length ? `<button type="button" class="btn btn-sm stats-btn-back"
-            onclick="StatsModule.crumbsRoot()">‹ 返回上级</button>` : ''}
           <span class="stats-crumb${crumbs.length ? '' : ' current'}"
             onclick="StatsModule.crumbsRoot()">${rootLabel}</span>
           ${crumbs.map((c, i) => `
@@ -401,11 +404,14 @@ const StatsModule = {
     box.innerHTML = `<div class="card"><div class="card-body">预警计算中...</div></div>`;
 
     // 懒计算（幂等，月度去重）→ 拉取信箱
-    const [syncRes, ] = await Promise.all([
-      sb.rpc('stats_alert_sync').catch(() => ({ data: null, error: null })),
-      Promise.resolve(),
-    ]);
-    if (syncRes.error) { Utils.toast('预警同步失败：' + this.rpcError(syncRes.error), 'error'); }
+    // 注意：内置 supabase-js 的 rpc() 返回 PostgrestBuilder（thenable），没有 .catch 方法，
+    // 不能链式 .catch()，必须 try/await（否则 TypeError 中断整页渲染）
+    let syncErr = null;
+    try {
+      const syncRes = await sb.rpc('stats_alert_sync');
+      if (syncRes && syncRes.error) syncErr = syncRes.error;
+    } catch (_) { /* 同步失败不阻塞信箱展示 */ }
+    if (syncErr) { Utils.toast('预警同步失败：' + this.rpcError(syncErr), 'error'); }
     const { data, error } = await sb.rpc('stats_alert_inbox', { p_unread_only: false });
     if (error) throw error;
     this.state.unread = data.unread || 0;
