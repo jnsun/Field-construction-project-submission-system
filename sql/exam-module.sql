@@ -261,19 +261,18 @@ BEGIN
   ORDER BY created_at DESC LIMIT 1;
   IF NOT FOUND THEN RAISE EXCEPTION '该培训尚未配置试卷'; END IF;
 
-  IF v_asg.exam_status = 'ongoing' OR v_asg.exam_attempts >= v_paper.retry_limit THEN
-    IF v_asg.exam_status = 'ongoing' THEN
-      RAISE EXCEPTION '您有一场进行中的考试，请先完成或等待超时结算';
-    END IF;
-    RAISE EXCEPTION '考试次数已用完（共 % 次）', v_paper.retry_limit;
-  END IF;
-
-  -- 单会话锁：已有进行中的答卷则续考
+  -- 单会话锁：已有进行中的答卷则续考（必须在次数检查之前，进行中的答卷不计新次数）
   SELECT * INTO v_att FROM public.exam_attempts
   WHERE assignment_id = v_asg.id AND status = 'ongoing';
   IF FOUND THEN
+    SELECT COALESCE(SUM((q->>'score')::numeric), 0) INTO v_total
+    FROM jsonb_array_elements(v_att.questions) q;
     RETURN jsonb_build_object('attempt_id', v_att.id, 'deadline_at', v_att.deadline_at,
-                              'questions', v_att.questions);
+                              'total_score', v_total, 'questions', v_att.questions);
+  END IF;
+
+  IF v_asg.exam_attempts >= v_paper.retry_limit THEN
+    RAISE EXCEPTION '考试次数已用完（共 % 次）', v_paper.retry_limit;
   END IF;
 
   -- 组卷快照（固定 / 随机）
@@ -335,7 +334,7 @@ DECLARE
   v_att    public.exam_attempts%ROWTYPE;
   v_paper  public.exam_papers%ROWTYPE;
   v_q      JSONB;
-  v_qid    UUID;
+  v_qid    TEXT;
   v_type   TEXT;
   v_score  NUMERIC;
   v_my     TEXT;
@@ -365,10 +364,10 @@ BEGIN
   END IF;
 
   FOR v_q IN SELECT * FROM jsonb_array_elements(v_att.questions) LOOP
-    v_qid   := (v_q->>'id')::uuid;
+    v_qid   := v_q->>'id';
     v_type  := v_q->>'type';
     v_score := COALESCE((v_q->>'score')::numeric, 1);
-    SELECT * INTO v_orig FROM public.exam_questions WHERE id = v_qid;
+    SELECT * INTO v_orig FROM public.exam_questions WHERE id = v_qid::uuid;
 
     IF v_type = 'case' THEN
       -- 案例分析：逐子题判分；子题得分默认均分
@@ -400,7 +399,7 @@ BEGIN
     -- 错题入本
     IF NOT v_ok THEN
       INSERT INTO public.exam_wrong_book (employee_id, question_id, attempt_id, my_answer, correct_answer)
-      VALUES (v_emp, v_qid, v_att.id, COALESCE(p_answers->>v_qid, ''), v_orig.answer);
+      VALUES (v_emp, v_qid::uuid, v_att.id, COALESCE(p_answers->>v_qid, ''), v_orig.answer);
     END IF;
   END LOOP;
 

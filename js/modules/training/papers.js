@@ -258,7 +258,7 @@ const ExamPapers = {
     const body = document.getElementById('pf-body');
     body.innerHTML = `
       <div class="form-group">
-        <label>已选题目（${this.state.picked.length}）</label>
+        <label>已选题目（<span id="pf-picked-count">${this.state.picked.length}</span>）</label>
         <div id="pf-picked"></div>
       </div>
       <div class="form-group">
@@ -281,6 +281,8 @@ const ExamPapers = {
   renderPicked() {
     const box = document.getElementById('pf-picked');
     if (!box) return;
+    const count = document.getElementById('pf-picked-count');
+    if (count) count.textContent = this.state.picked.length;
     const list = this.state.picked;
     box.innerHTML = list.length === 0
       ? '<p class="hint" style="font-size:12px">还未选题目，请从下方题库添加。</p>'
@@ -399,10 +401,12 @@ const ExamPapers = {
       </select>
       <input class="pr-category" placeholder="分类（留空不限）" value="${Utils.escapeHtml(r.category || '')}" style="width:140px">
       <label style="font-size:12px">数量
-        <input class="pr-count" type="number" min="1" value="${r.count || 5}" style="width:60px">
+        <input class="pr-count" type="number" min="1" value="${r.count || 5}" style="width:60px"
+          oninput="ExamPapers.updateTotal()" onchange="ExamPapers.updateTotal()">
       </label>
       <label style="font-size:12px">每题
-        <input class="pr-score" type="number" step="0.5" min="0.5" value="${r.score_each || 1}" style="width:60px"> 分
+        <input class="pr-score" type="number" step="0.5" min="0.5" value="${r.score_each || 1}" style="width:60px"
+          oninput="ExamPapers.updateTotal()" onchange="ExamPapers.updateTotal()"> 分
       </label>
       <button type="button" class="btn btn-sm btn-danger" onclick="ExamPapers.removeRuleRow(this)">×</button>
     `;

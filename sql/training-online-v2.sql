@@ -401,7 +401,8 @@ RETURNS TABLE (
   progress       NUMERIC,
   course_total   INT,
   course_done    INT,
-  completed_at   TIMESTAMPTZ
+  completed_at   TIMESTAMPTZ,
+  exam_mode      TEXT
 ) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT p.id, p.title, p.category, p.deadline, p.required_hours,
          CASE WHEN a.status <> 'completed' AND p.deadline IS NOT NULL AND p.deadline < CURRENT_DATE
@@ -413,7 +414,8 @@ RETURNS TABLE (
             JOIN public.training_course_progress cp ON cp.course_id = c.id
            WHERE c.plan_id = p.id AND c.required
              AND cp.employee_id = a.employee_id AND cp.finished),
-         a.completed_at
+         a.completed_at,
+         p.exam_mode
   FROM public.training_assignments a
   JOIN public.training_plans p ON p.id = a.plan_id
   WHERE (a.user_id = auth.uid()

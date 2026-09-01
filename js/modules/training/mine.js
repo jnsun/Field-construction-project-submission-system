@@ -298,7 +298,11 @@ const TrainingMine = {
       });
       if (data && data.completed) {
         const hint = document.getElementById('learn-hint');
-        if (hint) hint.innerHTML = '<b style="color:#22c55e">全部必修课件已完成，系统已自动记录本次培训。</b>';
+        const mode = this.state.plan?.exam_mode || 'none';
+        const msg = mode === 'none'
+          ? '全部必修课件已完成，系统已自动记录本次培训。'
+          : '全部必修课件已学完，请返回列表开始考试，考试通过并签字后本次培训才会归档。';
+        if (hint) hint.innerHTML = `<b style="color:#22c55e">${msg}</b>`;
         await this.load();
       }
     } catch (e) {
