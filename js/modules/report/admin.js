@@ -39,6 +39,8 @@ const Admin = {
   async render(container, opts = {}) {
     this.state.readOnly = !!(opts && opts.readOnly);
     this.state.entityMode = !!(opts && opts.entityMode);
+    // 每次进入模块统一回到「报送管理」，避免胶囊高亮停留在上次退出前的视图
+    this.state.view = 'reports';
     const ym = Utils.getCurrentYearMonth();
     this.state.year = ym.year;
     this.state.month = ym.month;
@@ -1287,6 +1289,7 @@ const Admin = {
       Utils.toast('未找到该账号', 'error');
       return;
     }
+    const isEdit = !!userId;
 
     const isSuper = Auth.isSuperAdmin();
     const isEntity = this.state.entityMode && !isSuper;
@@ -1301,7 +1304,6 @@ const Admin = {
     this.state.editingUserId = userId;
 
     const v = user || {};
-    const isEdit = !!userId;
     const role = v.role || 'reporter';
     const deptId = v.department_id || '';
 
