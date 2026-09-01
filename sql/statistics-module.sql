@@ -128,7 +128,7 @@ $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 --    p_from/p_to 空=全部时间（窗口作用于任务创建时间与学习开始时间）
 -- ----------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.stats_overview(uuid, date, date);
-CREATE FUNCTION public.stats_overview(
+CREATE OR REPLACE FUNCTION public.stats_overview(
   p_dept uuid DEFAULT NULL,
   p_from date DEFAULT NULL,
   p_to   date DEFAULT NULL
@@ -324,7 +324,7 @@ $$;
 -- 6. 逾期个人名单
 -- ----------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.stats_overdue_list(uuid, int);
-CREATE FUNCTION public.stats_overdue_list(p_dept uuid DEFAULT NULL, p_limit int DEFAULT 200)
+CREATE OR REPLACE FUNCTION public.stats_overdue_list(p_dept uuid DEFAULT NULL, p_limit int DEFAULT 200)
 RETURNS json
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -371,7 +371,7 @@ $$;
 --    dedup_key 带年月 → 同一问题每管理员每月只推一次
 -- ----------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.stats_alert_sync();
-CREATE FUNCTION public.stats_alert_sync()
+CREATE OR REPLACE FUNCTION public.stats_alert_sync()
 RETURNS json
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -435,8 +435,8 @@ $$;
 -- ----------------------------------------------------------------------------
 -- 8. 预警信箱：stats_alert_inbox() + stats_alert_ack()
 -- ----------------------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.stats_alert_inbox();
-CREATE FUNCTION public.stats_alert_inbox(p_unread_only boolean DEFAULT false)
+DROP FUNCTION IF EXISTS public.stats_alert_inbox(boolean);
+CREATE OR REPLACE FUNCTION public.stats_alert_inbox(p_unread_only boolean DEFAULT false)
 RETURNS json
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -472,7 +472,7 @@ END;
 $$;
 
 DROP FUNCTION IF EXISTS public.stats_alert_ack(uuid[]);
-CREATE FUNCTION public.stats_alert_ack(p_ids uuid[])
+CREATE OR REPLACE FUNCTION public.stats_alert_ack(p_ids uuid[])
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -492,7 +492,7 @@ $$;
 --    管辖范围内培训记录 + 学习/考试汇总 + 签字 storage_path（前端拉图转 base64）
 -- ----------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.stats_export_records(uuid, uuid);
-CREATE FUNCTION public.stats_export_records(p_plan uuid DEFAULT NULL, p_dept uuid DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.stats_export_records(p_plan uuid DEFAULT NULL, p_dept uuid DEFAULT NULL)
 RETURNS json
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -538,7 +538,7 @@ $$;
 -- 10. 持证基准维护（仅公司级）
 -- ----------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.stats_set_cert_target(uuid, int);
-CREATE FUNCTION public.stats_set_cert_target(p_dept uuid, p_count int)
+CREATE OR REPLACE FUNCTION public.stats_set_cert_target(p_dept uuid, p_count int)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -558,7 +558,7 @@ $$;
 -- 11. 预警阈值设置（仅公司级）
 -- ----------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.stats_set_settings(numeric, int);
-CREATE FUNCTION public.stats_set_settings(p_completion_threshold numeric, p_overdue_grace_days int)
+CREATE OR REPLACE FUNCTION public.stats_set_settings(p_completion_threshold numeric, p_overdue_grace_days int)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
