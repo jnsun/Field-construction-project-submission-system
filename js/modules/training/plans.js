@@ -339,7 +339,7 @@ const TrainingPlans = {
               <textarea id="rep-content" class="form-control" rows="2">${Utils.escapeHtml(plan.content || '')}</textarea>
             </div>
             <div class="form-group" style="display:flex;align-items:center;gap:8px">
-              <input id="rep-exam" type="checkbox" ${plan.require_exam ? 'checked' : ''} style="width:16px;height:16px">
+              <input id="rep-exam" type="checkbox" ${plan.require_exam ? 'checked' : ''}>
               <label for="rep-exam" style="margin:0">本次组织了考试（勾选后自动生成一条待填的考试登记）</label>
             </div>
             <p class="text-muted" style="font-size:12px">

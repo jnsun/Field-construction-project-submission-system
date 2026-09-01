@@ -1488,11 +1488,11 @@ const Admin = {
                 </div>` : ''}
                 <div class="form-group col-span-2">
                   <label>野外施工项目报送权限</label>
-                  <label style="display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer;">
+                  <label class="switch-row">
                     <input type="checkbox" name="can_report" value="1" id="user-can-report"
                       ${(v.can_report === true || !isEdit) ? 'checked' : ''}
                       ${v.is_super_admin ? 'disabled' : ''}>
-                    允许该账号报送野外施工项目（进入「项目报送」页面填报）
+                    <span>允许该账号报送野外施工项目（进入「项目报送」页面填报）</span>
                   </label>
                   <p class="hint" id="user-can-report-hint">员工账号、部门管理员、项目管理员均可勾选；超级管理员不参与报送。</p>
                 </div>

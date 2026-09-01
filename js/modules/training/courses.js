@@ -174,7 +174,7 @@ const TrainingCourses = {
             </div>
 
             <div class="form-group" style="display:flex;align-items:center;gap:8px">
-              <input id="cs-required" type="checkbox" ${!c || c.required ? 'checked' : ''} style="width:16px;height:16px">
+              <input id="cs-required" type="checkbox" ${!c || c.required ? 'checked' : ''}>
               <label for="cs-required" style="margin:0">必修课件（计入完成条件）</label>
             </div>
           </div>

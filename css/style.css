@@ -310,6 +310,18 @@ a:hover { text-decoration: underline; }
 
 .form-group textarea { resize: vertical; min-height: 72px; }
 
+/* 复选框/单选框豁免「整行输入框」样式：固定 16px、去内边距，避免对钩与文字错位 */
+.form-group input[type="checkbox"],
+.form-group input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
 .form-group .hint { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 4px; }
 
 .form-group .error-msg {
@@ -335,6 +347,7 @@ a:hover { text-decoration: underline; }
 .radio-group input[type="radio"] {
   width: auto;
   margin: 0;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -1320,6 +1333,9 @@ input[disabled] {
 .switch-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
   accent-color: var(--color-primary);
   cursor: pointer;
 }

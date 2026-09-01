@@ -200,7 +200,7 @@ const ExamPapers = {
             </div>
             <div class="form-row">
               <div class="form-group" style="display:flex;align-items:center;gap:8px">
-                <input id="pf-shuffle" type="checkbox" ${!p || p.shuffle ? 'checked' : ''} style="width:16px;height:16px">
+                <input id="pf-shuffle" type="checkbox" ${!p || p.shuffle ? 'checked' : ''}>
                 <label for="pf-shuffle" style="margin:0">题序乱序（选项顺序固定，保证答案 key 对应）</label>
               </div>
               <div class="form-group">
