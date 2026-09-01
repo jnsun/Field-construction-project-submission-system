@@ -1213,6 +1213,7 @@ const Admin = {
       ${isSuper ? '' : `
         <div class="alert alert-info" style="margin-bottom:12px;">
           ⚠️ 您是<strong>部门管理员</strong>：可以管理<strong>本部门（含下级）的部门账号与员工账号</strong>（新增/编辑/删除）。
+          将账号设为「<strong>部门账号</strong>」即授予其<strong>野外施工项目报送</strong>权限；培训自助开通的员工账号经编辑保存后同样可报送。
           创建、修改或删除<strong>管理员账号</strong>需要<strong>超级管理员</strong>权限，请联系超级管理员操作。
         </div>
       `}
@@ -1298,8 +1299,8 @@ const Admin = {
             ? '<span class="badge badge-info">项目部管理员</span>'
             : '<span class="badge badge-warning">管理员</span>')
       : u.role === 'employee'
-        ? '<span class="badge badge-muted">员工账号（培训）</span>'
-        : '<span class="badge badge-muted">部门账号</span>';
+        ? '<span class="badge badge-muted" title="培训自助开通账号；编辑保存后即可报送野外施工项目">员工账号（培训）</span>'
+        : '<span class="badge badge-success" title="部门账号：可登录并报送野外施工项目">部门账号 · 可报送</span>';
 
     // 操作按钮：当前账号不可操作；管理员账号仅超级管理员可编辑/删除
     //          经营实体可管理本部门下项目部的项目部管理员
@@ -1388,16 +1389,16 @@ const Admin = {
 
     const roleOptions = isSuper
       ? `
-        <label><input type="radio" name="role" value="reporter" ${role === 'reporter' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
+        <label><input type="radio" name="role" value="reporter" ${role === 'reporter' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号（可报送野外施工项目）</label>
         <label><input type="radio" name="role" value="admin" ${role === 'admin' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 管理员</label>
       `
       : isEntity
         ? `
-          <label><input type="radio" name="role" value="reporter" ${!isProjectAdmin ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
+          <label><input type="radio" name="role" value="reporter" ${!isProjectAdmin ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号（可报送野外施工项目）</label>
           <label><input type="radio" name="role" value="admin" ${isProjectAdmin ? 'checked' : ''} onchange="Admin.onRoleChange()"> 项目部管理员</label>
         `
         : `
-          <label><input type="radio" name="role" value="reporter" checked onchange="Admin.onRoleChange()"> 部门账号</label>
+          <label><input type="radio" name="role" value="reporter" checked onchange="Admin.onRoleChange()"> 部门账号（可报送野外施工项目）</label>
           <label class="disabled-option" title="只有超级管理员才能创建管理员账号"><input type="radio" name="role" value="admin" disabled> 管理员（仅超管）</label>
         `;
 
@@ -1410,6 +1411,11 @@ const Admin = {
           </div>
           <div class="modal-body">
             <div id="user-modal-error"></div>
+            ${isEdit && v.role === 'employee' ? `
+              <div class="alert alert-info" style="margin-bottom:12px;">
+                该账号是培训自助开通的<strong>员工账号</strong>。保存后将成为「部门账号」，即可登录并报送野外施工项目，其培训学习记录全部保留。
+              </div>
+            ` : ''}
             <form id="user-form" onsubmit="return false">
               <div class="form-grid">
                 <div class="form-group col-span-2">
@@ -1445,8 +1451,8 @@ const Admin = {
                   ${isSuper
                     ? '<p class="hint">提示：管理员账号创建后默认为公司级普通管理员；如需设为超级管理员，请用 SQL 设置 is_super_admin。</p>'
                     : isEntity
-                      ? '<p class="hint">提示：您可创建「部门账号」，或指定归属<b>本部门下项目部</b>的「项目部管理员」（其仅能管理该项目部）。</p>'
-                      : ''}
+                      ? '<p class="hint">提示：您可创建「部门账号」（可报送野外施工项目），或指定归属<b>本部门下项目部</b>的「项目部管理员」（其仅能管理该项目部）。</p>'
+                      : '<p class="hint">提示：账号设为「部门账号」即可登录并报送野外施工项目；培训自助开通的员工账号编辑保存后同样获得报送权限（培训记录保留）。</p>'}
                 </div>
                 ${isSuper ? `
                 <div class="form-group col-span-2" id="admin-level-group">
