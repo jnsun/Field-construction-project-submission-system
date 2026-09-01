@@ -972,6 +972,18 @@ input[disabled] {
   box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
+/* ----- 账号管理：按部门分组表头 ----- */
+.user-group-head {
+  cursor: pointer;
+  background: #f8fafc;
+  user-select: none;
+}
+.user-group-head:hover { background: #eef2f7; }
+.user-group-head td {
+  padding: 8px 10px;
+  border-top: 1px solid var(--color-border);
+}
+
 /* 详情弹窗：字段网格（label + value 只读展示） */
 .detail-grid {
   display: grid;

@@ -234,6 +234,33 @@ const TrainingModule = {
     return this.isAdmin();
   },
 
+  /**
+   * 当前账号可管理部门（本部门 + 全部下级，递归展开）
+   * 公司级管理员返回全部部门；未分配部门的账号退化为全部（由 RLS 兜底拦截）
+   */
+  visibleDepts() {
+    const all = this.state.depts || [];
+    if (this.isCompanyAdmin()) return all;
+    const myId = (this.state.profile || {}).department_id;
+    if (!myId) return all;
+    const children = {};
+    all.forEach(d => {
+      if (d.parent_id) (children[d.parent_id] = children[d.parent_id] || []).push(d);
+    });
+    const out = [];
+    const seen = new Set();
+    const stack = [myId];
+    while (stack.length) {
+      const id = stack.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const d = all.find(x => x.id === id);
+      if (d) out.push(d);
+      (children[id] || []).forEach(c => stack.push(c.id));
+    }
+    return out;
+  },
+
   async loadDepartments() {
     if (this.state.depts.length) return;
     const { data, error } = await sb.from('departments').select('id, name, code, dept_type, parent_id');
@@ -251,7 +278,9 @@ const TrainingModule = {
 
   /** 部门下拉（可传 selected 与是否含「全部」） */
   deptOptions(selected, includeAll) {
-    const list = [...this.state.depts].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    // 表单场景（includeAll=false）按可见范围限定：部门管理员只能选本部门及下级
+    const list = (includeAll ? [...this.state.depts] : this.visibleDepts())
+      .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
     return [
       includeAll ? '<option value="">全部</option>' : '',
       list.map(d => `<option value="${d.id}"${d.id === selected ? ' selected' : ''}>${Utils.escapeHtml(d.name)}</option>`).join(''),

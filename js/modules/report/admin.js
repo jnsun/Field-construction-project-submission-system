@@ -29,6 +29,9 @@ const Admin = {
     editingFieldId: null,
     statusFilter: 'all',      // 部门报送状态筛选：all | submitted | pending | confirmed
     noFieldStatus: {},        // department_id -> department_month_status 行（无野外施工确认，含全部状态）
+    // 账号管理页
+    userSearch: '',           // 账号搜索关键词（姓名/手机号/邮箱/部门）
+    userExpanded: new Set(JSON.parse(localStorage.getItem('admin-user-expanded') || '[]')),
   },
 
   /**
@@ -112,12 +115,14 @@ const Admin = {
         { key: 'users',       label: '账号管理' },
       );
     } else if (Auth.isAdmin()) {
-      // 公司级 / 超级管理员：全部后台管理页
+      // 部门管理员（内设机构 / 其他）：账号管理 + 部门管理（本部门范围）
       views.push(
         { key: 'users',       label: '账号管理' },
         { key: 'departments', label: '部门管理' },
-        { key: 'config',      label: '报送配置' },
       );
+      if (Auth.isCompanyAdmin()) {
+        views.push({ key: 'config',    label: '报送配置' });
+      }
     }
     return `
       <div class="dashboard-tabs">
@@ -136,6 +141,8 @@ const Admin = {
   async switchView(view) {
     // 经营实体模式不开放报送配置
     if (this.state.entityMode && view === 'config') return;
+    // 报送配置仅公司级管理员可进入
+    if (view === 'config' && !Auth.isCompanyAdmin()) return;
     // 账号管理 / 报送配置 仅管理员可进入
     if ((view === 'users' || view === 'config') && !Auth.isAdmin()) return;
     // 部门管理：管理员或经营实体可进入
@@ -1150,11 +1157,12 @@ const Admin = {
     const container = document.getElementById('admin-users-content');
     if (!container) return;
 
+    // 可见范围：公司级=全部账号；部门管理员=本部门树内账号
+    const isCompany = Auth.isCompanyAdmin();
     let users = this.state.users;
-    if (this.state.entityMode) {
-      // 经营实体：仅显示本部门及下属项目部的账号
-      const subIds = new Set((this.visibleDepts() || []).map(d => d.id));
-      users = users.filter(u => u.department_id && subIds.has(u.department_id));
+    if (!isCompany) {
+      const visIds = new Set((this.visibleDepts() || []).map(d => d.id));
+      users = users.filter(u => u.department_id && visIds.has(u.department_id));
     }
     const currentUserId = Auth.currentUser ? Auth.currentUser.id : null;
     const isSuper = Auth.isSuperAdmin();
@@ -1162,19 +1170,49 @@ const Admin = {
     const adminCount = users.filter(u => u.role === 'admin').length;
     const superCount = users.filter(u => u.role === 'admin' && u.is_super_admin).length;
 
+    // 搜索：姓名 / 手机号 / 邮箱 / 部门名
+    const kw = (this.state.userSearch || '').trim().toLowerCase();
+    if (kw) {
+      users = users.filter(u => {
+        const deptName = (u.departments && u.departments.name) || this._deptName(u.department_id) || '';
+        return [u.full_name, u.phone, u.email, deptName]
+          .some(x => (x || '').toLowerCase().includes(kw));
+      });
+    }
+
+    // 按部门分组
+    const groups = [];
+    const groupMap = {};
+    users.forEach(u => {
+      const key = u.department_id || '__none__';
+      if (!groupMap[key]) {
+        groupMap[key] = {
+          key,
+          name: key === '__none__' ? '未分配部门' : ((u.departments && u.departments.name) || this._deptName(u.department_id) || '未分配部门'),
+          users: [],
+        };
+        groups.push(groupMap[key]);
+      }
+      groupMap[key].users.push(u);
+    });
+    groups.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+
     container.innerHTML = `
       <div class="toolbar">
         <div class="toolbar-left">
-          <span class="toolbar-hint">共 ${users.length} 个账号（管理员 ${adminCount} · 超级管理员 ${superCount}）</span>
+          <span class="toolbar-hint">共 ${users.length} 个账号（管理员 ${adminCount} · 超级管理员 ${superCount}）${kw ? ` · 搜索「${Utils.escapeHtml(this.state.userSearch.trim())}」命中` : ''}</span>
         </div>
         <div class="toolbar-right">
+          <input type="text" class="toolbar-search" placeholder="搜索姓名 / 手机号 / 部门"
+            value="${Utils.escapeHtml(this.state.userSearch || '')}"
+            oninput="Admin.onUserSearch(this.value)">
           <button class="btn btn-primary" onclick="Admin.openUserModal()">+ 新增账号</button>
           <button class="btn btn-secondary" onclick="Admin.loadUsers()">刷新</button>
         </div>
       </div>
       ${isSuper ? '' : `
         <div class="alert alert-info" style="margin-bottom:12px;">
-          ⚠️ 您是<strong>普通管理员</strong>：可以管理<strong>部门账号</strong>（新增/编辑/删除）。
+          ⚠️ 您是<strong>部门管理员</strong>：可以管理<strong>本部门（含下级）的部门账号与员工账号</strong>（新增/编辑/删除）。
           创建、修改或删除<strong>管理员账号</strong>需要<strong>超级管理员</strong>权限，请联系超级管理员操作。
         </div>
       `}
@@ -1187,20 +1225,18 @@ const Admin = {
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>序号</th>
                   <th>登录邮箱</th>
                   <th>手机号</th>
                   <th>账号名称</th>
                   <th>角色</th>
-                  <th>所属部门</th>
                   <th>创建时间</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                ${users.length === 0 ? `
-                  <tr class="empty-row"><td colspan="8">暂无账号，点击右上角"新增账号"创建</td></tr>
-                ` : users.map((u, i) => this.renderUserRow(u, i, currentUserId, isSuper)).join('')}
+                ${groups.length === 0 ? `
+                  <tr class="empty-row"><td colspan="6">${kw ? '没有匹配的账号' : '暂无账号，点击右上角"新增账号"创建'}</td></tr>
+                ` : groups.map(g => this.renderUserGroup(g, kw, currentUserId, isSuper)).join('')}
               </tbody>
             </table>
           </div>
@@ -1209,7 +1245,51 @@ const Admin = {
     `;
   },
 
-  renderUserRow(u, index, currentUserId, isSuper) {
+  /** 按部门折叠渲染一组账号；搜索时自动展开匹配组 */
+  renderUserGroup(g, kw, currentUserId, isSuper) {
+    const open = kw ? true : this.state.userExpanded.has(g.key);
+    const admins = g.users.filter(u => u.role === 'admin').length;
+    return `
+      <tr class="user-group-head" onclick="Admin.toggleUserGroup('${g.key}')" title="点击展开/收起">
+        <td colspan="6">
+          <span style="display:inline-block;transform:rotate(${open ? '90deg' : '0deg'});transition:transform .15s;color:#64748b">▸</span>
+          <b style="font-size:13px">${Utils.escapeHtml(g.name)}</b>
+          <span style="color:#64748b;font-weight:400;font-size:12px;margin-left:8px">
+            ${g.users.length} 个账号${admins ? ` · 管理员 ${admins}` : ''}
+          </span>
+        </td>
+      </tr>
+      ${open ? g.users.map(u => this.renderUserRow(u, currentUserId, isSuper)).join('') : ''}
+    `;
+  },
+
+  toggleUserGroup(key) {
+    if (this.state.userExpanded.has(key)) this.state.userExpanded.delete(key);
+    else this.state.userExpanded.add(key);
+    localStorage.setItem('admin-user-expanded', JSON.stringify([...this.state.userExpanded]));
+    this.renderUsersTable();
+  },
+
+  onUserSearch(value) {
+    this.state.userSearch = value || '';
+    // 输入即过滤；重渲染后保持焦点与光标
+    this.renderUsersTable();
+    const input = document.querySelector('.toolbar-search');
+    if (input) {
+      input.focus();
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    }
+  },
+
+  /** 部门名兜底：账号行未带 departments 关联时从部门列表取 */
+  _deptName(deptId) {
+    if (!deptId) return '';
+    const d = (this.state.departments || []).find(x => x.id === deptId);
+    return d ? d.name : '';
+  },
+
+  renderUserRow(u, currentUserId, isSuper) {
     const isSelf = u.id === currentUserId;
     const roleBadge = u.role === 'admin'
       ? (u.is_super_admin
@@ -1217,8 +1297,9 @@ const Admin = {
           : u.admin_level === 'project'
             ? '<span class="badge badge-info">项目部管理员</span>'
             : '<span class="badge badge-warning">管理员</span>')
-      : '<span class="badge badge-muted">部门账号</span>';
-    const deptName = u.departments ? u.departments.name : (u.role === 'admin' ? '-' : '<span class="badge badge-danger">未分配</span>');
+      : u.role === 'employee'
+        ? '<span class="badge badge-muted">员工账号（培训）</span>'
+        : '<span class="badge badge-muted">部门账号</span>';
 
     // 操作按钮：当前账号不可操作；管理员账号仅超级管理员可编辑/删除
     //          经营实体可管理本部门下项目部的项目部管理员
@@ -1236,12 +1317,10 @@ const Admin = {
 
     return `
       <tr>
-        <td>${index + 1}</td>
         <td>${Utils.escapeHtml(this._loginEmailText(u))}</td>
         <td>${this.state.hasPhoneColumn ? (u.phone ? Utils.escapeHtml(u.phone) : '<span class="text-muted">-</span>') : '<span class="text-muted" title="未启用手机号功能，请执行 sql/phone-login.sql">未启用</span>'}</td>
         <td>${Utils.escapeHtml(u.full_name || '-')}</td>
         <td>${roleBadge}</td>
-        <td>${deptName}</td>
         <td style="white-space:nowrap;">${Utils.formatDateTime(u.created_at)}</td>
         <td style="white-space:nowrap;">${actions}</td>
       </tr>
@@ -1271,8 +1350,8 @@ const Admin = {
    * 部门下拉选项
    */
   buildDeptOptions(selectedId = null) {
-    // 经营实体模式：部门下拉仅含本部门及下属项目部
-    const depts = this.state.entityMode ? (this.visibleDepts() || []) : (this.state.departments || []);
+    // 公司级：全部部门；部门管理员（含经营实体）：仅本部门及下级
+    const depts = Auth.isCompanyAdmin() ? (this.state.departments || []) : (this.visibleDepts() || []);
     return depts.map(d =>
       `<option value="${d.id}" ${d.id === selectedId ? 'selected' : ''}>${Utils.escapeHtml(d.name)}</option>`
     ).join('');
@@ -1644,10 +1723,27 @@ const Admin = {
    *   - 经营实体：仅本部门 + 本部门下的项目部（本部门子树）
    */
   visibleDepts() {
-    if (!this.state.entityMode) return this.state.departments || [];
-    const myId = this.myDeptId();
+    const all = this.state.departments || [];
+    // 公司级（含超管）：全部部门；部门管理员：本部门 + 全部下级（递归展开）
+    if (Auth.isCompanyAdmin()) return all;
+    const myId = (Auth.currentProfile || {}).department_id || null;
     if (!myId) return [];
-    return (this.state.departments || []).filter(d => d.id === myId || d.parent_id === myId);
+    const children = {};
+    all.forEach(d => {
+      if (d.parent_id) (children[d.parent_id] = children[d.parent_id] || []).push(d);
+    });
+    const out = [];
+    const seen = new Set();
+    const stack = [myId];
+    while (stack.length) {
+      const id = stack.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const d = all.find(x => x.id === id);
+      if (d) out.push(d);
+      (children[id] || []).forEach(c => stack.push(c.id));
+    }
+    return out;
   },
 
   /**

@@ -83,12 +83,33 @@ BEGIN
 END $$;
 
 -- --------------------------------------------------------------------------
+-- 1.5 可管理部门范围（本部门 + 全部下级，递归 parent_id 树）
+--     部门管理员（经营实体 / 内设机构 / 项目部）管理账号只能落在这个范围内；
+--     公司级管理员 / 超级管理员不使用本函数（不受限）。
+-- --------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.account_visible_dept_ids()
+RETURNS SETOF UUID AS $$
+  WITH RECURSIVE tree AS (
+    SELECT department_id AS id
+    FROM public.profiles
+    WHERE id = auth.uid() AND department_id IS NOT NULL
+    UNION ALL
+    SELECT d.id
+    FROM public.departments d
+    JOIN tree t ON d.parent_id = t.id
+  )
+  SELECT id FROM tree
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.account_visible_dept_ids() TO authenticated;
+
+-- --------------------------------------------------------------------------
 -- 2. 创建账号
 --    权限矩阵：
 --      超级管理员        → 任意账号、任意 admin_level
 --      经营实体管理员    → 本部门/本部门下项目部的部门账号；
 --                          本部门下项目部的「项目部管理员」(admin_level='project')
---      其他普通管理员    → 仅部门账号（不能建管理员）
+--      其他部门管理员    → 仅本部门及下级部门的「部门账号」（不能建管理员）
 -- --------------------------------------------------------------------------
 CREATE FUNCTION public.create_dept_user(
   p_email          TEXT,
@@ -146,8 +167,14 @@ BEGIN
       END IF;
     END IF;
   ELSE
+    -- 部门管理员（经营实体以外）：只能为本部门及下级部门创建「部门账号」
     IF p_role = 'admin' THEN
       RAISE EXCEPTION '只有超级管理员才能创建管理员账号';
+    END IF;
+    IF p_department_id IS NULL OR p_department_id NOT IN (
+      SELECT public.account_visible_dept_ids()
+    ) THEN
+      RAISE EXCEPTION '只能为本部门或本部门下级部门创建账号';
     END IF;
   END IF;
 
@@ -383,8 +410,20 @@ BEGIN
       END IF;
     END IF;
   ELSE
+    -- 部门管理员（经营实体以外）：只能修改本部门及下级部门的非管理员账号
+    -- （含培训自助开通的「员工」账号——编辑升级为部门账号即完成认领）
     IF v_cur_role = 'admin' OR p_role = 'admin' THEN
       RAISE EXCEPTION '只有超级管理员才能修改管理员账号';
+    END IF;
+    IF COALESCE(v_cur_dept, '00000000-0000-0000-0000-000000000000'::uuid) NOT IN (
+      SELECT public.account_visible_dept_ids()
+    ) THEN
+      RAISE EXCEPTION '只能修改本部门或本部门下级部门的账号';
+    END IF;
+    IF p_department_id IS NULL OR p_department_id NOT IN (
+      SELECT public.account_visible_dept_ids()
+    ) THEN
+      RAISE EXCEPTION '账号所属部门必须是本部门或本部门下级部门';
     END IF;
   END IF;
 
@@ -552,8 +591,14 @@ BEGIN
       RAISE EXCEPTION '您只能删除本部门下项目部的项目部管理员';
     END IF;
   ELSE
+    -- 部门管理员（经营实体以外）：只能删除本部门及下级部门的非管理员账号
     IF v_cur_role = 'admin' THEN
       RAISE EXCEPTION '只有超级管理员才能删除管理员账号';
+    END IF;
+    IF COALESCE(v_cur_dept, '00000000-0000-0000-0000-000000000000'::uuid) NOT IN (
+      SELECT public.account_visible_dept_ids()
+    ) THEN
+      RAISE EXCEPTION '只能删除本部门或本部门下级部门的账号';
     END IF;
   END IF;
 
