@@ -1552,6 +1552,10 @@ const Admin = {
       .replace(/^PGRST\d+:\s*/i, '')
       .replace(/^server message:\s*/i, '')
       .trim();
+    // 数据库唯一索引兜底翻译（旧版 RPC 未做中文预检查时也能看懂）
+    if (/idx_profiles_phone/.test(cleaned)) {
+      return '该手机号已被其他账号绑定，不能重复开通。请在账号列表中找到该员工的现有账号（培训模块自助开通的账号也在列表中），点「编辑」调整角色/部门即可；若是别人的手机号，请更换。';
+    }
     return cleaned || '操作失败';
   },
 

@@ -184,9 +184,26 @@ BEGIN
     IF v_phone !~ '^1[0-9]{10}$' THEN
       RAISE EXCEPTION '请输入有效的手机号（1 开头的 11 位数字）';
     END IF;
-    SELECT count(*) INTO v_count FROM public.profiles WHERE phone = v_phone;
+    -- 手机号已被账号档案占用：给出占用人，提示走「编辑」而不是重复开通
+    SELECT coalesce(p.full_name, '') || '（' ||
+           CASE p.role
+             WHEN 'admin' THEN '管理员'
+             WHEN 'employee' THEN '员工（培训自助开通）'
+             ELSE '部门账号-' || coalesce(d.name, '未分配部门')
+           END || '）'
+      INTO v_owner
+      FROM public.profiles p
+      LEFT JOIN public.departments d ON d.id = p.department_id
+      WHERE p.phone = v_phone
+      LIMIT 1;
+    IF v_owner IS NOT NULL THEN
+      RAISE EXCEPTION '手机号「%」已被账号 % 使用，不能重复开通。如该账号是本人（例如培训模块自助开通的），请在账号管理列表中「编辑」该账号调整角色/部门；如为他人误填，请更换手机号',
+        v_phone, v_owner;
+    END IF;
+    -- 手机号已被认证系统占用但无档案（残留数据）：明确提示
+    SELECT count(*) INTO v_count FROM auth.users WHERE phone = v_phone;
     IF v_count > 0 THEN
-      RAISE EXCEPTION '该手机号已被其他账号使用';
+      RAISE EXCEPTION '手机号「%」在认证系统中已存在但没有对应账号（可能是残留数据）。请到 Supabase 控制台 Authentication → Users 删除该手机号的旧记录后重试', v_phone;
     END IF;
   END IF;
 
