@@ -1,8 +1,9 @@
-/* HTML 增强模式端到端测试（v2）
+/* HTML 增强模式端到端测试（v3）
  * 1) 生成器注入模式：精美样本（h2 嵌在 .wrap 容器内）→ 切出 3 节
  * 2) 产物嵌入宿主模拟页 → 验证门控状态/协议/逐节解锁（动态等待按钮亮起）
  * 3) 整页模式样本（无顶层 h1/h2）→ body 单节
- * 4) Markdown 模式回归 */
+ * 4) 预分节结构（真实文件：地震手册，<section> 各包一个 h2）→ 原地门控 + 重复增强幂等
+ * 5) Markdown 模式回归 */
 const { chromium } = require('C:/Users/sjn/.workbuddy/binaries/node/workspace/node_modules/playwright-core');
 const http = require('http');
 const fs = require('fs');
@@ -10,8 +11,10 @@ const path = require('path');
 
 const GEN = 'file:///E:/OneDrive/%E5%B7%A5%E4%BD%9C%E7%9B%AE%E5%BD%95/2026/WORKBUDDY/project-reporting/tools/course-generator.html';
 const SAMPLE = path.join(__dirname, 'fancy-course-sample.html');
+const REAL = 'E:/OneDrive/工作目录/2026/WORKBUDDY/制作公司级培训课件/地震安全手册/运城市地震安全手册 — 防震减灾·守护家园.html';
 const OUT = path.join(__dirname, '.enhanced-sections.html');
 const OUT2 = path.join(__dirname, '.enhanced-whole.html');
+const OUT3 = path.join(__dirname, '.enhanced-pre.html');
 
 const results = [];
 function check(name, ok, extra) {
@@ -57,6 +60,31 @@ function fetchJson(url) {
   check('整页模式信息提示', /整页模式/.test(r2.info), r2.info);
   fs.writeFileSync(OUT2, r2.html);
 
+  /* ---- 预分节结构：真实地震手册（每个 h2 各包在 <section> 里） ---- */
+  let preN = 0;
+  if (fs.existsSync(REAL)) {
+    const realSrc = fs.readFileSync(REAL, 'utf8');
+    const rPre = await page.evaluate(s => {
+      document.getElementById('html-input').value = s;
+      render();
+      return { info: document.getElementById('sec-count').textContent, html: currentHtml };
+    }, realSrc);
+    check('预分节：信息提示（真实地震手册）', /预分节结构/.test(rPre.info), rPre.info);
+    const preEval = await page.evaluate(s => {
+      const r = enhanceExistingHtml(s);   /* 第二次增强：验证重复增强清理幂等 */
+      return { count: r.count, pre: r.pre, html: r.html };
+    }, realSrc);
+    preN = preEval.count;
+    check('预分节：重复增强后节数一致（幂等）', preEval.pre && preEval.count >= 5, 'count=' + preEval.count + ' pre=' + preEval.pre);
+    check('预分节：产物含 data-cw-pre 门控容器',
+      (preEval.html.match(/data-cw-pre="1"/g) || []).length === preEval.count,
+      'marks=' + (preEval.html.match(/data-cw-pre="1"/g) || []).length);
+    check('预分节：产物非整页模式', !/cw-whole/.test(preEval.html));
+    fs.writeFileSync(OUT3, preEval.html);
+  } else {
+    check('预分节：真实文件存在', false, REAL);
+  }
+
   const r3 = await page.evaluate(() => {
     setMode('md');
     return {
@@ -86,7 +114,7 @@ function fetchJson(url) {
     + '</body></html>';
   srv.listen(8902, '127.0.0.1', async () => {
     try {
-      for (const [name, file] of [['分节模式', OUT], ['整页模式', OUT2]]) {
+      for (const [name, file] of [['分节模式', OUT], ['整页模式', OUT2], ['预分节', OUT3]]) {
         fs.writeFileSync(path.join(DIR, '.host-sim2.html'), hostSim(path.basename(file)));
         const p2 = await ctx.newPage();
         await p2.goto('http://127.0.0.1:8902/', { waitUntil: 'load', timeout: 30000 });
@@ -112,6 +140,12 @@ function fetchJson(url) {
           check('分节：进度条/头部注入', st.hasBar && st.hasHeader);
           check('分节：仅第 1 节解锁', st.unlocked[0] && !st.unlocked[1] && !st.unlocked[2], JSON.stringify(st.unlocked));
           check('分节：hello + hello-ack 已发', st.msgs.includes('hello') && st.msgs.includes('hello-ack'), JSON.stringify(st.msgs));
+        } else if (name === '预分节') {
+          check('预分节：iframe 加载了增强产物', /enhanced-pre/.test(st.ifrUrl), st.ifrUrl);
+          check('预分节：节数与生成器一致', st.n === preN, 'n=' + st.n + ' preN=' + preN);
+          check('预分节：进度条/头部注入', st.hasBar && st.hasHeader);
+          check('预分节：仅第 1 节解锁', st.unlocked[0] && !st.unlocked[1], JSON.stringify(st.unlocked.slice(0, 3)));
+          check('预分节：hello + hello-ack 已发', st.msgs.includes('hello') && st.msgs.includes('hello-ack'), JSON.stringify(st.msgs));
         } else {
           check('整页：iframe 加载了增强产物', /enhanced-whole/.test(st.ifrUrl), st.ifrUrl);
           check('整页：body 即唯一节', st.bodyIsSec && st.n === 1, 'bodySec=' + st.bodyIsSec + ' n=' + st.n);
@@ -142,7 +176,7 @@ function fetchJson(url) {
             unlocked: Array.from(document.getElementById('f').contentDocument.querySelectorAll('.cw-sec'))
               .map(s => s.classList.contains('cw-unlocked')),
           }));
-          unlockedNext = name === '分节模式' ? after.unlocked[1] === true : after.msgs.some(m => m.startsWith('progress:100'));
+          unlockedNext = name !== '整页模式' ? after.unlocked[1] === true : after.msgs.some(m => m.startsWith('progress:100'));
           progMsgs = after.msgs;
         } catch (e) {
           progMsgs = ['等待按钮亮起超时: ' + e.message.slice(0, 60)];
