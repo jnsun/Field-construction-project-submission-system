@@ -48,13 +48,24 @@ const TrainingMine = {
     if (error) throw error;
     this.state.list = data || [];
 
-    // 考试状态 / 签字状态（本人 assignments，RLS 保证只读自己的）
+    // 考试状态 / 签字状态（本人 assignments；RLS 不限定本人时必须前端过滤，
+    // 否则 asgMap 可能映射到别人的 assignment，导致状态显示错误甚至替别人签字）
     const ids = this.state.list.map(r => r.plan_id);
     this.state.asgMap = {};
     if (ids.length) {
-      const { data: asg } = await sb.from('training_assignments')
-        .select('id, plan_id, exam_status, exam_attempts, status, progress, completed_at, training_signatures(assignment_id)')
+      const { data: sess } = await sb.auth.getSession();
+      const uid = sess?.session?.user?.id || null;
+      // user_id 是发布瞬间的快照（发布时未开通账号则为空），employee_id 是实时绑定，
+      // 双通道都要参与匹配；uid 取不到时仅按 employee_id 过滤
+      const empId = (await sb.rpc('training_my_employee_id')).data;
+      const own = [];
+      if (uid) own.push('user_id.eq.' + uid);
+      if (empId) own.push('employee_id.eq.' + empId);
+      let q = sb.from('training_assignments')
+        .select('id, plan_id, user_id, employee_id, exam_status, exam_attempts, status, progress, completed_at, training_signatures(assignment_id)')
         .in('plan_id', ids);
+      if (own.length) q = q.or(own.join(','));
+      const { data: asg } = await q;
       (asg || []).forEach(a => { this.state.asgMap[a.plan_id] = a; });
     }
     this.renderList();
@@ -146,7 +157,9 @@ const TrainingMine = {
   },
 
   signAction(r, a) {
-    const signed = a.training_signatures && a.training_signatures.length > 0;
+    // PostgREST 对一对一关系（assignment_id 唯一）返回对象而非数组，两种都要兼容
+    const sig = a.training_signatures;
+    const signed = Array.isArray(sig) ? sig.length > 0 : !!sig;
     const canSign = (r.status === 'completed' || a.exam_status === 'passed') && !signed;
     return canSign
       ? `<button class="btn btn-sm btn-primary" onclick="TrainingMine.openSign('${a.id}')">签字确认</button>`
