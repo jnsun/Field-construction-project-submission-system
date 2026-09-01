@@ -1229,14 +1229,14 @@ const Admin = {
       </div>
       ${isSuper ? '' : `
         <div class="alert alert-info" style="margin-bottom:12px;">
-          ⚠️ 您是<strong>部门管理员</strong>：可以管理<strong>本部门（含下级）的部门账号与员工账号</strong>（新增/编辑/删除）。
-          将账号设为「<strong>部门账号</strong>」即授予其<strong>野外施工项目报送</strong>权限；培训自助开通的员工账号经编辑保存后同样可报送。
+          ⚠️ 您是<strong>部门管理员</strong>：可以管理<strong>本部门（含下级）的账号</strong>（新增/编辑/删除）。
+          为账号勾选「<strong>允许报送野外施工项目</strong>」即授予其<strong>报送权限</strong>。
           创建、修改或删除<strong>管理员账号</strong>需要<strong>超级管理员</strong>权限，请联系超级管理员操作。
         </div>
       `}
       <div class="card">
         <div class="card-header">
-          <h2>部门账号管理</h2>
+          <h2>账号管理</h2>
         </div>
         <div class="card-body">
           <div class="table-wrapper">
@@ -1317,9 +1317,7 @@ const Admin = {
             : u.admin_level === 'company'
               ? '<span class="badge badge-warning">公司级管理员</span>'
               : '<span class="badge badge-warning">部门管理员</span>')
-      : u.role === 'employee'
-        ? '<span class="badge badge-muted" title="培训自助开通账号；编辑可升级为部门账号">员工账号（培训）</span>'
-        : '<span class="badge badge-muted">部门账号</span>';
+      : '<span class="badge badge-muted" title="普通员工账号；勾选「允许报送」后即可填报">员工账号</span>';
     const reportBadge = u.can_report
       ? '<span class="badge badge-success" style="margin-left:4px" title="已授予野外施工项目报送权限">可报送</span>'
       : '';
@@ -1406,27 +1404,23 @@ const Admin = {
     this.state.editingUserId = userId;
 
     const v = user || {};
-    const role = v.role || 'reporter';
+    const role = v.role || 'employee';
     const deptId = v.department_id || '';
     const isEmployee = isEdit && v.role === 'employee';
-    // 编辑员工（培训）账号时可保持原角色，仅勾选报送权
-    const employeeOption = `<label><input type="radio" name="role" value="employee" ${isEmployee ? 'checked' : ''} onchange="Admin.onRoleChange()"> 员工账号（培训）</label>`;
+    const employeeOption = `<label><input type="radio" name="role" value="employee" ${role !== 'admin' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 员工账号</label>`;
 
     const roleOptions = isSuper
       ? `
         ${employeeOption}
-        <label><input type="radio" name="role" value="reporter" ${role === 'reporter' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
         <label><input type="radio" name="role" value="admin" ${role === 'admin' ? 'checked' : ''} onchange="Admin.onRoleChange()"> 管理员</label>
       `
       : isEntity
         ? `
           ${employeeOption}
-          <label><input type="radio" name="role" value="reporter" ${!isProjectAdmin && !isEmployee ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
           <label><input type="radio" name="role" value="admin" ${isProjectAdmin ? 'checked' : ''} onchange="Admin.onRoleChange()"> 项目部管理员</label>
         `
         : `
           ${employeeOption}
-          <label><input type="radio" name="role" value="reporter" ${!isEmployee ? 'checked' : ''} onchange="Admin.onRoleChange()"> 部门账号</label>
           <label class="disabled-option" title="只有超级管理员才能创建管理员账号"><input type="radio" name="role" value="admin" disabled> 管理员（仅超管）</label>
         `;
 
@@ -1441,8 +1435,7 @@ const Admin = {
             <div id="user-modal-error"></div>
             ${isEdit && v.role === 'employee' ? `
               <div class="alert alert-info" style="margin-bottom:12px;">
-                该账号是培训自助开通的<strong>员工账号</strong>。勾选「允许报送野外施工项目」保存后即可填报（培训记录保留）；
-                如需升级为「部门账号」请选择对应角色。
+                该账号是<strong>员工账号</strong>。勾选「允许报送野外施工项目」保存后即可填报；培训自助开通的员工账号培训记录全部保留。
               </div>
             ` : ''}
             <form id="user-form" onsubmit="return false">
@@ -1480,7 +1473,7 @@ const Admin = {
                   ${isSuper
                     ? '<p class="hint">提示：管理员账号创建后默认为公司级普通管理员；如需设为超级管理员，请用 SQL 设置 is_super_admin。</p>'
                     : isEntity
-                      ? '<p class="hint">提示：您可创建「部门账号」，或指定归属<b>本部门下项目部</b>的「项目部管理员」（其仅能管理该项目部）。</p>'
+                      ? '<p class="hint">提示：您可创建「员工账号」并勾选报送权，或指定归属<b>本部门下项目部</b>的「项目部管理员」（其仅能管理该项目部）。</p>'
                       : '<p class="hint">提示：勾选下方「允许报送野外施工项目」的账号即可登录填报；培训自助开通的员工账号编辑保存后同样可报送（培训记录保留）。</p>'}
                 </div>
                 ${isSuper ? `
@@ -1497,11 +1490,11 @@ const Admin = {
                   <label>野外施工项目报送权限</label>
                   <label style="display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer;">
                     <input type="checkbox" name="can_report" value="1" id="user-can-report"
-                      ${(v.can_report === true || !isEdit || v.role === 'reporter') ? 'checked' : ''}
+                      ${(v.can_report === true || !isEdit) ? 'checked' : ''}
                       ${v.is_super_admin ? 'disabled' : ''}>
                     允许该账号报送野外施工项目（进入「项目报送」页面填报）
                   </label>
-                  <p class="hint" id="user-can-report-hint">部门账号天生可报送；部门管理员、项目管理员、员工账号按需勾选；超级管理员不参与报送。</p>
+                  <p class="hint" id="user-can-report-hint">员工账号、部门管理员、项目管理员均可勾选；超级管理员不参与报送。</p>
                 </div>
                 <div class="form-group col-span-2">
                   <label>${isEdit ? '重置密码' : '初始密码'} <span class="required">${isEdit ? '' : '*'}</span></label>
@@ -1545,16 +1538,6 @@ const Admin = {
     // 超级管理员选「管理员」时才显示级别选择
     const lvlGroup = document.getElementById('admin-level-group');
     if (lvlGroup) lvlGroup.style.display = (isAdmin && Auth.isSuperAdmin()) ? '' : 'none';
-    // 部门账号天生可报送：选中时开关强制勾选并禁用；管理员/员工按需勾选
-    const cr = document.getElementById('user-can-report');
-    if (cr) {
-      if (roleInput.value === 'reporter') {
-        cr.checked = true;
-        cr.disabled = true;
-      } else {
-        cr.disabled = false;
-      }
-    }
   },
 
   onUserModalOverlayClick(event) {
@@ -1589,7 +1572,7 @@ const Admin = {
 
     // 前端校验
     if (!fullName) { Utils.toast('请填写账号名称', 'error'); return; }
-    if ((role === 'reporter' || role === 'employee') && !deptId) { Utils.toast('部门账号 / 员工账号必须分配部门', 'error'); return; }
+    if (role === 'employee' && !deptId) { Utils.toast('员工账号必须分配部门', 'error'); return; }
     if (!isEdit && !email && !phone) { Utils.toast('请至少填写登录邮箱或手机号，以便账号登录', 'error'); return; }
     if (phone && !/^1[0-9]{10}$/.test(phone)) { Utils.toast('请输入有效的手机号（1 开头的 11 位数字）', 'error'); return; }
 
@@ -1660,10 +1643,9 @@ const Admin = {
         return;
       }
 
-      // 报送权限开关：部门账号由数据库触发器自动置 true，无需调用；
-      // 管理员 / 员工账号按勾选状态调用 RPC 设置
-      if (role !== 'reporter') {
-        const wantReport = !!fd.get('can_report');
+      // 报送权限开关：独立于角色，按勾选状态调用 RPC 设置（超管账号除外）
+      {
+        const wantReport = !!(fd.get('can_report') && !(result.data && result.data.is_super_admin));
         const targetId = isEdit ? this.state.editingUserId : (result.data && result.data.user_id);
         if (targetId) {
           const prev = isEdit

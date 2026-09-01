@@ -132,7 +132,7 @@ const App = {
           <div class="logo">
             <h1>安全生产管理系统</h1>
             <p class="logo-en">Safety Production Management System</p>
-            <p class="logo-hint">请使用部门账号登录</p>
+            <p class="logo-hint">请使用您的账号登录</p>
           </div>
           <div class="login-error" id="login-error"></div>
           <form id="login-form" onsubmit="return false">

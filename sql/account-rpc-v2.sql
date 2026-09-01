@@ -116,7 +116,7 @@ CREATE FUNCTION public.create_dept_user(
   p_password       TEXT,
   p_full_name      TEXT DEFAULT NULL,
   p_department_id  UUID DEFAULT NULL,
-  p_role           TEXT DEFAULT 'reporter',
+  p_role           TEXT DEFAULT 'employee',
   p_phone          TEXT DEFAULT NULL,
   p_admin_level    TEXT DEFAULT NULL
 )
@@ -185,11 +185,11 @@ BEGIN
   IF p_password IS NULL OR length(p_password) < 6 THEN
     RAISE EXCEPTION '密码长度至少 6 位';
   END IF;
-  IF p_role IS NULL OR p_role NOT IN ('admin', 'reporter', 'employee') THEN
+  IF p_role IS NULL OR p_role NOT IN ('admin', 'employee') THEN
     RAISE EXCEPTION '角色不合法';
   END IF;
-  IF p_role IN ('reporter', 'employee') AND p_department_id IS NULL THEN
-    RAISE EXCEPTION '部门账号 / 员工账号必须分配部门';
+  IF p_role = 'employee' AND p_department_id IS NULL THEN
+    RAISE EXCEPTION '员工账号必须分配部门';
   END IF;
 
   -- 管理员级别：admin 必须给出合法级别（缺省按公司级）；非 admin 一律置空
@@ -333,7 +333,7 @@ CREATE FUNCTION public.update_dept_user(
   p_email          TEXT,
   p_full_name      TEXT DEFAULT NULL,
   p_department_id  UUID DEFAULT NULL,
-  p_role           TEXT DEFAULT 'reporter',
+  p_role           TEXT DEFAULT 'employee',
   p_password       TEXT DEFAULT NULL,
   p_phone          TEXT DEFAULT NULL,
   p_admin_level    TEXT DEFAULT NULL
@@ -431,11 +431,11 @@ BEGIN
   IF p_full_name IS NULL OR trim(p_full_name) = '' THEN
     RAISE EXCEPTION '账号名称不能为空';
   END IF;
-  IF p_role IS NULL OR p_role NOT IN ('admin', 'reporter', 'employee') THEN
+  IF p_role IS NULL OR p_role NOT IN ('admin', 'employee') THEN
     RAISE EXCEPTION '角色不合法';
   END IF;
-  IF p_role IN ('reporter', 'employee') AND p_department_id IS NULL THEN
-    RAISE EXCEPTION '部门账号 / 员工账号必须分配部门';
+  IF p_role = 'employee' AND p_department_id IS NULL THEN
+    RAISE EXCEPTION '员工账号必须分配部门';
   END IF;
 
   -- 管理员级别：未传则沿用原级别，仍为空按公司级

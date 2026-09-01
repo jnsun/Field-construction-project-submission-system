@@ -39,7 +39,7 @@ const ModuleRegistry = (() => {
         } else if (Auth.isAdmin()) {
           Admin.render(app, { readOnly: false });
         } else if (Auth.canReport() || !Auth.canViewAdmin()) {
-          // 部门账号 / 有报送权的员工：直接进入报送界面
+          // 有报送权的员工账号（或无后台查看权的账号）：直接进入报送界面
           Reporter.render(app);
         } else {
           Admin.render(app, { readOnly: true });

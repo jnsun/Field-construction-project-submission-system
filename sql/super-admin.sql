@@ -6,7 +6,7 @@
 --      角色体系变为三层：
 --        'admin' + is_super_admin=true  → 超级管理员（可创建/删除/修改管理员账号）
 --        'admin' + is_super_admin=false → 普通管理员（仅可管理部门账号与报送配置等）
---        'reporter'                      → 部门账号
+--        'employee'                      → 普通员工（报送权由 can_report 开关控制）
 --   2. 新增 public.is_super_admin() 权限判断函数（SECURITY DEFINER）
 --   3.（已迁出）账号管理 RPC create/update/delete_dept_user
 --      现由 sql/account-rpc-v2.sql 统一维护（合并了手机号登录 p_phone

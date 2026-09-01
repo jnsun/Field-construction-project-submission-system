@@ -94,8 +94,8 @@ $$;
 GRANT EXECUTE ON FUNCTION public.set_user_can_report(UUID, BOOLEAN) TO authenticated;
 
 -- --------------------------------------------------------------------------
--- 3.5 触发器：部门账号天生可报送（create_dept_user 创建/改角色为 reporter
---      时不经过 set_user_can_report，由触发器兜底）；超管恒不可报送
+-- 3.5 触发器：超级管理员恒不可报送
+--      （「reporter 天生可报送」分支已随该角色取消而移除，见 remove-reporter-role.sql）
 -- --------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.trg_reporter_can_report()
 RETURNS TRIGGER
@@ -104,8 +104,6 @@ AS $$
 BEGIN
   IF NEW.is_super_admin THEN
     NEW.can_report := FALSE;
-  ELSIF NEW.role = 'reporter' THEN
-    NEW.can_report := TRUE;
   END IF;
   RETURN NEW;
 END;

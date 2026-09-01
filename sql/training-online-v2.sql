@@ -31,7 +31,7 @@ END $$;
 
 ALTER TABLE public.profiles
   ADD CONSTRAINT profiles_role_check
-  CHECK (role IN ('admin', 'reporter', 'employee'));
+  CHECK (role IN ('admin', 'employee'));
 
 -- 员工用手机号登录，profiles 必须有 phone 列（phone-login.sql 里已建，这里兜底）
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
