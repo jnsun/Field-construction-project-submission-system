@@ -125,7 +125,9 @@
 - 员工档案只见本部门 5 人 ✅；账号管理 UI 只见本部门 5 账号 + 权限提示正确 ✅
 - 建部门被拒：P0001「只有管理员或经营实体才能新建部门」✅
 - **发现 1（bug，全系统）**：`create_department` 三个重载（2/3/6 参）且后两个带默认值 → PostgREST PGRST203 无法选候选 → **任何管理员（含公司级）在界面上点「创建部门」都会失败**。需合并重载或去默认值。
+  → **已出补丁**（2026-09-01，commit e052409）：`sql/department-fix-v1.sql` 动态 DROP 全部重载并重建唯一权威版；`sql/department-management.sql` 已废弃（重跑会重新引入旧重载，是根因）。**待用户执行补丁后回归验证。**
 - **发现 2（越权读，系统级）**：REST 直连下 admin 角色可读全部 39 部门、全部 370 个 profiles（含他人手机号等）。培训员工表隔离正确（只见 5 人），但 profiles/departments 的部门隔离只靠前端过滤。建议收紧 admin 的 RLS select 策略。
+  → **已出补丁**（同上）：`department-fix-v1.sql` Part 2 将 profiles SELECT 收紧为「自己 / 公司级管理员全量 / dept·project 级管理员仅本部门及下级子树（profile_visible helper，SECURITY DEFINER 防递归）/ 其他仅自己」。departments 维持已登录可读（部门名非敏感，培训 targets 与报送 embed 需显示祖先部门名，收紧会显示空白）。**待用户执行后用 13835938299 直连 GET /rest/v1/profiles 验证。**
 - **发现 3（小）**：培训页部门筛选下拉对部门管理员列出全部 39 个部门（数据不泄露，选其他部门=0 人，但 UI 应只显示可见部门）。
 
 ### S2-S4 学习进度与断点续学 ✅
