@@ -263,6 +263,16 @@ const Auth = {
   },
 
   /**
+   * 是否被授予野外施工项目报送权限
+   * can_report 独立于角色：部门账号天生为 true（数据库触发器兜底）；
+   * 部门管理员 / 项目管理员 / 员工账号可在账号管理中勾选开启。
+   * 旧库未执行 sql/report-permission.sql 时字段为 undefined → false（不影响登录）。
+   */
+  canReport() {
+    return !!(this.currentProfile && this.currentProfile.can_report === true);
+  },
+
+  /**
    * 判断当前用户能否查看「管理员界面」（后台）
    * 规则：管理员始终可看；非管理员部门用户根据部门权限决定。
    * 部门权限 can_view_admin 为 null 时，按 needs_report 反推：

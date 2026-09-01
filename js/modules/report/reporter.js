@@ -64,8 +64,9 @@ const Reporter = {
   /**
    * 渲染报送仪表盘
    * @param {HTMLElement} container
+   * @param {{embedded?: boolean}} [opts] embedded=true 时内嵌于管理员后台页签（无头部/外框）
    */
-  async render(container) {
+  async render(container, opts = {}) {
     const profile = Auth.currentProfile;
     this.state.departmentId = profile.department_id;
     this.state.departmentName = profile.departments ? profile.departments.name : '';
@@ -80,9 +81,9 @@ const Reporter = {
     // 用户仍可通过工具栏筛选到具体月份
     this.state.month = null;
 
-    container.innerHTML = this.buildHTML();
+    container.innerHTML = this.buildHTML(!!opts.embedded);
     this.bindEvents(container);
-    Utils.bindBackToTop('report-back-top');
+    if (!opts.embedded) Utils.bindBackToTop('report-back-top');
     await this.loadFormConfig();
     await this.loadReports();
     await this.loadNoFieldStatus();
@@ -97,16 +98,21 @@ const Reporter = {
 
   /**
    * 构建 HTML 结构
+   * @param {boolean} [embedded] 内嵌模式：只渲染主体（工具栏/横幅/列表），无外框与头部
    */
-  buildHTML() {
+  buildHTML(embedded = false) {
+    const body = `
+      ${this.buildToolbar()}
+      <div id="no-field-banner"></div>
+      <div id="reports-section"></div>
+    `;
+    if (embedded) return body;
     return `
       <div class="dashboard">
         <button class="back-to-top" id="report-back-top" title="回到顶部" aria-label="回到顶部">↑</button>
         ${this.buildHeader()}
         <div class="dashboard-content">
-          ${this.buildToolbar()}
-          <div id="no-field-banner"></div>
-          <div id="reports-section"></div>
+          ${body}
         </div>
       </div>
     `;

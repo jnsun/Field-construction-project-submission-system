@@ -34,13 +34,15 @@ const ModuleRegistry = (() => {
       renderer: (app) => {
         if (Auth.isEntityManager()) {
           // 经营实体管理员：进入受限管理（部门管理 + 账号管理，仅本部门子树）
+          // 有报送权时后台含「项目报送」页签
           Admin.render(app, { entityMode: true });
         } else if (Auth.isAdmin()) {
           Admin.render(app, { readOnly: false });
-        } else if (Auth.canViewAdmin()) {
-          Admin.render(app, { readOnly: true });
-        } else {
+        } else if (Auth.canReport() || !Auth.canViewAdmin()) {
+          // 部门账号 / 有报送权的员工：直接进入报送界面
           Reporter.render(app);
+        } else {
+          Admin.render(app, { readOnly: true });
         }
       } },
     { id: 'qualification', name: '资质证照管理', icon: ICON.qualification,
