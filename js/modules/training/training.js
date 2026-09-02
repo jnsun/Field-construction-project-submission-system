@@ -17,6 +17,7 @@ const TrainingModule = {
     depts: [],             // 全部部门（id/name/code/dept_type/parent_id）
     deptMap: {},           // id -> 部门对象
     profile: null,
+    fieldRoles: [],        // 普通员工被任命为项目经理/安全员时的受限现场管理权限
   },
 
   TABS: [
@@ -40,13 +41,19 @@ const TrainingModule = {
   // ---------------------------------------------------------------- 入口
   async render(app) {
     this.state.profile = Auth.currentProfile || {};
+    await this.loadFieldRoles();
     const staff = this.isStaff();
+    const fieldManager = this.isFieldManager();
+
+    if (fieldManager && !['admission-operations', 'admission-verify'].includes(this.state.view)) {
+      this.state.view = 'admission-operations';
+    }
 
     app.innerHTML = `
       <div class="dashboard">
         ${this.buildHeader()}
         <div class="dashboard-content">
-          ${staff ? '' : this.buildTabs()}
+          ${staff && !fieldManager ? '' : this.buildTabs()}
           <div id="training-section">
             <div class="card"><div class="card-body">加载中...</div></div>
           </div>
@@ -55,7 +62,7 @@ const TrainingModule = {
     `;
 
     const box = document.getElementById('training-section');
-    if (staff) {
+    if (staff && !fieldManager) {
       // 员工端：只看「我的培训」
       await TrainingMine.render(box);
       await TrainingAdmissionMine.mount(box);
@@ -68,6 +75,22 @@ const TrainingModule = {
   /** 员工账号（非管理员、非部门报送账号） */
   isStaff() {
     return (this.state.profile || {}).role === 'employee';
+  },
+
+  /** 普通员工账号被经营实体指定为项目经理/安全员时，仅开放现场管理页。 */
+  isFieldManager() {
+    return this.isStaff() && (this.state.fieldRoles || []).length > 0;
+  },
+
+  async loadFieldRoles() {
+    this.state.fieldRoles = [];
+    if (!this.isStaff() || !Auth.currentUser?.id) return;
+    try {
+      const { data, error } = await sb.from('site_project_roles')
+        .select('project_id, role, active')
+        .eq('user_id', Auth.currentUser.id).eq('active', true);
+      if (!error) this.state.fieldRoles = data || [];
+    } catch (_) { /* 未执行准入脚本时维持普通员工界面 */ }
   },
 
   // ---------------------------------------------------------------- 顶部
@@ -100,7 +123,7 @@ const TrainingModule = {
 
   /** 层级徽章：公司级 / 部门级 / 项目级 / 只读 */
   levelBadge() {
-    if (!this.isAdmin()) return '<span class="badge badge-muted">只读</span>';
+    if (!this.isAdmin()) return this.isFieldManager() ? '<span class="badge badge-warning">现场管理</span>' : '<span class="badge badge-muted">只读</span>';
     if (this.isCompanyAdmin()) return '<span class="badge badge-danger">公司级</span>';
     const lv = (this.state.profile || {}).admin_level;
     if (lv === 'project') return '<span class="badge badge-warning">项目级</span>';
@@ -108,9 +131,12 @@ const TrainingModule = {
   },
 
   buildTabs() {
+    const tabs = this.isFieldManager()
+      ? this.TABS.filter(t => ['admission-operations', 'admission-verify'].includes(t.key))
+      : this.TABS;
     return `
       <div class="cat-tabs" id="training-tabs">
-        ${this.TABS.map(t => `
+        ${tabs.map(t => `
           <button type="button" class="cat-tab${this.state.view === t.key ? ' active' : ''}"
             data-view="${t.key}" onclick="TrainingModule.switchView('${t.key}')">${t.label}</button>
         `).join('')}
@@ -252,6 +278,11 @@ const TrainingModule = {
 
   canEdit() {
     return this.isAdmin();
+  },
+
+  /** 供项目准入执行页使用：管理员或被任命的现场管理人员。 */
+  canManageAdmission() {
+    return this.isAdmin() || this.isFieldManager();
   },
 
   /**
