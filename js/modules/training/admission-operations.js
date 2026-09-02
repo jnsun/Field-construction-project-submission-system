@@ -15,6 +15,8 @@ const TrainingAdmissionOperations = {
   async render(box) {
     box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">项目准入执行与资格核验</span></div>
       <div class="toolbar-right"><select id="admission-op-project" onchange="TrainingAdmissionOperations.onFilter()"><option value="">全部项目</option></select>
+        <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.printBlocked()">打印禁止上岗名单</button>
+        <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchRemind()">批量催办</button>
         <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.load()">刷新</button>
         ${TrainingModule.canManageAdmission() ? '<button class="btn btn-primary btn-sm" onclick="TrainingAdmissionOperations.openStartForm()">+ 发起准入</button>' : ''}</div></div>
       <div id="admission-op-summary"></div><div id="admission-op-table"></div>`;
@@ -120,6 +122,34 @@ const TrainingAdmissionOperations = {
     const { error } = await sb.rpc('training_revoke_temporary_access', { p_access_id: id });
     if (error) { Utils.toast(error.message, 'error'); return; }
     Utils.toast('临时通行已撤销', 'success'); await this.load();
+  },
+
+  pendingRows() {
+    return this.state.members.filter(m => m.status === 'active' && (!this.state.filter || m.project_id === this.state.filter)).map(m => ({ m, e: this.employee(m.employee_id), a: this.state.admissions.find(a => a.project_id === m.project_id && a.employee_id === m.employee_id) })).filter(x => !x.a || x.a.status !== 'eligible');
+  },
+
+  openBatchRemind() {
+    if (!this.state.filter) { Utils.toast('请先选择一个项目，再进行批量催办', 'info'); return; }
+    const rows = this.pendingRows().filter(x => x.a);
+    if (!rows.length) { Utils.toast('该项目暂无需要催办的已发起准入人员', 'info'); return; }
+    this.modal('批量催办未完成培训', `<p class="hint">将向 ${rows.length} 名人员的系统内“我的培训”写入待办提醒，并保留催办记录。微信订阅消息接入后会复用此名单。</p><div class="form-group"><label>催办内容 <span class="required">*</span></label><textarea id="batch-remind-message" class="form-control" rows="4">请尽快完成项目三级安全教育、考试和电子签字。未完成前禁止入场、禁止上岗。</textarea></div>`, 'TrainingAdmissionOperations.submitBatchRemind()');
+  },
+
+  async submitBatchRemind() {
+    const rows = this.pendingRows().filter(x => x.a);
+    const message = document.getElementById('batch-remind-message')?.value.trim() || '';
+    const { data, error } = await sb.rpc('training_batch_remind', { p_project_id: this.state.filter, p_admission_ids: rows.map(x => x.a.id), p_message: message });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    this.close(); Utils.toast(`已生成 ${data || 0} 条系统内催办提醒`, 'success');
+  },
+
+  printBlocked() {
+    if (!this.state.filter) { Utils.toast('请先选择一个项目，再打印禁止上岗名单', 'info'); return; }
+    const rows = this.pendingRows(); const project = this.project(this.state.filter);
+    const body = rows.map((x, i) => `<tr><td>${i + 1}</td><td>${this.esc(x.e.name)}</td><td>${this.esc(x.e.position || '—')}</td><td>${this.esc(x.a?.blocked_reason || (x.a ? '培训准入尚未完成' : '尚未发起准入培训'))}</td><td>禁止入场 / 禁止上岗</td></tr>`).join('');
+    const w = window.open('', '_blank'); if (!w) { Utils.toast('浏览器阻止了打印窗口，请允许弹窗后重试', 'error'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>禁止上岗名单</title><style>body{font-family:Microsoft YaHei,sans-serif;padding:24px;color:#111}h1{text-align:center;font-size:20px}p{font-size:13px}table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}th,td{border:1px solid #222;padding:8px;text-align:left}th{background:#eee}@media print{body{padding:0}}</style></head><body><h1>项目禁止入场 / 禁止上岗人员名单</h1><p>项目：${this.esc(this.projectName(project.id))}</p><p>打印时间：${new Date().toLocaleString()}</p><table><thead><tr><th>序号</th><th>姓名</th><th>工种</th><th>限制原因</th><th>当前要求</th></tr></thead><tbody>${body || '<tr><td colspan="5">暂无人员</td></tr>'}</tbody></table></body></html>`);
+    w.document.close(); w.focus(); w.print();
   },
 
   openManagerSign(admissionId, role) {

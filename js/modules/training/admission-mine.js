@@ -22,7 +22,7 @@ const TrainingAdmissionMine = {
       if (error || !data || !data.length) return;
       const host = document.createElement('div');
       host.id = 'training-admission-mine';
-      host.innerHTML = this.render(data);
+      host.innerHTML = this.render(data) + await this.renderReminders();
       box.insertBefore(host, box.firstChild);
     } catch (_) {
       // 迁移尚未执行时不影响原有我的培训页面。
@@ -40,6 +40,14 @@ const TrainingAdmissionMine = {
         ${rows.map(r => this.row(r)).join('')}
       </div>
     </div>`;
+  },
+
+  async renderReminders() {
+    try {
+      const { data, error } = await sb.from('training_admission_reminders').select('message, created_at, site_projects(project_code, name)').is('read_at', null).order('created_at', { ascending: false }).limit(10);
+      if (error || !data?.length) return '';
+      return `<div class="card" style="border-left:4px solid #f59e0b;margin-bottom:16px"><div class="card-header"><h2>待办提醒</h2></div><div class="card-body" style="display:grid;gap:8px">${data.map(x => `<div><b>${Utils.escapeHtml(x.site_projects?.project_code || '')} ${Utils.escapeHtml(x.site_projects?.name || '')}</b><div style="margin-top:3px">${Utils.escapeHtml(x.message)}</div><div class="text-muted" style="font-size:12px;margin-top:3px">${Utils.escapeHtml((x.created_at || '').slice(0, 16).replace('T', ' '))}</div></div>`).join('')}</div></div>`;
+    } catch (_) { return ''; }
   },
 
   row(r) {
