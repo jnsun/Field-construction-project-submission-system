@@ -60,10 +60,20 @@ CREATE TABLE IF NOT EXISTS public.personnel_change_logs (
   field       TEXT NOT NULL,                 -- phone | photo_path（预留扩展）
   old_value   TEXT,
   new_value   TEXT,
-  changed_by  UUID REFERENCES auth.users(id),
+  changed_by  UUID REFERENCES auth.users(id) ON DELETE SET NULL,  -- 留痕保留，操作人账号删除后置空
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pcl_employee ON public.personnel_change_logs(employee_id, created_at DESC);
+
+-- 幂等重建 changed_by 外键：必须带 ON DELETE SET NULL（否则留痕会卡死账号删除）
+ALTER TABLE public.personnel_change_logs DROP CONSTRAINT IF EXISTS personnel_change_logs_changed_by_fkey;
+ALTER TABLE public.personnel_change_logs
+  ADD CONSTRAINT personnel_change_logs_changed_by_fkey
+  FOREIGN KEY (changed_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- 兜底：profiles.role 列默认值必须是 employee（remove-reporter-role.sql 收紧 CHECK 时
+-- 未同步默认值，导致 handle_new_user 触发器插入 role='reporter' 必然 23514）
+ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'employee';
 
 ALTER TABLE public.personnel_change_logs ENABLE ROW LEVEL SECURITY;
 

@@ -33,6 +33,9 @@ ALTER TABLE public.profiles
   ADD CONSTRAINT profiles_role_check
   CHECK (role IN ('admin', 'employee'));
 
+-- 默认值同步：handle_new_user 触发器按列默认值插入 role，默认值必须随 CHECK 一起收敛
+ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'employee';
+
 -- 员工用手机号登录，profiles 必须有 phone 列（phone-login.sql 里已建，这里兜底）
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
 

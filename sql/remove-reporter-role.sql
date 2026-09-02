@@ -48,6 +48,9 @@ ALTER TABLE public.profiles
   ADD CONSTRAINT profiles_role_check
   CHECK (role IN ('admin', 'employee'));
 
+-- 默认值同步：handle_new_user 触发器按列默认值插入 role，默认值必须随 CHECK 一起收敛
+ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'employee';
+
 -- --------------------------------------------------------------------------
 -- 3. 触发器更新：仅保留「超级管理员恒不可报送」
 -- --------------------------------------------------------------------------
