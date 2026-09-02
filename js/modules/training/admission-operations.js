@@ -3,7 +3,7 @@
 // 学习、考试和员工签字仍复用现有「我的培训」流程。
 // =============================================================
 const TrainingAdmissionOperations = {
-  state: { projects: [], members: [], employees: [], packages: [], admissions: [], signatures: [], roles: [], filter: '' },
+  state: { projects: [], members: [], employees: [], packages: [], admissions: [], signatures: [], roles: [], accesses: [], filter: '' },
   STATUS: {
     pending: ['待学习', 'badge-warning'], learning: ['学习中', 'badge-info'],
     exam_pending: ['待考试', 'badge-warning'], exam_failed: ['考试未通过', 'badge-danger'],
@@ -30,10 +30,11 @@ const TrainingAdmissionOperations = {
       sb.from('training_admissions').select('id, project_id, employee_id, package_id, status, exam_score, exam_attempts, final_signed_at, site_confirmed_at, valid_until, blocked_reason, created_at').order('created_at', { ascending: false }),
       sb.from('training_admission_signatures').select('admission_id, task_id, signer_role, signer_user_id'),
       sb.from('site_project_roles').select('project_id, user_id, role, active').eq('user_id', Auth.currentUser?.id || '').eq('active', true),
+      sb.from('training_temporary_access').select('id, admission_id, employee_id, project_id, reason, starts_at, expires_at, revoked_at, pass_code, training_employees(name, position)').order('starts_at', { ascending: false }),
     ]);
     const error = results.find(r => r.error);
     if (error) throw error.error;
-    [this.state.projects, this.state.members, this.state.employees, this.state.packages, this.state.admissions, this.state.signatures, this.state.roles] = results.map(r => r.data || []);
+    [this.state.projects, this.state.members, this.state.employees, this.state.packages, this.state.admissions, this.state.signatures, this.state.roles, this.state.accesses] = results.map(r => r.data || []);
     this.renderTable();
   },
 
@@ -46,6 +47,7 @@ const TrainingAdmissionOperations = {
   status(s) { const v = this.STATUS[s] || [s || '未知', 'badge-muted']; return `<span class="badge ${v[1]}">${v[0]}</span>`; },
   myProjectRole(projectId) { const rs = this.state.roles.filter(r => r.project_id === projectId && r.active); return rs.some(r => r.role === 'project_manager') ? 'project_manager' : (rs.some(r => r.role === 'safety_officer') ? 'safety_officer' : ''); },
   hasOwnManagerSign(admissionId, role) { return this.state.signatures.some(s => s.admission_id === admissionId && !s.task_id && s.signer_role === role && s.signer_user_id === Auth.currentUser?.id); },
+  activeAccess(admissionId) { return this.state.accesses.find(x => x.admission_id === admissionId && !x.revoked_at && new Date(x.expires_at) > new Date()); },
 
   renderTable() {
     const filter = document.getElementById('admission-op-project');
@@ -60,7 +62,8 @@ const TrainingAdmissionOperations = {
     const summary = document.getElementById('admission-op-summary');
     if (summary) summary.innerHTML = `<div class="stats-grid" style="margin-bottom:12px"><div class="stat-card total"><div class="stat-value">${rows.length}</div><div class="stat-label">项目在场人员</div></div><div class="stat-card success"><div class="stat-value">${eligible}</div><div class="stat-label">可上岗</div></div><div class="stat-card danger"><div class="stat-value">${blocked}</div><div class="stat-label">禁止上岗/未发起</div></div></div>`;
     const table = document.getElementById('admission-op-table'); if (!table) return;
-    table.innerHTML = `<div class="card"><div class="card-header"><h2>项目准入状态（${rows.length}）</h2><span class="text-muted">资格由学习、考试、签字、现场确认和项目状态共同决定</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr><th>人员</th><th>项目</th><th>外协/工种</th><th>培训包</th><th>状态</th><th>考试</th><th>有效至</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(r => this.row(r)).join('') : TrainingModule.emptyRow(8, '暂无项目在场人员')}</tbody></table></div></div>`;
+    const tempRows = this.state.accesses.filter(x => !x.revoked_at && (!this.state.filter || x.project_id === this.state.filter));
+    table.innerHTML = `<div class="card"><div class="card-header"><h2>项目准入状态（${rows.length}）</h2><span class="text-muted">资格由学习、考试、签字、现场确认和项目状态共同决定</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr><th>人员</th><th>项目</th><th>外协/工种</th><th>培训包</th><th>状态</th><th>考试</th><th>有效至</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(r => this.row(r)).join('') : TrainingModule.emptyRow(8, '暂无项目在场人员')}</tbody></table></div></div><div class="card" style="margin-top:14px;border-left:4px solid #dc2626"><div class="card-header"><h2>临时通行台账（${tempRows.length}）</h2><span style="color:#b91c1c">仅限短时例外，禁止替代正常准入</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr><th>人员</th><th>项目</th><th>原因</th><th>通行编号</th><th>截止时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${tempRows.length ? tempRows.map(x => this.tempRow(x)).join('') : TrainingModule.emptyRow(7, '当前没有未撤销的临时通行')}</tbody></table></div></div>`;
   },
 
   row({ m, e, a }) {
@@ -68,9 +71,12 @@ const TrainingAdmissionOperations = {
     const role = a ? this.myProjectRole(m.project_id) : '';
     const managerSign = a?.final_signed_at && role && !this.hasOwnManagerSign(a.id, role)
       ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openManagerSign('${a.id}','${role}')">项目签署</button>` : '';
-    const actions = !a ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openStartForm('${m.project_id}','${m.employee_id}')">发起准入</button>` : `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.recompute('${a.id}')">刷新资格</button>${['pending_site_confirm', 'blocked'].includes(a.status) ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openConfirm('${a.id}')">现场确认</button>` : ''}${managerSign}${a.status === 'eligible' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.issue('${a.id}')">签发凭证</button>` : ''}`;
-    return `<tr><td><b>${this.esc(e.name)}</b><br><span class="text-muted">${this.esc(e.phone || '—')}</span></td><td>${this.esc(this.projectName(m.project_id))}</td><td>${this.esc(e.position || '—')}<br>${m.membership_type === 'external' ? '<span class="badge badge-warning">外协</span>' : '<span class="badge badge-muted">内部</span>'}</td><td>${a ? `${this.esc(p.title)} v${p.version_no || 1}` : '—'}</td><td>${a ? this.status(a.status) : this.status('blocked')}<br><span class="text-muted">${this.esc(a?.blocked_reason || '')}</span></td><td>${a?.exam_score != null ? `${a.exam_score} 分 / ${a.exam_attempts || 0} 次` : '—'}</td><td>${this.esc(a?.valid_until || '—')}</td><td>${TrainingModule.canEdit() ? actions : '<span class="text-muted">只读</span>'}</td></tr>`;
+    const temp = a && this.activeAccess(a.id);
+    const actions = !a ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openStartForm('${m.project_id}','${m.employee_id}')">发起准入</button>` : `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.recompute('${a.id}')">刷新资格</button>${['pending_site_confirm', 'blocked'].includes(a.status) ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openConfirm('${a.id}')">现场确认</button>` : ''}${a.status !== 'eligible' && !temp ? `<button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.openTemporary('${a.id}')">临时通行</button>` : ''}${managerSign}${a.status === 'eligible' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.issue('${a.id}')">签发凭证</button>` : ''}`;
+    return `<tr><td><b>${this.esc(e.name)}</b><br><span class="text-muted">${this.esc(e.phone || '—')}</span></td><td>${this.esc(this.projectName(m.project_id))}</td><td>${this.esc(e.position || '—')}<br>${m.membership_type === 'external' ? '<span class="badge badge-warning">外协</span>' : '<span class="badge badge-muted">内部</span>'}</td><td>${a ? `${this.esc(p.title)} v${p.version_no || 1}` : '—'}</td><td>${a ? this.status(a.status) : this.status('blocked')}${temp ? '<br><span class="badge badge-danger">临时通行中</span>' : ''}<br><span class="text-muted">${this.esc(a?.blocked_reason || '')}</span></td><td>${a?.exam_score != null ? `${a.exam_score} 分 / ${a.exam_attempts || 0} 次` : '—'}</td><td>${this.esc(a?.valid_until || '—')}</td><td>${TrainingModule.canEdit() ? actions : '<span class="text-muted">只读</span>'}</td></tr>`;
   },
+
+  tempRow(x) { const expired = new Date(x.expires_at) <= new Date(); const person = x.training_employees || {}; return `<tr style="${expired ? 'color:#9ca3af' : 'background:#fff1f2'}"><td><b>${this.esc(person.name || '—')}</b><br><span class="text-muted">${this.esc(person.position || '')}</span></td><td>${this.esc(this.projectName(x.project_id))}</td><td>${this.esc(x.reason)}</td><td><b>${this.esc(x.pass_code || '—')}</b></td><td>${this.esc((x.expires_at || '').slice(0, 16).replace('T', ' '))}</td><td>${expired ? '<span class="badge badge-muted">已到期</span>' : '<span class="badge badge-danger">临时通行</span>'}</td><td>${!expired ? `<button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.revokeTemporary('${x.id}')">撤销</button>` : '—'}</td></tr>`; },
 
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
   close() { this.host().innerHTML = ''; },
@@ -89,6 +95,32 @@ const TrainingAdmissionOperations = {
   async submitConfirm(id) { const file = document.getElementById('ad-confirm-file')?.files?.[0]; let path = document.getElementById('ad-confirm-path')?.value.trim() || ''; if (file) { const max = typeof CERT_FILE_MAX_SIZE === 'number' ? CERT_FILE_MAX_SIZE : 10 * 1024 * 1024; if (file.size > max || (file.type && !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) { Utils.toast('现场照片仅支持 PNG、JPG、WEBP，且不能超过 10MB', 'error'); return; } const a = this.state.admissions.find(x => x.id === id); const random = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function' ? globalThis.crypto.randomUUID() : Math.random().toString(36).slice(2); path = `training-admission/site-confirmations/${a?.project_id || 'unknown'}/${Date.now()}-${random}.${(file.name.split('.').pop() || 'jpg').toLowerCase()}`; const up = await sb.storage.from(typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates').upload(path, file, { contentType: file.type, upsert: false }); if (up.error) { Utils.toast(`照片上传失败：${up.error.message}`, 'error'); return; } } if (!path) { Utils.toast('请上传现场照片或填写 Storage 路径', 'error'); return; } let coords = {}; if (navigator.geolocation) { try { coords = await new Promise(resolve => navigator.geolocation.getCurrentPosition(p => resolve({ p_latitude: p.coords.latitude, p_longitude: p.coords.longitude }), () => resolve({}), { enableHighAccuracy: false, timeout: 4000 })); } catch (_) {} } const r = await sb.rpc('training_confirm_site', { p_admission_id: id, p_photo_path: path, p_latitude: coords.p_latitude || null, p_longitude: coords.p_longitude || null, p_note: document.getElementById('ad-confirm-note')?.value.trim() || null, p_record_hash: null }); if (r.error) { Utils.toast(r.error.message, 'error'); return; } this.close(); Utils.toast('现场确认已记录', 'success'); await this.load(); },
   async recompute(id) { const r = await sb.rpc('training_recompute_admission', { p_admission_id: id }); if (r.error) { Utils.toast(r.error.message, 'error'); return; } Utils.toast('资格状态已刷新', 'success'); await this.load(); },
   async issue(id) { if (!confirm('确认签发该人员的电子记录凭证？')) return; const r = await sb.rpc('training_issue_certificate', { p_admission_id: id }); if (r.error) { Utils.toast(r.error.message, 'error'); return; } const d = Array.isArray(r.data) ? r.data[0] : r.data; alert(`已签发：${d?.certificate_no || '电子记录凭证'}\n核验码仅在本次返回，请妥善留存。`); await this.load(); },
+
+  openTemporary(admissionId) {
+    const max = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const value = new Date(Date.now() + 4 * 60 * 60 * 1000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const maxValue = new Date(max.getTime() - max.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    this.modal('授予临时通行', `<div class="alert alert-danger" style="margin-bottom:12px">仅用于临时例外。最长 24 小时；爆破、钻探、电工、焊工等高风险岗位在系统层面禁止授予。</div><div class="form-group"><label>截止时间 <span class="required">*</span></label><input id="temp-access-expires" type="datetime-local" class="form-control" value="${value}" max="${maxValue}"></div><div class="form-group"><label>通行原因 <span class="required">*</span></label><textarea id="temp-access-reason" class="form-control" rows="4" placeholder="请如实填写需要临时通行的现场原因、工作内容和补办安排"></textarea></div>`, `TrainingAdmissionOperations.submitTemporary('${admissionId}')`);
+  },
+
+  async submitTemporary(admissionId) {
+    const reason = document.getElementById('temp-access-reason')?.value.trim() || '';
+    const raw = document.getElementById('temp-access-expires')?.value;
+    if (!reason || !raw) { Utils.toast('请填写截止时间和通行原因', 'error'); return; }
+    const { data, error } = await sb.rpc('training_grant_temporary_access', { p_admission_id: admissionId, p_reason: reason, p_expires_at: new Date(raw).toISOString() });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    const d = Array.isArray(data) ? data[0] : data;
+    this.close();
+    alert(`临时通行已授予\n编号：${d?.pass_code || '—'}\n截止：${String(d?.expires_at || '').replace('T', ' ').slice(0, 16)}\n\n该记录已在临时通行台账中标红显示。`);
+    await this.load();
+  },
+
+  async revokeTemporary(id) {
+    if (!confirm('确认撤销此临时通行？撤销后立即禁止凭此例外进入现场。')) return;
+    const { error } = await sb.rpc('training_revoke_temporary_access', { p_access_id: id });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    Utils.toast('临时通行已撤销', 'success'); await this.load();
+  },
 
   openManagerSign(admissionId, role) {
     const label = role === 'project_manager' ? '项目经理' : '安全员';
