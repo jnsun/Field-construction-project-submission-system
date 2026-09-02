@@ -100,6 +100,7 @@ const TrainingCourses = {
             </table>
           </div>
           <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="TrainingCourses.openHtmlGenerator()">HTML 课件生成</button>
             <button class="btn btn-primary" onclick="TrainingCourses.openForm()">+ 添加课件</button>
             <button class="btn btn-secondary" onclick="TrainingCourses.close()">关闭</button>
           </div>
@@ -145,7 +146,7 @@ const TrainingCourses = {
                 accept="${c && c.course_type === 'video' ? 'video/*' : (c && c.course_type === 'image' ? 'image/*' : (c && c.course_type === 'html' ? '.html' : '.pdf,.ppt,.pptx,.doc,.docx'))}">
               ${c && c.file_path ? `<p class="text-muted" style="font-size:12px;margin-top:4px">已上传：${Utils.escapeHtml(c.file_path.split('/').pop())}（不重选则保持不变）</p>` : ''}
               <p class="text-muted" id="cs-html-hint" style="font-size:12px;margin-top:4px;display:none">
-                HTML 课件请先用 <b>tools/course-generator.html</b> 生成（粘贴 Markdown → 下载 .html）再上传
+                可使用下方的“HTML 课件生成”直接制作；也支持上传已制作的单文件 HTML 课件。
               </p>
             </div>
 
@@ -254,5 +255,60 @@ const TrainingCourses = {
     await this.load();
     this.renderModal();
     if (Utils.toast) Utils.toast('已删除');
+  },
+
+  /**
+   * 复用本仓库的本地生成器，并将产物直接写入 training-courses Storage。
+   * 生成器与管理端同域，不经过第三方服务，也不会把课件正文传到外网。
+   */
+  openHtmlGenerator() {
+    const nextOrder = this.state.list.length
+      ? Math.max(...this.state.list.map(x => x.sort_order || 0)) + 1 : 1;
+    this.host().innerHTML = `
+      <div class="modal-overlay" onclick="TrainingCourses.close()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:1180px;width:96vw">
+          <div class="modal-header"><h3>HTML 课件生成</h3><button class="modal-close" onclick="TrainingCourses.close()">×</button></div>
+          <div class="modal-body" style="padding:0">
+            <div style="display:flex;gap:10px;align-items:end;padding:12px 16px;border-bottom:1px solid #e5e7eb;flex-wrap:wrap">
+              <div class="form-group" style="margin:0;flex:1;min-width:240px"><label>课件名称 <span class="required">*</span></label><input id="cw-save-title" class="form-control" placeholder="不填则采用生成器中的课件标题"></div>
+              <div class="form-group" style="margin:0;width:90px"><label>排序</label><input id="cw-save-order" type="number" class="form-control" value="${nextOrder}"></div>
+              <label style="font-size:13px;margin-bottom:9px;display:flex;align-items:center;gap:5px"><input id="cw-save-required" type="checkbox" checked> 必修</label>
+            </div>
+            <iframe id="course-generator-frame" src="tools/course-generator.html" title="培训课件生成器" style="display:block;width:100%;height:68vh;border:0;background:#fff"></iframe>
+          </div>
+          <div class="modal-footer"><span class="text-muted" style="font-size:12px;margin-right:auto">课件内容仅在当前浏览器生成，保存后作为单文件 HTML 存入系统课件库。</span><button class="btn btn-secondary" onclick="TrainingCourses.renderModal()">返回</button><button class="btn btn-primary" onclick="TrainingCourses.saveGeneratedHtml()">生成并保存课件</button></div>
+        </div>
+      </div>`;
+  },
+
+  async saveGeneratedHtml() {
+    const frame = document.getElementById('course-generator-frame');
+    let html = '';
+    let generatorTitle = '';
+    try {
+      html = frame?.contentWindow?.currentHtml || '';
+      generatorTitle = frame?.contentWindow?.document?.getElementById('meta-title')?.value?.trim() || '';
+    } catch (_) {
+      Utils.toast('无法读取生成器内容，请刷新后重试', 'error');
+      return;
+    }
+    const title = document.getElementById('cw-save-title')?.value.trim() || generatorTitle;
+    if (!title || !html) { Utils.toast('请先在生成器中填写课件内容和标题', 'error'); return; }
+    const safeExt = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.html`;
+    const path = `${this.state.planId}/${safeExt}`;
+    const file = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const { error: upErr } = await sb.storage.from(this.BUCKET).upload(path, file, {
+      cacheControl: '3600', upsert: false, contentType: 'text/html;charset=utf-8',
+    });
+    if (upErr) { Utils.toast(`课件上传失败：${upErr.message}`, 'error'); return; }
+    const { error } = await sb.from('training_courses').insert({
+      plan_id: this.state.planId, title, course_type: 'html', file_path: path,
+      required: !!document.getElementById('cw-save-required')?.checked,
+      sort_order: parseInt(document.getElementById('cw-save-order')?.value, 10) || 0,
+    });
+    if (error) { Utils.toast(`课件保存失败：${error.message}`, 'error'); return; }
+    await this.load();
+    this.renderModal();
+    Utils.toast('HTML 课件已生成并加入当前培训计划', 'success');
   },
 };
