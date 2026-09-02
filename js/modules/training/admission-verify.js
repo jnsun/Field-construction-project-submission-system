@@ -9,14 +9,15 @@ const TrainingAdmissionVerify = {
     pending: ['待完成培训', 'badge-warning'], learning: ['培训进行中', 'badge-info'],
     exam_pending: ['待考试', 'badge-warning'], pending_sign: ['待签字', 'badge-warning'],
     pending_site_confirm: ['待现场确认', 'badge-warning'],
+    temporary_access: ['临时通行', 'badge-danger'],
   },
 
   async render(box) {
     box.innerHTML = `<div class="card"><div class="card-header"><h2>二维码核验</h2><span class="text-muted">仅显示现场核验所需信息</span></div>
       <div class="card-body"><div style="display:flex;gap:8px;max-width:560px;flex-wrap:wrap">
-        <input id="admission-verify-code" class="form-control" style="flex:1;min-width:220px" placeholder="扫描或输入电子记录凭证编号">
+        <input id="admission-verify-code" class="form-control" style="flex:1;min-width:220px" placeholder="扫描或输入电子凭证/临时通行编号">
         <button class="btn btn-primary" onclick="TrainingAdmissionVerify.verify()">核验</button>
-      </div><p class="text-muted" style="font-size:12px;margin-top:8px">核验结果实时判断项目状态、培训有效期和特种作业证状态，不以截图为准。</p>
+      </div><p class="text-muted" style="font-size:12px;margin-top:8px">核验结果实时判断项目状态、培训有效期和特种作业证状态。临时通行仅为短时例外，不以截图为准。</p>
       <div id="admission-verify-result" style="margin-top:16px"></div></div></div>`;
     const input = document.getElementById('admission-verify-code');
     input?.addEventListener('keydown', e => { if (e.key === 'Enter') this.verify(); });
@@ -31,7 +32,19 @@ const TrainingAdmissionVerify = {
     if (result) result.innerHTML = '<span class="text-muted">正在核验…</span>';
     const { data, error } = await sb.rpc('training_verify_certificate', { p_certificate_no: code });
     if (error) { if (result) result.innerHTML = `<span style="color:#b91c1c">核验失败：${Utils.escapeHtml(error.message)}</span>`; return; }
-    const row = Array.isArray(data) ? data[0] : data;
+    let row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      const temporary = await sb.rpc('training_verify_temporary_access', { p_pass_code: code });
+      if (temporary.error) { if (result) result.innerHTML = `<span style="color:#b91c1c">核验失败：${Utils.escapeHtml(temporary.error.message)}</span>`; return; }
+      const temp = Array.isArray(temporary.data) ? temporary.data[0] : temporary.data;
+      if (temp) row = {
+        ...temp,
+        certificate_no: temp.pass_code,
+        admission_status: temp.access_status,
+        valid_until: temp.expires_at ? new Date(temp.expires_at).toLocaleString() : null,
+        blocked_reason: temp.reason,
+      };
+    }
     if (!row) { if (result) result.innerHTML = '<div class="alert alert-danger">未找到可由您核验的有效项目凭证。请核对编号或确认您已被任命为该项目经理/安全员。</div>'; return; }
     this.show(row);
   },
@@ -47,17 +60,19 @@ const TrainingAdmissionVerify = {
     const target = document.getElementById('admission-verify-result');
     if (!target) return;
     const [label, cls] = this.STATUS[row.admission_status] || [row.admission_status || '未知', 'badge-muted'];
+    const temporary = row.admission_status === 'temporary_access';
     const ok = row.admission_status === 'eligible';
     const photo = await this.image(row.photo_path);
-    target.innerHTML = `<div style="border:1px solid ${ok ? '#86efac' : '#fca5a5'};border-left:5px solid ${ok ? '#16a34a' : '#dc2626'};border-radius:8px;padding:16px;background:#fff">
+    target.innerHTML = `<div style="border:1px solid ${ok ? '#86efac' : '#fca5a5'};border-left:5px solid ${ok ? '#16a34a' : '#dc2626'};border-radius:8px;padding:16px;background:${temporary ? '#fff1f2' : '#fff'}">
       <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
         ${photo ? `<img src="${Utils.escapeHtml(photo)}" alt="人员照片" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb">` : ''}
         <div style="flex:1;min-width:200px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:18px">${Utils.escapeHtml(row.employee_name || '—')}</b><span class="badge ${cls}">${label}</span></div>
           <div class="text-muted" style="font-size:13px;margin-top:8px">工种：${Utils.escapeHtml(row.work_position || '未填写')}</div>
           <div class="text-muted" style="font-size:13px;margin-top:4px">项目：${Utils.escapeHtml(row.project_code || '')} ${Utils.escapeHtml(row.project_name || '')}</div>
           <div class="text-muted" style="font-size:13px;margin-top:4px">有效至：${Utils.escapeHtml(row.valid_until || '—')}</div>
-          ${row.blocked_reason ? `<div style="color:#b91c1c;font-size:13px;margin-top:8px">限制原因：${Utils.escapeHtml(row.blocked_reason)}</div>` : ''}
-          <div class="text-muted" style="font-size:12px;margin-top:10px">凭证编号：${Utils.escapeHtml(row.certificate_no || '')}</div>
+          ${row.blocked_reason ? `<div style="color:#b91c1c;font-size:13px;margin-top:8px">${temporary ? '临时通行原因' : '限制原因'}：${Utils.escapeHtml(row.blocked_reason)}</div>` : ''}
+          ${temporary ? '<div style="color:#b91c1c;font-size:12px;margin-top:10px;font-weight:600">仅限本次临时例外；到期、撤销或项目暂停后立即禁止入场。</div>' : ''}
+          <div class="text-muted" style="font-size:12px;margin-top:10px">${temporary ? '通行编号' : '凭证编号'}：${Utils.escapeHtml(row.certificate_no || '')}</div>
         </div></div></div>`;
   },
 };

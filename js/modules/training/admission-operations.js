@@ -78,7 +78,7 @@ const TrainingAdmissionOperations = {
     return `<tr><td><b>${this.esc(e.name)}</b><br><span class="text-muted">${this.esc(e.phone || '—')}</span></td><td>${this.esc(this.projectName(m.project_id))}</td><td>${this.esc(e.position || '—')}<br>${m.membership_type === 'external' ? '<span class="badge badge-warning">外协</span>' : '<span class="badge badge-muted">内部</span>'}</td><td>${a ? `${this.esc(p.title)} v${p.version_no || 1}` : '—'}</td><td>${a ? this.status(a.status) : this.status('blocked')}${temp ? '<br><span class="badge badge-danger">临时通行中</span>' : ''}<br><span class="text-muted">${this.esc(a?.blocked_reason || '')}</span></td><td>${a?.exam_score != null ? `${a.exam_score} 分 / ${a.exam_attempts || 0} 次` : '—'}</td><td>${this.esc(a?.valid_until || '—')}</td><td>${TrainingModule.canManageAdmission() ? actions : '<span class="text-muted">只读</span>'}</td></tr>`;
   },
 
-  tempRow(x) { const expired = new Date(x.expires_at) <= new Date(); const person = x.training_employees || {}; return `<tr style="${expired ? 'color:#9ca3af' : 'background:#fff1f2'}"><td><b>${this.esc(person.name || '—')}</b><br><span class="text-muted">${this.esc(person.position || '')}</span></td><td>${this.esc(this.projectName(x.project_id))}</td><td>${this.esc(x.reason)}</td><td><b>${this.esc(x.pass_code || '—')}</b></td><td>${this.esc((x.expires_at || '').slice(0, 16).replace('T', ' '))}</td><td>${expired ? '<span class="badge badge-muted">已到期</span>' : '<span class="badge badge-danger">临时通行</span>'}</td><td>${!expired ? `<button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.revokeTemporary('${x.id}')">撤销</button>` : '—'}</td></tr>`; },
+  tempRow(x) { const expired = new Date(x.expires_at) <= new Date(); const person = x.training_employees || {}; return `<tr style="${expired ? 'color:#9ca3af' : 'background:#fff1f2'}"><td><b>${this.esc(person.name || '—')}</b><br><span class="text-muted">${this.esc(person.position || '')}</span></td><td>${this.esc(this.projectName(x.project_id))}</td><td>${this.esc(x.reason)}</td><td><b>${this.esc(x.pass_code || '—')}</b></td><td>${this.esc((x.expires_at || '').slice(0, 16).replace('T', ' '))}</td><td>${expired ? '<span class="badge badge-muted">已到期</span>' : '<span class="badge badge-danger">临时通行</span>'}</td><td>${!expired ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.showTemporaryQr('${this.esc(x.pass_code || '')}')">二维码</button> <button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.revokeTemporary('${x.id}')">撤销</button>` : '—'}</td></tr>`; },
 
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
   close() { this.host().innerHTML = ''; },
@@ -113,8 +113,15 @@ const TrainingAdmissionOperations = {
     if (error) { Utils.toast(error.message, 'error'); return; }
     const d = Array.isArray(data) ? data[0] : data;
     this.close();
-    alert(`临时通行已授予\n编号：${d?.pass_code || '—'}\n截止：${String(d?.expires_at || '').replace('T', ' ').slice(0, 16)}\n\n该记录已在临时通行台账中标红显示。`);
+    alert(`临时通行已授予\n编号：${d?.pass_code || '—'}\n截止：${String(d?.expires_at || '').replace('T', ' ').slice(0, 16)}\n\n请在临时通行台账中打开二维码；该记录已标红显示。`);
     await this.load();
+  },
+
+  showTemporaryQr(passCode) {
+    if (!passCode || typeof qrcode !== 'function') { Utils.toast('二维码组件尚未加载，请刷新后重试', 'error'); return; }
+    this.modal('临时通行二维码', `<div class="alert alert-danger" style="margin-bottom:12px">临时通行不是正常上岗凭证。现场必须实时核验，到期、撤销或项目暂停后立即失效。</div><div id="temporary-access-qr" style="width:200px;min-height:200px;padding:10px;background:#fff;border:1px solid #fecaca;border-radius:6px;margin:0 auto"></div><p style="text-align:center;margin:12px 0 0"><b>${this.esc(passCode)}</b></p>`, 'TrainingAdmissionOperations.close()');
+    const box = document.getElementById('temporary-access-qr');
+    try { const qr = qrcode(0, 'M'); qr.addData(passCode); qr.make(); box.innerHTML = qr.createImgTag(5, 0); } catch (_) { box.textContent = passCode; }
   },
 
   async revokeTemporary(id) {
