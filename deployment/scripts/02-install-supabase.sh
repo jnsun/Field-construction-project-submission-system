@@ -3,7 +3,7 @@
 # 02-install-supabase.sh — 自托管 Supabase 一键安装
 #   · 克隆官方仓库（含 GitHub 加速回退）
 #   · 本地生成全新 JWT_SECRET / ANON_KEY / SERVICE_ROLE_KEY
-#   · 所有对外端口(8000/3000/4000)绑定 127.0.0.1，仅暴露 Nginx 80
+#   · 所有对外端口(8000/3000/4000)绑定 127.0.0.1，仅由 HTTPS Nginx 反向代理
 #   · 镜像预拉取失败自动切换 daocloud 源
 # 用法: sudo ./02-install-supabase.sh <公网IP>
 # =============================================================
@@ -71,7 +71,7 @@ vals = {
     "POSTGRES_PASSWORD": dbpass,
     "DASHBOARD_USERNAME": user,
     "DASHBOARD_PASSWORD": passwd,
-    "MAILER_AUTOCONFIRM": "true",
+    "MAILER_AUTOCONFIRM": "false",
     "ENABLE_EMAIL_SIGNUP": "false",
     "KONG_HTTP_PORT": "8000",
     "STUDIO_PORT": "3000",

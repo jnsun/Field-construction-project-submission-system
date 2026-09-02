@@ -50,21 +50,15 @@ const Auth = {
   },
 
   /**
-   * 登录（支持邮箱 / 手机号 / 部门名称 / 部门编码）
-   * @param {string} identifier 邮箱、手机号、部门名称或部门编码
+   * 登录（仅支持邮箱，避免在登录前暴露手机号和部门账号关联关系）
+   * @param {string} identifier 登录邮箱
    * @param {string} password
    * @returns {Promise<{success: boolean, error?: string}>}
    */
   async login(identifier, password) {
-    // 将标识符解析为登录邮箱
-    let email;
-    try {
-      email = await this.resolveLoginEmail(identifier);
-    } catch (e) {
-      return { success: false, error: e.message || '无法解析登录账号' };
-    }
-    if (!email) {
-      return { success: false, error: '未找到对应的登录账号，请检查输入内容' };
+    const email = String(identifier || '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return { success: false, error: '请使用登录邮箱登录。如忘记邮箱，请联系管理员查询。' };
     }
 
     const { data, error } = await sb.auth.signInWithPassword({
@@ -99,28 +93,17 @@ const Auth = {
   },
 
   /**
-   * 将用户输入的标识符解析为登录邮箱
-   * 支持：邮箱 / 手机号 / 部门名称 / 部门编码
-   * 邮箱在前端直接识别；手机号、部门名称/编码由 RPC 解析
-   * （需执行 sql/phone-login.sql 后手机号解析才生效，旧库提示未找到）
+   * 兼容保留：不再调用登录前标识解析接口。
    * @param {string} identifier
-   * @returns {Promise<string|null>} 解析失败返回 null，RPC 出错抛出异常
+   * @returns {Promise<string|null>} 非邮箱返回 null
    */
   async resolveLoginEmail(identifier) {
     const id = String(identifier || '').trim();
     if (!id) return null;
 
-    // 邮箱格式直接使用
     if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(id)) {
       return id.toLowerCase();
     }
-
-    // 手机号 / 部门名称 / 部门编码 → 调用 RPC 解析为邮箱
-    const { data, error } = await sb.rpc('resolve_login_identifier', { p_identifier: id });
-    if (error) {
-      throw new Error(this.extractRpcMessage(error));
-    }
-    if (data && data.email) return data.email;
     return null;
   },
 

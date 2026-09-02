@@ -565,7 +565,8 @@ $$;
 -- --------------------------------------------------------------------------
 -- 5. 权限授予（新签名）
 -- --------------------------------------------------------------------------
-GRANT EXECUTE ON FUNCTION public.resolve_login_identifier(TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.resolve_login_identifier(TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.resolve_login_identifier(TEXT) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.change_own_phone(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.change_own_email(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_dept_user(TEXT, TEXT, TEXT, UUID, TEXT, TEXT) TO authenticated;

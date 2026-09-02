@@ -27,6 +27,7 @@ const TrainingMine = {
     pending: null,
     htmlCourse: null,       // 当前打开的 HTML 课件 { courseId }（message 校验用）
     hbSessions: {},         // course_id -> 心跳会话 id（training_study_logs.id）
+    fileUrls: {},           // course_id -> 短期签名链接
   },
 
   TYPE_LABEL: {
@@ -230,12 +231,14 @@ const TrainingMine = {
     }
   },
 
-  renderHtml(stage, c, p) {
+  async renderHtml(stage, c, p) {
+    const url = await this.fileUrl(c);
+    if (this.state.activeId !== c.id) return;
     this.bindCourseMessage();
     this.state.htmlCourse = { courseId: c.id };
     stage.innerHTML = `
       <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
-      <iframe id="learn-html-frame" src="${Utils.escapeHtml(this.fileUrl(c))}"
+      <iframe id="learn-html-frame" src="${Utils.escapeHtml(url)}"
         title="courseware" style="width:100%;height:66vh;border:1px solid #e5e7eb;border-radius:6px;background:#fff">
       </iframe>
       <p class="text-muted" style="font-size:12px;margin-top:6px">
@@ -259,6 +262,7 @@ const TrainingMine = {
     if (e2) { alert('加载学习进度失败：' + e2.message); return; }
 
     this.state.courses = courses || [];
+    this.state.fileUrls = {};
     this.state.progress = {};
     (prog || []).forEach(p => { this.state.progress[p.course_id] = p; });
 
@@ -270,10 +274,16 @@ const TrainingMine = {
     this.openCourse(this.state.courses[0].id);
   },
 
-  fileUrl(c) {
+  async fileUrl(c) {
     if (!c.file_path) return c.file_url || '';
-    const { data } = sb.storage.from('training-courses').getPublicUrl(c.file_path);
-    return data ? data.publicUrl : '';
+    if (this.state.fileUrls[c.id]) return this.state.fileUrls[c.id];
+    const { data, error } = await sb.storage.from('training-courses')
+      .createSignedUrl(c.file_path, 3600);
+    if (error || !data || !data.signedUrl) {
+      throw new Error(error ? error.message : '无法获取课件访问链接');
+    }
+    this.state.fileUrls[c.id] = data.signedUrl;
+    return data.signedUrl;
   },
 
   renderLearn() {
@@ -346,12 +356,19 @@ const TrainingMine = {
     }
     if (!stage || !c) return;
 
-    if (c.course_type === 'video') this.renderVideo(stage, c, p);
-    else if (c.course_type === 'pdf') this.renderPdf(stage, c, p);
-    else if (c.course_type === 'image') this.renderImage(stage, c, p);
-    else if (c.course_type === 'text') this.renderText(stage, c, p);
-    else if (c.course_type === 'html') this.renderHtml(stage, c, p);
-    else this.renderLink(stage, c, p);
+    stage.innerHTML = '<div class="text-muted" style="padding:24px">正在加载课件...</div>';
+    try {
+      if (c.course_type === 'video') await this.renderVideo(stage, c, p);
+      else if (c.course_type === 'pdf') await this.renderPdf(stage, c, p);
+      else if (c.course_type === 'image') await this.renderImage(stage, c, p);
+      else if (c.course_type === 'text') this.renderText(stage, c, p);
+      else if (c.course_type === 'html') await this.renderHtml(stage, c, p);
+      else this.renderLink(stage, c, p);
+    } catch (e) {
+      if (this.state.activeId === c.id) {
+        stage.innerHTML = `<div class="alert alert-danger">课件加载失败：${Utils.escapeHtml(e.message || '')}</div>`;
+      }
+    }
   },
 
   // ------------------------------------------------------------- 进度上报
@@ -391,13 +408,15 @@ const TrainingMine = {
   },
 
   // ------------------------------------------------------------- 各类渲染
-  renderVideo(stage, c, p) {
+  async renderVideo(stage, c, p) {
+    const url = await this.fileUrl(c);
+    if (this.state.activeId !== c.id) return;
     const last = Number(p.max_position || 0);
     stage.innerHTML = `
       <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
       <video id="learn-video" controls controlsList="nodownload"
         style="width:100%;max-height:60vh;background:#000;border-radius:6px" preload="metadata">
-        <source src="${Utils.escapeHtml(this.fileUrl(c))}">
+        <source src="${Utils.escapeHtml(url)}">
         您的浏览器不支持视频播放
       </video>
       <p class="text-muted" style="font-size:12px;margin-top:6px">
@@ -443,7 +462,7 @@ const TrainingMine = {
 
     try {
       // 带进度反馈：大文件 / 弱网下载慢时能看到"已下载 x MB"，不再黑盒等待
-      const task = pdfjsLib.getDocument(this.fileUrl(c));
+      const task = pdfjsLib.getDocument(await this.fileUrl(c));
       task.onProgress = (d) => {
         const box = document.getElementById('pdf-stage');
         if (!box || !d) return;
@@ -506,10 +525,12 @@ const TrainingMine = {
     if (label) label.textContent = `第 ${s.page} / ${s.doc.numPages} 页`;
   },
 
-  renderImage(stage, c, p) {
+  async renderImage(stage, c, p) {
+    const url = await this.fileUrl(c);
+    if (this.state.activeId !== c.id) return;
     stage.innerHTML = `
       <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
-      <img src="${Utils.escapeHtml(this.fileUrl(c))}" style="width:100%;border-radius:6px;border:1px solid #e5e7eb">
+      <img src="${Utils.escapeHtml(url)}" style="width:100%;border-radius:6px;border:1px solid #e5e7eb">
       <div style="margin-top:10px">
         <button class="btn btn-primary btn-sm" onclick="TrainingMine.report('${c.id}', 100, 1)">
           我已看完这份课件

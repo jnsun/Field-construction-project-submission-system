@@ -144,8 +144,9 @@ $$;
 
 -- ----------------------------------------------------------------------------
 -- 3. 权限授予
---    resolve_login_identifier：登录前是匿名用户（anon），登录后也保留（authenticated）
+--    resolve_login_identifier：已停用，统一使用邮箱登录，避免匿名枚举账号
 --    change_own_email：仅限已登录用户
 -- ----------------------------------------------------------------------------
-GRANT EXECUTE ON FUNCTION public.resolve_login_identifier(TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.resolve_login_identifier(TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.resolve_login_identifier(TEXT) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.change_own_email(TEXT) TO authenticated;

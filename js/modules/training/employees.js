@@ -587,38 +587,38 @@ const TrainingEmployees = {
   },
 
   // ------------------------------------------------------------ 账号开通
-  /** 开通 / 重置员工登录账号（登录名=手机号，初始密码=身份证后6位） */
+  /** 重置已开通账号：生成高强度临时密码，只显示给管理员一次。 */
   async provision(id, isReset) {
     const e = this.state.list.find(x => x.id === id);
     if (!e) return;
-    if (isReset && !confirm(`确定把「${e.name}」的密码重置为身份证后 6 位？`)) return;
+    if (!e.user_id) {
+      alert('该员工尚未开通账号，请到「人员与组织」模块开通。');
+      return;
+    }
+    if (!confirm(`确定为「${e.name}」生成新的临时密码？新密码只会显示一次，请通过安全方式转交本人。`)) return;
 
-    const { data, error } = await sb.rpc('training_staff_reset', { p_employee_id: id });
+    const temporaryPassword = this.generateTemporaryPassword();
+    const { error } = await sb.rpc('training_staff_reset', {
+      p_employee_id: id,
+      p_temporary_password: temporaryPassword,
+    });
     if (error) { alert('操作失败：' + (error.message || '')); return; }
 
     await this.load();
-    alert(`已${isReset ? '重置' : '开通'}：\n登录名（手机号）：${e.phone}\n初始密码：身份证后 6 位`);
-    if (Utils.toast) Utils.toast(isReset ? '密码已重置' : '账号已开通');
+    alert(`密码已重置：\n登录名：${e.phone}\n临时密码：${temporaryPassword}\n\n请提醒员工登录后立即修改密码。`);
+    if (Utils.toast) Utils.toast('密码已重置');
   },
 
-  /** 批量为所有在职员工开通账号 */
+  generateTemporaryPassword() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+    const bytes = new Uint32Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, n => chars[n % chars.length]).join('');
+  },
+
+  /** 批量开通无法安全分发不同的临时密码，统一引导到人员与组织模块。 */
   async provisionAll() {
-    const todo = this.state.list.filter(e => e.status === 'active' && !e.user_id);
-    if (!todo.length) { alert('在职员工都已开通账号，无需重复操作。'); return; }
-    if (!confirm(`将为 ${todo.length} 名在职员工开通登录账号（登录名=手机号，初始密码=身份证后6位）。\n缺少手机号或身份证号的员工会被跳过。\n\n确定继续？`)) return;
-
-    let ok = 0;
-    const failed = [];
-    for (const e of todo) {
-      const { error } = await sb.rpc('training_staff_reset', { p_employee_id: e.id });
-      if (error) failed.push(`${e.name}：${error.message}`);
-      else ok += 1;
-    }
-    await this.load();
-
-    let msg = `成功开通 ${ok} 个账号。`;
-    if (failed.length) msg += `\n\n以下 ${failed.length} 个失败（多半是缺手机号或身份证号）：\n` + failed.slice(0, 10).join('\n');
-    alert(msg);
+    alert('为避免使用可预测的统一初始密码，批量开通已停用。请到「人员与组织」模块逐个开通账号并安全转交临时密码。');
   },
 
   // ------------------------------------------------------------ Excel 导入

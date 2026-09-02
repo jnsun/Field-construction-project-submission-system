@@ -52,12 +52,6 @@ const TrainingCourses = {
     if (d) d.innerHTML = '';
   },
 
-  publicUrl(path) {
-    if (!path) return '';
-    const { data } = sb.storage.from(this.BUCKET).getPublicUrl(path);
-    return data ? data.publicUrl : '';
-  },
-
   renderModal() {
     const rows = this.state.list;
     const requiredCount = rows.filter(r => r.required).length;

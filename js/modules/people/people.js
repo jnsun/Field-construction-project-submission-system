@@ -482,7 +482,7 @@ const PeopleModule = {
       <div class="form-group"><label>手机号</label>
         <input name="phone" value="${Utils.escapeHtml(v.phone || '')}"></div>
       <div class="form-group"><label>重置密码（留空 = 不修改）</label>
-        <input name="password" type="text" placeholder="至少 6 位"></div>
+        <input name="password" type="password" placeholder="至少 6 位" autocomplete="new-password"></div>
       ${isCompany ? `<div class="form-group"><label>角色</label><select name="role">${roleSel()}</select></div>
       <div class="form-group" id="acct-level-group" style="display:none"><label>管理员级别</label>
         <select name="admin_level">

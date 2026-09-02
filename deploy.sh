@@ -29,6 +29,9 @@ tar \
   --exclude='./.git' \
   --exclude='./.workbuddy' \
   --exclude='./deployment' \
+  --exclude='./docs' \
+  --exclude='./sql' \
+  --exclude='./tests' \
   --exclude='./HANDOFF.md' \
   --exclude='./preview*.html' \
   --exclude='./theme-preview.html' \

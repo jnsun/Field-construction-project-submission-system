@@ -522,13 +522,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions;
 
-GRANT EXECUTE ON FUNCTION public.training_staff_register(TEXT, TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.training_staff_register(TEXT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.training_staff_register(TEXT, TEXT) FROM anon, authenticated;
 
 -- --------------------------------------------------------------------------
 -- 12. 管理员批量开通 / 重置员工账号
 -- --------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.training_staff_reset(UUID);
-CREATE FUNCTION public.training_staff_reset(p_employee_id UUID)
+DROP FUNCTION IF EXISTS public.training_staff_reset(UUID, TEXT);
+CREATE FUNCTION public.training_staff_reset(p_employee_id UUID, p_temporary_password TEXT)
 RETURNS JSONB AS $$
 DECLARE
   v_emp   public.training_employees%ROWTYPE;
@@ -536,36 +538,26 @@ DECLARE
   v_uid   UUID;
 BEGIN
   IF NOT public.is_admin() THEN RAISE EXCEPTION '只有管理员才能执行此操作'; END IF;
+  IF length(coalesce(p_temporary_password, '')) < 12 THEN
+    RAISE EXCEPTION '临时密码至少 12 位';
+  END IF;
 
   SELECT * INTO v_emp FROM public.training_employees WHERE id = p_employee_id;
   IF NOT FOUND THEN RAISE EXCEPTION '员工不存在'; END IF;
   IF v_emp.phone IS NULL OR btrim(v_emp.phone) = '' THEN RAISE EXCEPTION '该员工未登记手机号'; END IF;
-  IF v_emp.id_number IS NULL OR length(btrim(v_emp.id_number)) < 6 THEN RAISE EXCEPTION '该员工未登记身份证号'; END IF;
 
   v_email := btrim(v_emp.phone) || '@staff.local';
 
   SELECT id INTO v_uid FROM auth.users WHERE lower(email) = lower(v_email);
 
   IF v_uid IS NULL THEN
-    INSERT INTO auth.users (
-      instance_id, id, aud, role, email, encrypted_password,
-      email_confirmed_at, confirmation_token, recovery_token,
-      email_change, email_change_token_new,
-      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
-    ) VALUES (
-      '00000000-0000-0000-0000-000000000000', gen_random_uuid(),
-      'authenticated', 'authenticated', v_email,
-      crypt(right(btrim(v_emp.id_number), 6), gen_salt('bf', 10)),
-      now(), '', '', '', '',
-      '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
-      now(), now()
-    ) RETURNING id INTO v_uid;
-  ELSE
-    UPDATE auth.users
-    SET encrypted_password = crypt(right(btrim(v_emp.id_number), 6), gen_salt('bf', 10)),
-        updated_at = now()
-    WHERE id = v_uid;
+    RAISE EXCEPTION '该员工尚未开通账号，请使用人员与组织模块开通';
   END IF;
+
+  UPDATE auth.users
+  SET encrypted_password = crypt(p_temporary_password, gen_salt('bf', 10)),
+      updated_at = now()
+  WHERE id = v_uid;
 
   INSERT INTO public.profiles (id, email, department_id, role, full_name, phone)
   VALUES (v_uid, v_email, v_emp.department_id, 'employee', v_emp.name, btrim(v_emp.phone))
@@ -582,7 +574,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions;
 
-GRANT EXECUTE ON FUNCTION public.training_staff_reset(UUID) TO authenticated;
+REVOKE ALL ON FUNCTION public.training_staff_reset(UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.training_staff_reset(UUID, TEXT) TO authenticated;
 
 -- --------------------------------------------------------------------------
 -- 13. RLS
@@ -664,29 +657,55 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'training-courses') THEN
     INSERT INTO storage.buckets (id, name, public)
-    VALUES ('training-courses', 'training-courses', true);
+    VALUES ('training-courses', 'training-courses', false);
   END IF;
 END $$;
+
+UPDATE storage.buckets SET public = false WHERE id = 'training-courses';
 
 DROP POLICY IF EXISTS "training_courses_read" ON storage.objects;
 CREATE POLICY "training_courses_read" ON storage.objects
   FOR SELECT TO authenticated
-  USING (bucket_id = 'training-courses');
+  USING (
+    bucket_id = 'training-courses' AND (
+      public.is_admin() OR EXISTS (
+        SELECT 1 FROM public.training_courses c
+        JOIN public.training_assignments a ON a.plan_id = c.plan_id
+        WHERE c.file_path = name
+          AND (a.user_id = auth.uid() OR a.employee_id = public.training_my_employee_id())
+      ) OR EXISTS (
+        SELECT 1 FROM public.training_signatures s
+        WHERE s.storage_path = name
+          AND s.employee_id = public.training_my_employee_id()
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS "training_courses_write" ON storage.objects;
 CREATE POLICY "training_courses_write" ON storage.objects
   FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'training-courses');
+  WITH CHECK (
+    bucket_id = 'training-courses' AND (
+      public.is_admin() OR (
+        (storage.foldername(name))[1] = 'signatures' AND EXISTS (
+          SELECT 1 FROM public.training_assignments a
+          WHERE a.id::text = split_part(storage.filename(name), '_', 1)
+            AND (a.user_id = auth.uid() OR a.employee_id = public.training_my_employee_id())
+        )
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS "training_courses_manage" ON storage.objects;
 CREATE POLICY "training_courses_manage" ON storage.objects
   FOR UPDATE TO authenticated
-  USING (bucket_id = 'training-courses');
+  USING (bucket_id = 'training-courses' AND public.is_admin())
+  WITH CHECK (bucket_id = 'training-courses' AND public.is_admin());
 
 DROP POLICY IF EXISTS "training_courses_delete" ON storage.objects;
 CREATE POLICY "training_courses_delete" ON storage.objects
   FOR DELETE TO authenticated
-  USING (bucket_id = 'training-courses');
+  USING (bucket_id = 'training-courses' AND public.is_admin());
 
 -- --------------------------------------------------------------------------
 -- 15. 员工性别（Excel 导入模板新增列）

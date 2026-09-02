@@ -153,6 +153,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.resolve_login_identifier(TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.resolve_login_identifier(TEXT) FROM anon, authenticated;
+
 -- --------------------------------------------------------------------------
 -- 5. 验证
 -- --------------------------------------------------------------------------

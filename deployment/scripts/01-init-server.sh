@@ -4,7 +4,7 @@
 #   · 系统更新 + 基础工具
 #   · 创建 4GB swap（4GB 内存跑自托管 Supabase 必需）
 #   · 安装 Docker + 国内镜像加速
-#   · ufw 防火墙仅开放 SSH(22) / HTTP(80)
+#   · ufw 防火墙仅开放 SSH(22) / HTTP(80) / HTTPS(443)
 # 用法: sudo ./01-init-server.sh
 # =============================================================
 set -euo pipefail
@@ -54,9 +54,10 @@ cat > /etc/docker/daemon.json <<'EOF'
 EOF
 systemctl restart docker
 
-echo "== [5/5] 防火墙：仅开放 22 / 80 =="
+echo "== [5/5] 防火墙：仅开放 22 / 80 / 443 =="
 ufw allow OpenSSH
 ufw allow 80/tcp
+ufw allow 443/tcp
 ufw --force enable
 ufw status verbose
 
