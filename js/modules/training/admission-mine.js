@@ -76,7 +76,7 @@ const TrainingAdmissionMine = {
     if (!row) { Utils.toast('当前没有可展示的电子记录凭证', 'error'); return; }
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
     const [label, cls] = this.STATUS[row.admission_status] || [row.admission_status || '未知', 'badge-muted'];
-    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''\"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><h3>电子记录凭证</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:190px"><p style="font-size:18px;font-weight:600">${Utils.escapeHtml(row.employee_name || '')}</p><p class="text-muted">${Utils.escapeHtml(row.project_code || '')} ${Utils.escapeHtml(row.project_name || '')}</p><p style="margin-top:12px"><span class="badge ${cls}">${label}</span></p><p style="margin-top:12px">工种：${Utils.escapeHtml(row.work_position || '未填写')}</p><p>有效至：${Utils.escapeHtml(row.valid_until || '—')}</p>${row.blocked_reason ? `<p style="color:#b91c1c">限制原因：${Utils.escapeHtml(row.blocked_reason)}</p>` : ''}</div><div id="admission-credential-qr" style="width:144px;min-height:144px;padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px"></div></div><p class="text-muted" style="font-size:12px;margin-top:16px">凭证编号：${Utils.escapeHtml(row.certificate_no || '')}</p><p class="text-muted" style="font-size:12px">请由项目经理或安全员扫码核验；扫码结果会按当前项目、证照和有效期实时判断。</p></div></div></div>`;
+    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''\"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><h3>电子记录凭证</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:190px"><p style="font-size:18px;font-weight:600">${Utils.escapeHtml(row.employee_name || '')}</p><p class="text-muted">${Utils.escapeHtml(row.project_code || '')} ${Utils.escapeHtml(row.project_name || '')}</p><p style="margin-top:12px"><span class="badge ${cls}">${label}</span></p><p style="margin-top:12px">工种：${Utils.escapeHtml(row.work_position || '未填写')}</p><p>有效至：${Utils.escapeHtml(row.valid_until || '—')}</p>${row.blocked_reason ? `<p style="color:#b91c1c">限制原因：${Utils.escapeHtml(row.blocked_reason)}</p>` : ''}</div><div id="admission-credential-qr" style="width:144px;min-height:144px;padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px"></div></div><p class="text-muted" style="font-size:12px;margin-top:16px">凭证编号：${Utils.escapeHtml(row.certificate_no || '')}</p><p class="text-muted" style="font-size:12px">请由项目经理或安全员扫码核验；扫码结果会按当前项目、证照和有效期实时判断。</p></div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionMine.downloadCredentialPdf(${JSON.stringify(row).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')})">下载 PDF 凭证</button><button class="btn btn-primary" onclick="document.getElementById('training-modal-host').innerHTML=''">关闭</button></div></div></div>`;
     this.renderQr(row.certificate_no);
   },
 
@@ -97,6 +97,26 @@ const TrainingAdmissionMine = {
     } catch (_) {
       box.textContent = certificateNo;
     }
+  },
+
+  downloadCredentialPdf(row) {
+    if (!globalThis.jspdf?.jsPDF || typeof qrcode !== 'function') { Utils.toast('PDF 组件尚未加载，请刷新后重试', 'error'); return; }
+    try {
+      const canvas = document.createElement('canvas'); canvas.width = 1240; canvas.height = 1754;
+      const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 10; ctx.strokeRect(42, 42, 1156, 1670);
+      ctx.fillStyle = '#0f172a'; ctx.textAlign = 'center'; ctx.font = 'bold 52px Microsoft YaHei, sans-serif'; ctx.fillText('安全生产培训电子记录凭证', 620, 150);
+      ctx.font = '28px Microsoft YaHei, sans-serif'; ctx.fillStyle = '#475569'; ctx.fillText('物化院有限公司安全教育平台', 620, 205);
+      const status = row.admission_status === 'eligible' ? '可上岗' : '当前不可上岗';
+      ctx.fillStyle = row.admission_status === 'eligible' ? '#15803d' : '#b91c1c'; ctx.font = 'bold 38px Microsoft YaHei, sans-serif'; ctx.fillText(status, 620, 300);
+      const lines = [['姓名', row.employee_name], ['工种', row.work_position || '未填写'], ['项目', `${row.project_code || ''} ${row.project_name || ''}`.trim()], ['有效至', row.valid_until || '—'], ['凭证编号', row.certificate_no || '—']];
+      ctx.textAlign = 'left'; ctx.font = '30px Microsoft YaHei, sans-serif'; let y = 430;
+      lines.forEach(([label, value]) => { ctx.fillStyle = '#64748b'; ctx.fillText(label, 130, y); ctx.fillStyle = '#111827'; const text = String(value || '—'); ctx.fillText(text.length > 28 ? `${text.slice(0, 28)}...` : text, 350, y); y += 105; });
+      if (row.blocked_reason) { ctx.fillStyle = '#b91c1c'; ctx.font = '26px Microsoft YaHei, sans-serif'; ctx.fillText(`限制原因：${row.blocked_reason}`, 130, y + 15); }
+      const qr = qrcode(0, 'M'); qr.addData(row.certificate_no || ''); qr.make();
+      const qrImage = new Image(); qrImage.onload = () => { ctx.drawImage(qrImage, 430, 1030, 380, 380); finish(); }; qrImage.src = qr.createDataURL(8, 0);
+      const finish = () => { ctx.textAlign = 'center'; ctx.fillStyle = '#64748b'; ctx.font = '24px Microsoft YaHei, sans-serif'; ctx.fillText('扫码或输入凭证编号进行实时核验；截图不作为上岗依据。', 620, 1490); ctx.fillText(`生成时间：${new Date().toLocaleString()}`, 620, 1540); const doc = new globalThis.jspdf.jsPDF({ orientation: 'portrait', unit: 'px', format: [1240, 1754] }); doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 1240, 1754); doc.save(`electronic-record-${row.certificate_no || 'credential'}.pdf`); };
+    } catch (e) { Utils.toast(`生成 PDF 失败：${e.message || e}`, 'error'); }
   },
 
   async openSigning(admissionId) {
