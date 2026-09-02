@@ -18,7 +18,7 @@ const TrainingAdmissionPackages = {
 
   async load() {
     const [packages, items, projects, plans] = await Promise.all([
-      sb.from('training_admission_packages').select('id, project_id, title, version_no, validity_years, pause_retrain_days, status, source_document_path, review_note, created_at').order('created_at', { ascending: false }),
+      sb.from('training_admission_packages').select('id, project_id, title, version_no, validity_years, pause_retrain_days, status, source_document_path, review_note, approved_by, approved_at, created_at').order('created_at', { ascending: false }),
       sb.from('training_admission_package_items').select('package_id, plan_id, level, required, sort_order'),
       sb.from('site_projects').select('id, project_code, name, status').order('created_at', { ascending: false }),
       sb.from('training_plans').select('id, title, level, category, plan_year, publish_status, status').order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
@@ -45,9 +45,10 @@ const TrainingAdmissionPackages = {
       <th>培训包 / 版本</th><th>适用项目</th><th>包含内容</th><th>凭证有效期</th><th>停工复训</th><th>状态</th><th>操作</th></tr></thead><tbody>
       ${this.state.packages.length ? this.state.packages.map(p => { const items = this.state.items[p.id] || []; return `<tr><td><b>${Utils.escapeHtml(p.title)}</b><br><span class="text-muted">v${p.version_no}</span></td>
         <td>${Utils.escapeHtml(this.projectName(p.project_id))}</td><td>${items.length ? items.map(i => `${this.LEVEL[i.level] || i.level}：${Utils.escapeHtml(this.planName(i.plan_id))}`).join('<br>') : '—'}</td>
-        <td>${Utils.escapeHtml(String(p.validity_years || 1))} 年</td><td>${p.pause_retrain_days || 0} 天</td><td>${this.badge(p.status)}</td>
+        <td>${Utils.escapeHtml(String(p.validity_years || 1))} 年</td><td>${p.pause_retrain_days || 0} 天</td><td>${this.badge(p.status)}${p.approved_at ? `<br><span class="text-muted" style="font-size:11px">签发：${Utils.escapeHtml(p.approved_at.slice(0, 16).replace('T', ' '))}</span>` : ''}${p.review_note ? `<br><span class="text-muted" style="font-size:11px">${Utils.escapeHtml(p.review_note)}</span>` : ''}</td>
         <td>${canEdit ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionPackages.openForm('${p.id}')">编辑</button>
-          ${p.status === 'draft' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionPackages.submitReview('${p.id}')">提交审核</button>` : ''}` : ''}</td></tr>`; }).join('')
+          ${p.status === 'draft' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionPackages.submitReview('${p.id}')">提交审核</button>` : ''}
+          ${p.status === 'pending_review' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionPackages.openReview('${p.id}')">审核签发</button>` : ''}` : ''}</td></tr>`; }).join('')
         : TrainingModule.emptyRow(7, '暂无准入培训包，请先创建公司级/经营实体级/项目级培训计划')}</tbody></table></div></div>`;
   },
 
@@ -92,5 +93,18 @@ const TrainingAdmissionPackages = {
     const result = await sb.from('training_admission_packages').update({ status: 'pending_review', updated_at: new Date().toISOString() }).eq('id', id);
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
     Utils.toast('已提交审核', 'success'); await this.load();
+  },
+
+  openReview(id) {
+    const p = this.state.packages.find(x => x.id === id); if (!p) return;
+    const scope = p.project_id ? '项目/经营实体培训包' : '公司通用培训包';
+    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingAdmissionPackages.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:560px"><div class="modal-header"><h3>审核培训包版本</h3><button class="modal-close" onclick="TrainingAdmissionPackages.close()">×</button></div><div class="modal-body"><p><b>${Utils.escapeHtml(p.title)}</b> v${p.version_no}</p><p class="hint">范围：${scope}。批准后该版本立即可用于发起项目准入培训，后续修改须另建版本。</p><div class="form-group"><label>审核意见</label><textarea id="ap-review-note" class="form-control" rows="4" placeholder="批准时可填写签发说明；驳回时必须说明修改要求"></textarea></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionPackages.close()">取消</button><button class="btn btn-danger" onclick="TrainingAdmissionPackages.review('${id}','reject')">驳回</button><button class="btn btn-primary" onclick="TrainingAdmissionPackages.review('${id}','approve')">批准签发</button></div></div></div>`;
+  },
+
+  async review(id, action) {
+    const note = document.getElementById('ap-review-note')?.value.trim() || null;
+    const { error } = await sb.rpc('training_review_admission_package', { p_package_id: id, p_action: action, p_note: note });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    this.close(); Utils.toast(action === 'approve' ? '培训包已签发' : '培训包已驳回并退回草稿', 'success'); await this.load();
   },
 };
