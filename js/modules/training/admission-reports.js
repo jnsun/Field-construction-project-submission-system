@@ -6,7 +6,7 @@ const TrainingAdmissionReports = {
   labels: { ledger: '三级教育台账', signatures: '培训签到表', exam: '考试成绩单', annual: '年度培训统计' },
 
   async render(box) {
-    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><label>报表：</label><select id="admission-report-type" onchange="TrainingAdmissionReports.changeType()">${Object.entries(this.labels).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><label>项目：</label><select id="admission-report-project" onchange="TrainingAdmissionReports.loadReport()"><option value="">全部项目</option></select></div><div class="toolbar-right"><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.loadReport()">刷新</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionReports.exportCsv()">导出 CSV</button></div></div><div id="admission-report-body"></div>`;
+    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><label>报表：</label><select id="admission-report-type" onchange="TrainingAdmissionReports.changeType()">${Object.entries(this.labels).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><label>项目：</label><select id="admission-report-project" onchange="TrainingAdmissionReports.loadReport()"><option value="">全部项目</option></select></div><div class="toolbar-right"><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.loadReport()">刷新</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.printReport()">打印 / 保存 PDF</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionReports.exportCsv()">导出 CSV</button></div></div><div id="admission-report-body"></div>`;
     const { data, error } = await sb.from('site_projects').select('id, project_code, name').order('created_at', { ascending: false });
     if (error) throw error;
     this.state.projects = data || [];
@@ -57,4 +57,27 @@ const TrainingAdmissionReports = {
       : [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'employee_name', label: '人员' }, { key: 'phone', label: '手机号' }, { key: 'work_position', label: '工种' }, { key: 'contractor_name', label: '外协单位' }, { key: 'company_done', label: '公司级完成数' }, { key: 'entity_done', label: '经营实体级完成数' }, { key: 'project_done', label: '项目级完成数' }, { key: 'special_done', label: '专项完成数' }, { key: 'exam_score', label: '考试成绩' }, { key: 'admission_status', label: '状态' }, { key: 'valid_until', label: '凭证有效至' }];
     Utils.exportCSV(this.state.rows, `培训准入${this.labels[type] || '报表'}_${Utils.formatDate(new Date())}.csv`, columns);
   },
+
+  printReport() {
+    const rows = this.state.rows;
+    if (!rows.length) { Utils.toast('暂无数据可打印', 'info'); return; }
+    const type = this.state.report;
+    const projectId = (document.getElementById('admission-report-project') || {}).value;
+    const project = this.state.projects.find(p => p.id === projectId);
+    const title = this.labels[type] || '培训准入报表';
+    const esc = v => Utils.escapeHtml(v == null ? '' : String(v));
+    let head = '', body = '';
+    if (type === 'signatures') {
+      head = '<tr><th>序号</th><th>项目</th><th>人员</th><th>培训层级</th><th>签署角色</th><th>签署时间</th><th>记录哈希</th></tr>';
+      body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.project_code)} ${esc(r.project_name)}</td><td>${esc(r.employee_name)}</td><td>${esc(r.level_name)}</td><td>${esc(r.signer_role)}</td><td>${esc((r.signed_at || '').slice(0, 16).replace('T', ' '))}</td><td>${esc(r.record_hash || '')}</td></tr>`).join('');
+    } else {
+      head = '<tr><th>序号</th><th>项目</th><th>人员</th><th>工种</th><th>外协单位</th><th>公司级</th><th>经营实体级</th><th>项目级</th><th>专项</th><th>考试成绩</th><th>上岗状态</th><th>有效至</th></tr>';
+      body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.project_code)} ${esc(r.project_name)}</td><td>${esc(r.employee_name)}</td><td>${esc(r.work_position || '')}</td><td>${esc(r.contractor_name || '内部员工')}</td><td>${r.company_done || 0}</td><td>${r.entity_done || 0}</td><td>${r.project_done || 0}</td><td>${r.special_done || 0}</td><td>${r.exam_score == null ? '—' : esc(r.exam_score)}</td><td>${esc(this.statusText(r.admission_status))}</td><td>${esc(r.valid_until || '—')}</td></tr>`).join('');
+    }
+    const w = window.open('', '_blank'); if (!w) { Utils.toast('浏览器阻止了打印窗口，请允许弹窗后重试', 'error'); return; }
+    w.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{size:A4 landscape;margin:12mm}body{font-family:"Microsoft YaHei",sans-serif;color:#111;font-size:11px}h1{text-align:center;font-size:19px;margin:0 0 10px}p{margin:4px 0}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #222;padding:5px;vertical-align:top}th{text-align:center;background:#eee}td:first-child{text-align:center;width:30px}.footer{margin-top:18px;display:flex;justify-content:space-between}@media print{body{font-size:10px}}</style></head><body><h1>${esc(title)}</h1><p>项目范围：${esc(project ? `${project.project_code} ${project.name}` : '全部可见项目')}</p><p>生成时间：${esc(new Date().toLocaleString())}</p><table><thead>${head}</thead><tbody>${body}</tbody></table><div class="footer"><span>制表：________________</span><span>审核：________________</span><span>日期：________年____月____日</span></div></body></html>`);
+    w.document.close(); w.focus(); w.print();
+  },
+
+  statusText(s) { const map = { eligible: '可上岗', blocked: '禁止上岗', project_closed: '项目已关闭', expired: '已过期', pending: '待完成', learning: '学习中', exam_pending: '待考试', pending_sign: '待签字', pending_site_confirm: '待现场确认' }; return map[s] || s || '待处理'; },
 };
