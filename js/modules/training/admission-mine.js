@@ -68,6 +68,26 @@ const TrainingAdmissionMine = {
     if (!row) { Utils.toast('当前没有可展示的电子记录凭证', 'error'); return; }
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
     const [label, cls] = this.STATUS[row.admission_status] || [row.admission_status || '未知', 'badge-muted'];
-    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''\"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><h3>电子记录凭证</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><p style="font-size:18px;font-weight:600">${Utils.escapeHtml(row.employee_name || '')}</p><p class="text-muted">${Utils.escapeHtml(row.project_code || '')} ${Utils.escapeHtml(row.project_name || '')}</p><p style="margin-top:12px"><span class="badge ${cls}">${label}</span></p><p style="margin-top:12px">工种：${Utils.escapeHtml(row.work_position || '未填写')}</p><p>有效至：${Utils.escapeHtml(row.valid_until || '—')}</p>${row.blocked_reason ? `<p style="color:#b91c1c">限制原因：${Utils.escapeHtml(row.blocked_reason)}</p>` : ''}<p class="text-muted" style="font-size:12px;margin-top:16px">凭证编号：${Utils.escapeHtml(row.certificate_no || '')}</p><p class="text-muted" style="font-size:12px">请由项目经理或安全员扫码/输入凭证编号实时核验，不以截图为准。</p></div></div></div>`;
+    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''\"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><h3>电子记录凭证</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:190px"><p style="font-size:18px;font-weight:600">${Utils.escapeHtml(row.employee_name || '')}</p><p class="text-muted">${Utils.escapeHtml(row.project_code || '')} ${Utils.escapeHtml(row.project_name || '')}</p><p style="margin-top:12px"><span class="badge ${cls}">${label}</span></p><p style="margin-top:12px">工种：${Utils.escapeHtml(row.work_position || '未填写')}</p><p>有效至：${Utils.escapeHtml(row.valid_until || '—')}</p>${row.blocked_reason ? `<p style="color:#b91c1c">限制原因：${Utils.escapeHtml(row.blocked_reason)}</p>` : ''}</div><div id="admission-credential-qr" style="width:144px;min-height:144px;padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px"></div></div><p class="text-muted" style="font-size:12px;margin-top:16px">凭证编号：${Utils.escapeHtml(row.certificate_no || '')}</p><p class="text-muted" style="font-size:12px">请由项目经理或安全员扫码核验；扫码结果会按当前项目、证照和有效期实时判断。</p></div></div></div>`;
+    this.renderQr(row.certificate_no);
+  },
+
+  renderQr(certificateNo) {
+    const box = document.getElementById('admission-credential-qr');
+    if (!box || !certificateNo || typeof qrcode !== 'function') {
+      if (box) box.textContent = certificateNo || '二维码加载失败';
+      return;
+    }
+    try {
+      const qr = qrcode(0, 'M');
+      // 二维码仅保存不可读的业务编号，不嵌入身份证、电话或人员资料。
+      qr.addData(certificateNo);
+      qr.make();
+      box.innerHTML = qr.createImgTag(4, 0, '电子记录凭证二维码');
+      const img = box.querySelector('img');
+      if (img) { img.style.cssText = 'display:block;width:128px;height:128px'; }
+    } catch (_) {
+      box.textContent = certificateNo;
+    }
   },
 };
