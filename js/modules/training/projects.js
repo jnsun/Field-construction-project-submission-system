@@ -10,6 +10,7 @@ const TrainingProjects = {
     list: [],
     candidates: [],
     entityLinks: {},
+    reportHints: {},
     filters: { status: '', keyword: '' },
   },
 
@@ -71,7 +72,7 @@ const TrainingProjects = {
   },
 
   async load() {
-    const [projects, candidates, links] = await Promise.all([
+    const [projects, candidates, links, hints] = await Promise.all([
       sb.from('site_projects')
         .select('id, project_code, name, project_type, location, status, start_date, expected_end_date, actual_end_date, lead_entity_id, pause_reason, close_reason, created_at, updated_at')
         .order('created_at', { ascending: false }),
@@ -79,16 +80,20 @@ const TrainingProjects = {
         .select('department_id, project_name, construction_location, latest_reporting_month, latest_status, report_count')
         .order('latest_reporting_month', { ascending: false }),
       sb.from('site_project_entities').select('project_id, entity_id, is_lead'),
+      sb.rpc('site_project_report_status_hints'),
     ]);
     if (projects.error) throw projects.error;
     if (candidates.error) throw candidates.error;
     if (links.error) throw links.error;
+    if (hints.error) throw hints.error;
     this.state.list = projects.data || [];
     this.state.candidates = candidates.data || [];
     this.state.entityLinks = {};
     (links.data || []).forEach(row => {
       (this.state.entityLinks[row.project_id] = this.state.entityLinks[row.project_id] || []).push(row.entity_id);
     });
+    this.state.reportHints = {};
+    (hints.data || []).forEach(row => { this.state.reportHints[row.project_id] = row; });
     this.renderTable();
   },
 
@@ -153,11 +158,12 @@ const TrainingProjects = {
                   <td>${Utils.escapeHtml(p.project_type || '—')}<br><span class="text-muted">${Utils.escapeHtml(p.location || '—')}</span></td>
                   <td>${Utils.escapeHtml(TrainingModule.deptName(p.lead_entity_id))}</td>
                   <td>${this.dateRange(p)}</td>
-                  <td>${this.statusBadge(p.status)}${p.status === 'paused' && p.pause_reason
+                  <td>${this.statusBadge(p.status)}${this.reportHint(p)}${p.status === 'paused' && p.pause_reason
                     ? `<div class="text-muted" style="font-size:12px;margin-top:4px">${Utils.escapeHtml(p.pause_reason)}</div>` : ''}</td>
                   <td>${canEdit
                     ? `<button class="btn btn-sm btn-secondary" onclick="TrainingProjects.openForm('${p.id}')">编辑</button>
-                       ${p.status === 'active' ? `<button class="btn btn-sm btn-primary" onclick="TrainingProjects.createInvite('${p.id}')">邀请码</button>` : ''}` : ''}
+                       ${p.status === 'active' ? `<button class="btn btn-sm btn-primary" onclick="TrainingProjects.createInvite('${p.id}')">邀请码</button>` : ''}
+                       ${p.status === 'active' && this.reportHints[p.id]?.latest_status === 'completed' ? `<button class="btn btn-sm btn-danger" onclick="TrainingProjects.openForm('${p.id}')">确认关闭</button>` : ''}` : ''}
                     <button class="btn btn-sm btn-secondary" onclick="TrainingProjects.showDetail('${p.id}')">详情</button>
                   </td>
                 </tr>`).join('')
@@ -190,6 +196,14 @@ const TrainingProjects = {
           </table>
         </div>
       </div>`;
+  },
+
+  reportHint(project) {
+    const hint = this.state.reportHints[project.id];
+    if (!hint) return '';
+    const month = this.reportMonth(hint.latest_reporting_month);
+    if (hint.latest_status === 'completed' && project.status === 'active') return `<div style="color:#b45309;font-size:12px;margin-top:4px">月报 ${Utils.escapeHtml(month)} 标记已完工，请人工确认是否关闭</div>`;
+    return `<div class="text-muted" style="font-size:11px;margin-top:4px">最近月报：${Utils.escapeHtml(month)} · ${hint.latest_status === 'completed' ? '已完工' : '在建'}</div>`;
   },
 
   statCard(label, value, cls) {
