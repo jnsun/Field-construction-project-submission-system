@@ -39,7 +39,7 @@ const TrainingPlans = {
           </select>
         </div>
         <div class="toolbar-right">
-          ${TrainingModule.canEdit() ? '<button class="btn btn-primary btn-sm" onclick="TrainingPlans.openForm()">+ 新建计划</button>' : ''}
+          ${TrainingModule.canEdit() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingPlans.batchApprove()">批量签发待审</button><button class="btn btn-primary btn-sm" onclick="TrainingPlans.openForm()">+ 新建计划</button>' : ''}
         </div>
       </div>
       <div id="plan-table"></div>
@@ -57,7 +57,7 @@ const TrainingPlans = {
   async load() {
     const [{ data, error }, tg] = await Promise.all([
       sb.from('training_plans')
-        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, exam_mode')
+        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, exam_mode, approval_status, approval_note, submitted_at, approved_at')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_plan_targets')
         .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
@@ -107,6 +107,12 @@ const TrainingPlans = {
     return '<span class="badge badge-warning">草稿</span>';
   },
 
+  approvalBadge(p) {
+    const map = { draft: ['草稿', 'badge-muted'], pending_review: ['待签发', 'badge-warning'], approved: ['已签发', 'badge-success'], rejected: ['已驳回', 'badge-danger'] };
+    const v = map[p.approval_status] || map.draft;
+    return `<span class="badge ${v[1]}">${v[0]}</span>${p.approval_note ? `<br><span class="text-muted" style="font-size:11px">${Utils.escapeHtml(p.approval_note)}</span>` : ''}`;
+  },
+
   /** 发布：按层级自动展开参训名单 */
   async publish(id) {
     const p = this.state.list.find(x => x.id === id);
@@ -117,6 +123,29 @@ const TrainingPlans = {
     await this.load();
     alert(`已发布，自动推送给 ${data.assigned} 名员工。`);
     if (data.assigned === 0) alert('提示：覆盖范围内没有在职员工。请检查计划层级、覆盖部门，或员工是否已导入并归属部门。');
+  },
+
+  async requestApproval(id) {
+    const { error } = await sb.rpc('training_request_plan_approval', { p_plan_id: id });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    Utils.toast('已送审，等待对应层级负责人签发', 'success'); await this.load();
+  },
+
+  async approve(id, approved) {
+    const note = approved ? '' : prompt('请填写驳回原因：');
+    if (!approved && !note) return;
+    const { error } = await sb.rpc('training_approve_plan', { p_plan_id: id, p_approved: approved, p_note: note || null });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    Utils.toast(approved ? '培训计划已签发' : '培训计划已驳回', 'success'); await this.load();
+  },
+
+  async batchApprove() {
+    const ids = this.state.list.filter(p => p.approval_status === 'pending_review').map(p => p.id);
+    if (!ids.length) { Utils.toast('当前没有待签发培训计划', 'info'); return; }
+    if (!confirm(`确认批量签发当前可见的 ${ids.length} 个待审培训计划？无权限的计划会被系统拒绝。`)) return;
+    const { data, error } = await sb.rpc('training_batch_approve_plans', { p_plan_ids: ids });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    Utils.toast(`已签发 ${data || 0} 个培训计划`, 'success'); await this.load();
   },
 
   filtered() {
@@ -150,7 +179,8 @@ const TrainingPlans = {
                 <th style="width:70px">学时</th>
                 <th style="width:120px">讲师/单位</th>
                 <th style="width:150px">适用范围</th>
-                <th style="width:90px">发布</th>
+                <th style="width:90px">签发</th>
+                <th style="width:70px">发布</th>
                 <th style="width:130px">完成情况</th>
                 <th style="width:80px">状态</th>
                 <th style="width:${canEdit ? '230px' : '90px'}">操作</th>
@@ -169,14 +199,19 @@ const TrainingPlans = {
                     <td>${p.hours != null ? p.hours : ''}</td>
                     <td>${Utils.escapeHtml(p.trainer || '')}</td>
                     <td>${this.targetText(p)}</td>
+                    <td>${this.approvalBadge(p)}</td>
                     <td>${this.publishBadge(p.publish_status)}</td>
                     <td>${this.progressCell(p)}</td>
                     <td>${this.statusBadge(p.status)}</td>
                     <td>
                       ${canEdit ? `
-                        ${p.publish_status === 'draft'
-                          ? `<button class="btn btn-sm btn-primary" onclick="TrainingPlans.publish('${p.id}')">发布</button>`
-                          : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
+                        ${p.publish_status === 'draft' && p.approval_status === 'draft'
+                          ? `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.requestApproval('${p.id}')">送审</button>`
+                          : p.publish_status === 'draft' && p.approval_status === 'pending_review'
+                            ? `<button class="btn btn-sm btn-primary" onclick="TrainingPlans.approve('${p.id}',true)">签发</button> <button class="btn btn-sm btn-danger" onclick="TrainingPlans.approve('${p.id}',false)">驳回</button>`
+                            : p.publish_status === 'draft' && p.approval_status === 'approved'
+                              ? `<button class="btn btn-sm btn-primary" onclick="TrainingPlans.publish('${p.id}')">发布</button>`
+                              : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
                         <button class="btn btn-sm btn-secondary" onclick="TrainingCourses.open('${p.id}')">课件</button>
                         <button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openForm('${p.id}')">编辑</button>
                         <button class="btn btn-sm btn-danger" onclick="TrainingPlans.remove('${p.id}')">删除</button>`
