@@ -65,7 +65,7 @@ const TrainingAdmissionMine = {
         <span>培训：${r.task_done || 0}/${r.task_total || 0} 项完成</span>
         <span>有效至：${Utils.escapeHtml(r.valid_until || '待生成')}</span>
       </div>${reason}
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSigning('${r.admission_id}')">三级教育签字</button>${r.certificate_no ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openCredential('${r.admission_id}')">查看电子记录凭证</button>` : ''}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${r.status === 'exam_pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.startAdmissionExam('${r.admission_id}')">开始综合考试</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSigning('${r.admission_id}')">三级教育签字</button>${r.certificate_no ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openCredential('${r.admission_id}')">查看电子记录凭证</button>` : ''}</div>
     </div>`;
   },
 
@@ -133,6 +133,14 @@ const TrainingAdmissionMine = {
     const finalSigned = sigs.some(s => !s.task_id && s.signer_role === 'employee');
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
     host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''\"><div class="modal" onclick="event.stopPropagation()" style="max-width:650px"><div class="modal-header"><h3>三级教育电子签字</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><p class="hint">每个已完成层级均需本人手写签字；全部逐级签完后，方可签署完整准入记录。</p><div style="display:grid;gap:8px;margin-top:12px">${list.map(t => { const done = t.status === 'completed'; const signed = employeeSigned(t.id); return `<div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><div><b>${Utils.escapeHtml(labels[t.level] || t.level)}</b><div class="text-muted" style="font-size:12px;margin-top:3px">${Utils.escapeHtml(t.training_plans?.title || '')}</div></div>${signed ? '<span class="badge badge-success">已签字</span>' : done ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.openSignCanvas('${admissionId}','${t.id}','${Utils.escapeHtml(labels[t.level] || t.level)}')">本人签字</button>` : '<span class="badge badge-warning">待完成学习</span>'}</div>`; }).join('')}</div><div style="border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><div><b>完整准入记录</b><div class="text-muted" style="font-size:12px;margin-top:3px">签署后等待项目现场确认</div></div>${finalSigned ? '<span class="badge badge-success">已签署</span>' : allReady ? `<button class="btn btn-primary" onclick="TrainingAdmissionMine.openSignCanvas('${admissionId}','','完整准入记录')">签署完整记录</button>` : '<span class="badge badge-warning">请先完成逐级签字</span>'}</div></div></div></div>`;
+  },
+
+  async startAdmissionExam(admissionId) {
+    const { data, error } = await sb.rpc('training_prepare_admission_exam', { p_admission_id: admissionId });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    const exam = Array.isArray(data) ? data[0] : data;
+    if (!exam?.plan_id) { Utils.toast('未找到综合考试配置', 'error'); return; }
+    await TrainingMine.openExam(exam.plan_id);
   },
 
   openSignCanvas(admissionId, taskId, title) {
