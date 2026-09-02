@@ -4,7 +4,7 @@
 // =============================================================
 const TrainingAdmissionPackages = {
 
-  state: { packages: [], items: {}, projects: [], plans: [] },
+  state: { packages: [], items: {}, projects: [], plans: [], specialRules: [] },
   STATUS: { draft: '草稿', pending_review: '待审核', published: '已发布', archived: '已归档' },
   LEVEL: { company: '公司级', dept: '经营实体级', project: '项目级', special: '专项' },
 
@@ -17,11 +17,12 @@ const TrainingAdmissionPackages = {
   },
 
   async load() {
-    const [packages, items, projects, plans] = await Promise.all([
+    const [packages, items, projects, plans, rules] = await Promise.all([
       sb.from('training_admission_packages').select('id, project_id, title, version_no, validity_years, pause_retrain_days, exam_plan_id, status, source_document_path, review_note, approved_by, approved_at, created_at').order('created_at', { ascending: false }),
       sb.from('training_admission_package_items').select('package_id, plan_id, level, required, sort_order'),
       sb.from('site_projects').select('id, project_code, name, status').order('created_at', { ascending: false }),
       sb.from('training_plans').select('id, title, level, category, plan_year, publish_status, status').order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
+      sb.from('training_admission_special_rules').select('package_id, position_keyword, plan_id'),
     ]);
     const error = [packages, items, projects, plans].find(r => r.error);
     if (error) throw error.error;
@@ -30,6 +31,7 @@ const TrainingAdmissionPackages = {
     (items.data || []).forEach(i => { (this.state.items[i.package_id] = this.state.items[i.package_id] || []).push(i); });
     this.state.projects = projects.data || [];
     this.state.plans = plans.data || [];
+    this.state.specialRules = rules.data || [];
     this.renderTable();
   },
 
@@ -44,10 +46,11 @@ const TrainingAdmissionPackages = {
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:900px"><thead><tr>
       <th>培训包 / 版本</th><th>适用项目</th><th>包含内容</th><th>综合考试</th><th>凭证有效期</th><th>停工复训</th><th>状态</th><th>操作</th></tr></thead><tbody>
       ${this.state.packages.length ? this.state.packages.map(p => { const items = this.state.items[p.id] || []; return `<tr><td><b>${Utils.escapeHtml(p.title)}</b><br><span class="text-muted">v${p.version_no}</span></td>
-        <td>${Utils.escapeHtml(this.projectName(p.project_id))}</td><td>${items.length ? items.map(i => `${this.LEVEL[i.level] || i.level}：${Utils.escapeHtml(this.planName(i.plan_id))}`).join('<br>') : '—'}</td><td>${Utils.escapeHtml(this.planName(p.exam_plan_id))}</td>
+        <td>${Utils.escapeHtml(this.projectName(p.project_id))}</td><td>${items.length ? items.map(i => `${this.LEVEL[i.level] || i.level}：${Utils.escapeHtml(this.planName(i.plan_id))}`).join('<br>') : '—'}</td><td>${Utils.escapeHtml(this.planName(p.exam_plan_id))}${this.specialRuleText(p.id) ? `<br><span class="text-muted" style="font-size:11px">专项：${Utils.escapeHtml(this.specialRuleText(p.id))}</span>` : ''}</td>
         <td>${Utils.escapeHtml(String(p.validity_years || 1))} 年</td><td>${p.pause_retrain_days || 0} 天</td><td>${this.badge(p.status)}${p.approved_at ? `<br><span class="text-muted" style="font-size:11px">签发：${Utils.escapeHtml(p.approved_at.slice(0, 16).replace('T', ' '))}</span>` : ''}${p.review_note ? `<br><span class="text-muted" style="font-size:11px">${Utils.escapeHtml(p.review_note)}</span>` : ''}</td>
         <td>${canEdit ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionPackages.openForm('${p.id}')">编辑</button>
           ${p.status === 'draft' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionPackages.submitReview('${p.id}')">提交审核</button>` : ''}
+          ${p.status !== 'published' ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionPackages.openSpecialRules('${p.id}')">高风险专项</button>` : ''}
           ${p.status === 'pending_review' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionPackages.openReview('${p.id}')">审核签发</button>` : ''}` : ''}</td></tr>`; }).join('')
         : TrainingModule.emptyRow(8, '暂无准入培训包，请先创建公司级/经营实体级/项目级培训计划')}</tbody></table></div></div>`;
   },
@@ -107,5 +110,25 @@ const TrainingAdmissionPackages = {
     const { error } = await sb.rpc('training_review_admission_package', { p_package_id: id, p_action: action, p_note: note });
     if (error) { Utils.toast(error.message, 'error'); return; }
     this.close(); Utils.toast(action === 'approve' ? '培训包已签发' : '培训包已驳回并退回草稿', 'success'); await this.load();
+  },
+
+  specialRuleText(packageId) {
+    return this.state.specialRules.filter(r => r.package_id === packageId).map(r => `${r.position_keyword}:${this.planName(r.plan_id)}`).join('；');
+  },
+
+  openSpecialRules(packageId) {
+    const p = this.state.packages.find(x => x.id === packageId); if (!p) return;
+    const items = (this.state.items[packageId] || []).filter(i => i.level === 'special');
+    if (!items.length) { Utils.toast('请先在培训包中选择至少一个“专项培训”计划', 'info'); return; }
+    const current = {}; this.state.specialRules.filter(r => r.package_id === packageId).forEach(r => { current[r.position_keyword] = r.plan_id; });
+    const options = key => `<option value="">不适用</option>${items.map(i => `<option value="${i.plan_id}"${current[key] === i.plan_id ? ' selected' : ''}>${Utils.escapeHtml(this.planName(i.plan_id))}</option>`).join('')}`;
+    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingAdmissionPackages.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:620px"><div class="modal-header"><h3>高风险岗位专项规则</h3><button class="modal-close" onclick="TrainingAdmissionPackages.close()">×</button></div><div class="modal-body"><p class="hint">高风险人员只会收到匹配的专项培训。所选专项计划必须在“培训计划”中启用考试，并在“试卷管理”中发布专项试卷。</p>${['爆破','钻探','电工','焊工'].map(k => `<div class="form-group"><label>${k}岗位专项培训</label><select id="special-rule-${k}" class="form-control">${options(k)}</select></div>`).join('')}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionPackages.close()">取消</button><button class="btn btn-primary" onclick="TrainingAdmissionPackages.saveSpecialRules('${packageId}')">保存规则</button></div></div></div>`;
+  },
+
+  async saveSpecialRules(packageId) {
+    const rules = ['爆破','钻探','电工','焊工'].map(k => ({ position_keyword: k, plan_id: document.getElementById(`special-rule-${k}`)?.value || '' })).filter(x => x.plan_id);
+    const { error } = await sb.rpc('training_set_package_special_rules', { p_package_id: packageId, p_rules: rules });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    this.close(); Utils.toast('高风险专项规则已保存', 'success'); await this.load();
   },
 };
