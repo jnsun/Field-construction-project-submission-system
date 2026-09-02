@@ -270,6 +270,7 @@ const TrainingProjects = {
               <div class="form-group"><label>项目状态</label><select id="site-project-status" class="form-control">
                 ${Object.entries(this.STATUS_LABEL).map(([key, label]) => `<option value="${key}"${status === key ? ' selected' : ''}>${label}</option>`).join('')}
               </select></div></div>` : '<input type="hidden" id="site-project-status" value="planning">'}
+            ${p ? '<p class="alert alert-danger" style="font-size:12px">项目从暂停、待关闭或关闭恢复为在建后，所有人员必须重新完成现场确认；停工前的确认将自动失效。</p>' : ''}
             <div class="form-group"><label>${p ? '变更原因（暂停、待关闭、关闭和重新开启必填）' : '备注'}</label>
               <textarea id="site-project-reason" class="form-control" rows="3" placeholder="填写项目状态或台账变更原因">${Utils.escapeHtml(p ? (p.pause_reason || p.close_reason || '') : '')}</textarea></div>
           </div>
