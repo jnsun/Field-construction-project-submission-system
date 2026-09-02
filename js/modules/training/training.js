@@ -24,6 +24,7 @@ const TrainingModule = {
     { key: 'contractors', label: '外协与入场' },
     { key: 'packages', label: '准入培训包' },
     { key: 'admission-operations', label: '准入执行' },
+    { key: 'admission-review', label: '入场审核' },
     { key: 'admission-reports', label: '准入固定报表' },
     { key: 'plans',     label: '培训计划' },
     { key: 'records',   label: '培训记录' },
@@ -134,6 +135,7 @@ const TrainingModule = {
         case 'contractors': await TrainingContractors.render(box); break;
         case 'packages':  await TrainingAdmissionPackages.render(box); break;
         case 'admission-operations': await TrainingAdmissionOperations.render(box); break;
+        case 'admission-review': await TrainingAdmissionReview.render(box); break;
         case 'admission-reports': await TrainingAdmissionReports.render(box); break;
         case 'plans':     await TrainingPlans.render(box);     break;
         case 'records':   await TrainingRecords.render(box);   break;
@@ -144,8 +146,8 @@ const TrainingModule = {
         default:          await this.renderStats(box);
       }
     } catch (e) {
-      const migrationHint = ['projects', 'contractors', 'packages', 'admission-operations', 'admission-reports'].includes(this.state.view)
-        ? '若提示项目台账相关表不存在，请先在 Supabase 执行 sql/training-admission-v1.sql'
+      const migrationHint = ['projects', 'contractors', 'packages', 'admission-operations', 'admission-review', 'admission-reports'].includes(this.state.view)
+        ? '若提示项目台账相关表不存在，请先执行 sql/training-admission-v1.sql；入场审核还需执行 sql/training-admission-v2.sql'
         : '若提示表不存在，请先在 Supabase 执行 sql/training-management.sql';
       box.innerHTML = `<div class="card"><div class="card-body">
         <p style="color:#b91c1c">加载失败：${Utils.escapeHtml(e.message || e)}</p>
