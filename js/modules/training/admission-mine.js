@@ -19,10 +19,13 @@ const TrainingAdmissionMine = {
   async mount(box) {
     try {
       const { data, error } = await sb.rpc('training_my_admission_status');
-      if (error || !data || !data.length) return;
+      if (error) return;
+      const visitor = await this.renderVisitorNotices();
+      const reminders = await this.renderReminders();
+      if ((!data || !data.length) && !visitor && !reminders) return;
       const host = document.createElement('div');
       host.id = 'training-admission-mine';
-      host.innerHTML = this.render(data) + await this.renderReminders();
+      host.innerHTML = (data?.length ? this.render(data) : '') + visitor + reminders;
       box.insertBefore(host, box.firstChild);
     } catch (_) {
       // 迁移尚未执行时不影响原有我的培训页面。
@@ -49,6 +52,12 @@ const TrainingAdmissionMine = {
       return `<div class="card" style="border-left:4px solid #f59e0b;margin-bottom:16px"><div class="card-header"><h2>待办提醒</h2></div><div class="card-body" style="display:grid;gap:8px">${data.map(x => `<div><b>${Utils.escapeHtml(x.site_projects?.project_code || '')} ${Utils.escapeHtml(x.site_projects?.name || '')}</b><div style="margin-top:3px">${Utils.escapeHtml(x.message)}</div><div class="text-muted" style="font-size:12px;margin-top:3px">${Utils.escapeHtml((x.created_at || '').slice(0, 16).replace('T', ' '))}</div></div>`).join('')}</div></div>`;
     } catch (_) { return ''; }
   },
+
+  async renderVisitorNotices() {
+    try { const { data, error } = await sb.rpc('training_my_visitor_notices'); if (error || !data?.length) return ''; return `<div class="card" style="border-left:4px solid #2563eb;margin-bottom:16px"><div class="card-header"><h2>访客安全告知</h2></div><div class="card-body" style="display:grid;gap:10px">${data.map(x => `<div><b>${Utils.escapeHtml(x.project_code)} ${Utils.escapeHtml(x.project_name)}</b><div style="margin-top:5px">${Utils.escapeHtml(x.notice_content)}</div><div class="text-muted" style="font-size:12px;margin-top:5px">有效至：${Utils.escapeHtml(String(x.expires_at).slice(0,16).replace('T',' '))}</div>${x.acknowledged_at ? '<span class="badge badge-success" style="margin-top:8px">已确认安全告知</span>' : `<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="TrainingAdmissionMine.acknowledgeVisitor('${x.id}')">本人确认已知悉</button>`}</div>`).join('')}</div></div>`; } catch (_) { return ''; }
+  },
+
+  async acknowledgeVisitor(id) { if (!confirm('确认已阅读并知悉本项目现场安全告知？')) return; const { error } = await sb.rpc('training_acknowledge_visitor_notice', { p_notice_id: id }); if (error) { Utils.toast(error.message, 'error'); return; } Utils.toast('安全告知已确认，请由项目管理人员扫码核验', 'success'); await TrainingModule.renderView(); },
 
   row(r) {
     const [label, cls] = this.STATUS[r.status] || [r.status || '待处理', 'badge-muted'];

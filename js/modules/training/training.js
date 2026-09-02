@@ -26,6 +26,7 @@ const TrainingModule = {
     { key: 'packages', label: '准入培训包' },
     { key: 'admission-operations', label: '准入执行' },
     { key: 'admission-review', label: '入场审核' },
+    { key: 'admission-visitors', label: '领导访客' },
     { key: 'admission-verify', label: '二维码核验' },
     { key: 'admission-reports', label: '准入固定报表' },
     { key: 'plans',     label: '培训计划' },
@@ -163,6 +164,7 @@ const TrainingModule = {
         case 'packages':  await TrainingAdmissionPackages.render(box); break;
         case 'admission-operations': await TrainingAdmissionOperations.render(box); break;
         case 'admission-review': await TrainingAdmissionReview.render(box); break;
+        case 'admission-visitors': await TrainingAdmissionVisitors.render(box); break;
         case 'admission-verify': await TrainingAdmissionVerify.render(box); break;
         case 'admission-reports': await TrainingAdmissionReports.render(box); break;
         case 'plans':     await TrainingPlans.render(box);     break;
