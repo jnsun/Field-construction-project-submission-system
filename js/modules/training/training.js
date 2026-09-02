@@ -13,13 +13,18 @@
 const TrainingModule = {
 
   state: {
-    view: 'plans',         // plans | records | exams | qbank | papers | analytics | stats
+    view: 'plans',         // projects | contractors | plans | records | exams | qbank | papers | analytics | stats
     depts: [],             // 全部部门（id/name/code/dept_type/parent_id）
     deptMap: {},           // id -> 部门对象
     profile: null,
   },
 
   TABS: [
+    { key: 'projects',  label: '正式项目台账' },
+    { key: 'contractors', label: '外协与入场' },
+    { key: 'packages', label: '准入培训包' },
+    { key: 'admission-operations', label: '准入执行' },
+    { key: 'admission-reports', label: '准入固定报表' },
     { key: 'plans',     label: '培训计划' },
     { key: 'records',   label: '培训记录' },
     { key: 'exams',     label: '考试登记' },
@@ -51,6 +56,7 @@ const TrainingModule = {
     if (staff) {
       // 员工端：只看「我的培训」
       await TrainingMine.render(box);
+      await TrainingAdmissionMine.mount(box);
       return;
     }
     await this.loadDepartments();
@@ -124,6 +130,11 @@ const TrainingModule = {
     if (!box) return;
     try {
       switch (this.state.view) {
+        case 'projects':  await TrainingProjects.render(box);  break;
+        case 'contractors': await TrainingContractors.render(box); break;
+        case 'packages':  await TrainingAdmissionPackages.render(box); break;
+        case 'admission-operations': await TrainingAdmissionOperations.render(box); break;
+        case 'admission-reports': await TrainingAdmissionReports.render(box); break;
         case 'plans':     await TrainingPlans.render(box);     break;
         case 'records':   await TrainingRecords.render(box);   break;
         case 'exams':     await TrainingExams.render(box);     break;
@@ -133,9 +144,12 @@ const TrainingModule = {
         default:          await this.renderStats(box);
       }
     } catch (e) {
+      const migrationHint = ['projects', 'contractors', 'packages', 'admission-operations', 'admission-reports'].includes(this.state.view)
+        ? '若提示项目台账相关表不存在，请先在 Supabase 执行 sql/training-admission-v1.sql'
+        : '若提示表不存在，请先在 Supabase 执行 sql/training-management.sql';
       box.innerHTML = `<div class="card"><div class="card-body">
         <p style="color:#b91c1c">加载失败：${Utils.escapeHtml(e.message || e)}</p>
-        <p class="text-muted" style="margin-top:8px">若提示表不存在，请先在 Supabase 执行 sql/training-management.sql</p>
+        <p class="text-muted" style="margin-top:8px">${migrationHint}</p>
       </div></div>`;
     }
   },
