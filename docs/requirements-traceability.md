@@ -6,3 +6,4 @@
 | --- | --- | --- | --- | --- | --- |
 | P01 | T23-A | 小程序注册与合规资料并行准备 | P01-AC01 至 P01-AC04 | 已完成（资料初稿）；微信审核未开始 | [小程序注册与合规资料清单](miniprogram-registration-checklist.md) |
 | D00 | — | 代码库只读盘点与现状清单 | D00-AC01 至 D00-AC04 | 已完成（静态盘点）；线上 Supabase 状态待专项核验 | [代码库盘点](00-codebase-inventory.md) |
+| D01 | T01-T27 | 需求追踪矩阵与验收编号 | D01-AC01 至 D01-AC04；T01-AC01 至 T27-AC01，另含 T23-AC02 | 已完成（编号与门禁基线）；原计划正文待补录 | [需求验收矩阵](01-requirement-traceability-matrix.md) |
