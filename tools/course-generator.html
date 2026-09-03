@@ -70,6 +70,9 @@
       <option value="electric">临时用电专项</option>
       <option value="confined">有限空间专项</option>
     </select>
+    <label class="btn only-md">公司 Logo
+      <input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="setBrandLogo(this)">
+    </label>
     <button class="btn" id="btn-sample" onclick="loadSample()">载入示例</button>
     <button class="btn btn-primary" id="btn-download" onclick="downloadHtml()" disabled>下载 HTML 课件</button>
   </div>
@@ -492,6 +495,8 @@ function buildCourseHtml(title, sections, org) {
     '.cw-wrap{max-width:760px;margin:0 auto;padding:0 16px 80px}',
     '.cw-header{position:sticky;top:0;z-index:9;background:rgba(255,255,255,.96);',
     '  backdrop-filter:blur(4px);border-bottom:1px solid #e5e7eb;padding:12px 4px 10px}',
+    '.cw-brand{display:flex;align-items:center;gap:9px;font-size:12px;color:#475569;font-weight:600;margin-bottom:4px}',
+    '.cw-brand img{width:28px;height:28px;object-fit:contain;border-radius:4px}',
     '.cw-header h1{font-size:20px;line-height:1.4}',
     '.cw-meta{font-size:12px;color:#6b7280;margin-top:4px;display:flex;gap:14px;flex-wrap:wrap}',
     '.cw-progress{height:6px;background:#e5e7eb;border-radius:3px;margin-top:8px;overflow:hidden}',
@@ -532,6 +537,7 @@ function buildCourseHtml(title, sections, org) {
 
   const esc = escapeHtml;
   const orgLine = org ? ' · ' + esc(org) : '';
+  const brand = brandLogo ? '<img src="' + brandLogo + '" alt="公司 Logo">' : '';
   return [
     '<!DOCTYPE html>',
     '<html lang="zh-CN">',
@@ -544,6 +550,7 @@ function buildCourseHtml(title, sections, org) {
     '<body>',
     '<div class="cw-wrap">',
     '<header class="cw-header">',
+    '<div class="cw-brand">' + brand + '<span>物化院有限公司 · 安全生产培训教育</span></div>',
     '<h1>' + esc(title) + '</h1>',
     '<div class="cw-meta"><span id="cw-now">—</span><span id="cw-study">本次已学 0 秒</span>',
     '<span>完成度 <b id="cw-total">0%</b></span><span>' + new Date().toLocaleDateString("zh-CN") + orgLine + '</span></div>',
@@ -810,6 +817,7 @@ function enhanceExistingHtml(src) {
 let currentHtml = '';
 let mode = 'md';          /* md = Markdown 模式 | inject = HTML 增强模式 */
 let injTitle = '培训课件';
+let brandLogo = '';
 
 function setMode(m) {
   mode = m;
@@ -1048,6 +1056,17 @@ function loadTemplate(key) {
   const t = document.getElementById('meta-title');
   t.value = ''; t.dataset.auto = '1';
   render();
+}
+
+function setBrandLogo(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { alert('公司 Logo 请使用 PNG、JPG 或 WEBP。'); return; }
+  if (file.size > 512 * 1024) { alert('公司 Logo 不能超过 512KB，请先压缩后再使用。'); return; }
+  const reader = new FileReader();
+  reader.onload = () => { brandLogo = reader.result; render(); };
+  reader.readAsDataURL(file);
 }
 
 /* ---------------- 内置示例 ---------------- */
