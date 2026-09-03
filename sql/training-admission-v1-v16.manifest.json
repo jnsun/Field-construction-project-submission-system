@@ -1,0 +1,39 @@
+{
+  "schema": "d03-training-admission-v1-v16",
+  "version": 1,
+  "bootstrapFilesForEmptyDatabase": [
+    "schema.sql",
+    "user-management.sql",
+    "phone-login.sql",
+    "super-admin.sql",
+    "training-management.sql",
+    "training-fix-v13.sql",
+    "department-tree.sql",
+    "department-entity-permissions.sql",
+    "department-fix-v1.sql",
+    "account-rpc-v2.sql",
+    "training-online-v2.sql",
+    "training-content-library.sql",
+    "exam-module.sql",
+    "personnel-center-v1.sql"
+  ],
+  "migrations": [
+    { "version": 1, "file": "training-admission-v1.sql", "sha256": "B6BCD428F14881FB697AC368AE320E189EB5F3230E0D6220310E28C338D67209" },
+    { "version": 2, "file": "training-admission-v2.sql", "sha256": "30B6F8E2E8797858B2E49F8B9DB366958158DFB5739CE17A9522856E85E3C9B9" },
+    { "version": 3, "file": "training-admission-v3.sql", "sha256": "4C7C716485171F54E1B9CA83AD04F6FC5CB21A0453C0C81A001ED1587E4A7E24" },
+    { "version": 4, "file": "training-admission-v4.sql", "sha256": "2F93722C235F0ED3A3F9844746789C1DB0D4C2E1F242CDBDD831B77539AA3452" },
+    { "version": 5, "file": "training-admission-v5.sql", "sha256": "0FAEE2A9ACC4C30CF2706FDCECD421FA400B58A51CE3F20DF2630853DFD0765E" },
+    { "version": 6, "file": "training-admission-v6.sql", "sha256": "1A36B616324431922D27871E8D8053E149B47C79435EEA83129F245D2DBE6C0F" },
+    { "version": 7, "file": "training-admission-v7.sql", "sha256": "0991D0E691BF7B505551B3A3D2BDD21912ECBCE34081596267099DF1C7128B25" },
+    { "version": 8, "file": "training-admission-v8.sql", "sha256": "C74471B1B994C58FEDE92330F30AE3DF485401F6B88FAD85776F3B0D3640E4B1" },
+    { "version": 9, "file": "training-admission-v9.sql", "sha256": "970CF62613E7219D741C1D7CE4943EC836D501483A4B498DD1DCDD9D6C650CE2" },
+    { "version": 10, "file": "training-admission-v10.sql", "sha256": "CCF40E705AE27E1E0BF3FA6637D16B62F86F4D244AEE65D531C4BA7361CC7163" },
+    { "version": 11, "file": "training-admission-v11.sql", "sha256": "1CFC1DB641903F00E2B3805DC8E92ABCFBA3C2567A94BDC0BC63810DCF9DE170" },
+    { "version": 12, "file": "training-admission-v12.sql", "sha256": "1644C78F3B20CFE58674D276B50FF46FD93D40047EA9854EB297A13A48D34BFE" },
+    { "version": 13, "file": "training-admission-v13.sql", "sha256": "849AAAA320476DA8D718EF7CB992A0DA41023971C27AEDEE5CCF691D87FA8AD3" },
+    { "version": 14, "file": "training-admission-v14.sql", "sha256": "41AFB5D5C3F38D02743C9655678F8625D4464238894C2AAB4B326EA949013386" },
+    { "version": 15, "file": "training-admission-v15.sql", "sha256": "9C290B5B82C52CA829C35A9990F7F8F9D95DF0D52FA7CFF567850707A38748D9" },
+    { "version": 16, "file": "training-admission-v16.sql", "sha256": "981605142EF3B4B1C3F189B5B8E2D7FA68691395BAF91CD3D2FF87748C2BFE06" }
+  ],
+  "postMigrationHardening": "training-admission-v16-d03-hardening.sql"
+}
