@@ -91,6 +91,9 @@
       <label class="btn only-md">导入 Word 初稿
         <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="openDocxDraft(this)">
       </label>
+      <label class="btn only-md">嵌入图片
+        <input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="insertEmbeddedImage(this)">
+      </label>
       <label class="btn only-inj" style="margin-left:auto">打开 .html 文件
         <input type="file" accept=".html,.htm" style="display:none" onchange="openHtmlFile(this)">
       </label>
@@ -1004,6 +1007,25 @@ async function openDocxDraft(input) {
   } catch (e) {
     info.textContent = 'Word 导入失败：' + (e && e.message ? e.message : e);
   }
+}
+
+function insertEmbeddedImage(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { alert('请选择 PNG、JPG 或 WEBP 图片。'); return; }
+  if (file.size > 2 * 1024 * 1024) { alert('单张图片不能超过 2MB。请先压缩图片，避免课件在现场下载过慢。'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const area = document.getElementById('md-input');
+    const label = (file.name || '安全提示图').replace(/\.[^.]+$/, '').replace(/[\[\]]/g, '');
+    const line = '\n\n![' + label + '](' + reader.result + ')\n\n> 图片说明：请填写这张图片对应的作业风险、禁止事项或正确操作要求。\n';
+    const start = area.selectionStart || 0, end = area.selectionEnd || start;
+    area.value = area.value.slice(0, start) + line + area.value.slice(end);
+    area.selectionStart = area.selectionEnd = start + line.length;
+    area.focus(); render();
+  };
+  reader.readAsDataURL(file);
 }
 
 function openHtmlFile(input) {
