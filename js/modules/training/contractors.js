@@ -13,9 +13,8 @@ const TrainingContractors = {
       <div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">外协资料人工审核台账</span></div>
         <div class="toolbar-right">
           <button class="btn btn-secondary btn-sm" onclick="TrainingContractors.load()">刷新</button>
-          ${TrainingModule.canEdit() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.downloadMemberTemplate()">导入模板</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openMemberImport()">批量导入人员</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button>
-            <button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button>
-            <button class="btn btn-primary btn-sm" onclick="TrainingContractors.openCompanyForm()">+ 新建外协单位</button>` : ''}
+          ${TrainingModule.canManageAdmission() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button>` : ''}
+          ${TrainingModule.canEdit() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.downloadMemberTemplate()">导入模板</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openMemberImport()">批量导入人员</button><button class="btn btn-primary btn-sm" onclick="TrainingContractors.openCompanyForm()">+ 新建外协单位</button>` : ''}
         </div>
       </div>
       <div id="contractor-summary"></div>
@@ -89,7 +88,7 @@ const TrainingContractors = {
 
   renderContracts() {
     const box = document.getElementById('contractor-contracts'); if (!box) return;
-    const canEdit = TrainingModule.canEdit();
+    const canEdit = TrainingModule.canManageAdmission();
     box.innerHTML = `<div class="card"><div class="card-header"><h2>项目合同台账（${this.state.contracts.length}）</h2></div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr>
       <th>项目</th><th>外协单位</th><th>合同编号 / 名称</th><th>有效期</th><th>状态</th><th>附件路径</th><th>操作</th></tr></thead><tbody>
@@ -119,7 +118,7 @@ const TrainingContractors = {
 
   renderDocuments() {
     const box = document.getElementById('contractor-documents'); if (!box) return;
-    const canEdit = TrainingModule.canEdit();
+    const canEdit = TrainingModule.canManageAdmission();
     box.innerHTML = `<div class="card"><div class="card-header"><h2>资质与特种作业证（${this.state.documents.length}）</h2></div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr>
       <th>资料类型</th><th>单位 / 人员</th><th>项目</th><th>证书编号</th><th>有效期</th><th>审核</th><th>附件</th><th>操作</th></tr></thead><tbody>

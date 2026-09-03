@@ -46,7 +46,7 @@ const TrainingModule = {
     const staff = this.isStaff();
     const fieldManager = this.isFieldManager();
 
-    if (fieldManager && !['admission-operations', 'admission-verify'].includes(this.state.view)) {
+    if (fieldManager && !['contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(this.state.view)) {
       this.state.view = 'admission-operations';
     }
 
@@ -133,7 +133,7 @@ const TrainingModule = {
 
   buildTabs() {
     const tabs = this.isFieldManager()
-      ? this.TABS.filter(t => ['admission-operations', 'admission-verify'].includes(t.key))
+      ? this.TABS.filter(t => ['contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
       : this.TABS;
     return `
       <div class="cat-tabs" id="training-tabs">

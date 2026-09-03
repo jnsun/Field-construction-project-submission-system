@@ -21,6 +21,12 @@ const TrainingAdmissionReports = {
   async loadReport() {
     const type = (document.getElementById('admission-report-type') || {}).value || 'ledger';
     const projectId = (document.getElementById('admission-report-project') || {}).value || null;
+    if (!projectId && TrainingModule.isFieldManager()) {
+      this.state.report = type; this.state.rows = [];
+      const body = document.getElementById('admission-report-body');
+      if (body) body.innerHTML = '<div class="card"><div class="card-body text-muted">请先选择一个本人负责的项目，再查看或导出固定报表。</div></div>';
+      return;
+    }
     const rpc = type === 'signatures' ? 'training_admission_signature_report' : (type === 'cards' ? 'training_admission_record_cards' : (type === 'contractors' ? 'training_contractor_personnel_ledger' : (type === 'expiry' ? 'training_admission_credential_expiry_report' : (type === 'annual' ? 'training_admission_annual_stats' : 'training_admission_report'))));
     const result = await sb.rpc(rpc, type === 'annual' ? { p_year: this.state.year, p_project_id: projectId } : { p_project_id: projectId });
     if (result.error) { const body = document.getElementById('admission-report-body'); if (body) body.innerHTML = `<div class="alert alert-danger">${Utils.escapeHtml(result.error.message)}</div>`; return; }
