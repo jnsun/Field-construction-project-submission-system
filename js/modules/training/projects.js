@@ -414,13 +414,32 @@ const TrainingProjects = {
     const data = Array.isArray(result.data) ? result.data[0] : result.data;
     const token = data && data.token;
     if (!token) { Utils.toast('邀请码生成成功，但没有返回可展示的邀请码', 'error'); return; }
+    const joinUrl = `${location.origin}${location.pathname}?invite=${encodeURIComponent(token)}`;
     this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingProjects.closeForm()"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px">
       <div class="modal-header"><h3>项目邀请码已生成</h3><button class="modal-close" onclick="TrainingProjects.closeForm()">×</button></div>
       <div class="modal-body"><p class="hint">该邀请码仅在本次显示，过期时间：${Utils.escapeHtml(data.expires_at || '')}。刷新后旧码立即失效。</p>
-        <div class="detail-text" style="font-size:20px;letter-spacing:1px;text-align:center;word-break:break-all">${Utils.escapeHtml(token)}</div>
-        <p class="text-muted" style="font-size:12px;margin-top:8px">请将邀请码转换为项目二维码后提供给外协人员，后续小程序端会直接支持扫码加入。</p></div>
-      <div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingProjects.copyInvite('${Utils.esc(token)}')">复制邀请码</button><button class="btn btn-primary" onclick="TrainingProjects.closeForm()">完成</button></div>
+        <div id="project-invite-qr" style="width:210px;min-height:210px;padding:10px;border:1px solid #e5e7eb;background:#fff;margin:12px auto;text-align:center"></div>
+        <div class="detail-text" style="font-size:16px;letter-spacing:1px;text-align:center;word-break:break-all">${Utils.escapeHtml(token)}</div>
+        <p class="text-muted" style="font-size:12px;margin-top:8px">外协人员扫码后会自动打开项目入场申请并带入邀请码。二维码不含个人资料。</p></div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingProjects.copyInvite('${Utils.esc(token)}')">复制邀请码</button><button class="btn btn-secondary" onclick="TrainingProjects.copyInviteLink('${Utils.esc(joinUrl)}')">复制申请链接</button><button class="btn btn-secondary" onclick="TrainingProjects.downloadInviteQr()">下载二维码</button><button class="btn btn-primary" onclick="TrainingProjects.closeForm()">完成</button></div>
     </div></div>`;
+    this.renderInviteQr(joinUrl);
+  },
+
+  renderInviteQr(url) {
+    const box = document.getElementById('project-invite-qr'); if (!box) return;
+    if (typeof qrcode !== 'function') { box.textContent = '二维码组件未加载，请复制申请链接'; return; }
+    try { const qr = qrcode(0, 'M'); qr.addData(url); qr.make(); box.innerHTML = qr.createImgTag(5, 0, '项目入场申请二维码'); const img = box.querySelector('img'); if (img) img.style.cssText = 'display:block;width:190px;height:190px;margin:auto'; } catch (_) { box.textContent = '二维码生成失败，请复制申请链接'; }
+  },
+
+  async copyInviteLink(url) {
+    try { await navigator.clipboard.writeText(url); Utils.toast('项目申请链接已复制', 'success'); } catch (_) { Utils.toast('浏览器未允许自动复制，请手动复制链接', 'info'); }
+  },
+
+  downloadInviteQr() {
+    const img = document.querySelector('#project-invite-qr img');
+    if (!img?.src) { Utils.toast('二维码尚未生成', 'error'); return; }
+    const link = document.createElement('a'); link.href = img.src; link.download = `项目入场邀请码_${Utils.formatDate(new Date())}.png`; document.body.appendChild(link); link.click(); link.remove();
   },
 
   async copyInvite(token) {
