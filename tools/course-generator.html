@@ -85,6 +85,9 @@
       <label class="btn only-md" style="margin-left:auto">打开 .md 文件
         <input type="file" accept=".md,.markdown,.txt" style="display:none" onchange="openMdFile(this)">
       </label>
+      <label class="btn only-md">导入 PDF 初稿
+        <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="openPdfDraft(this)">
+      </label>
       <label class="btn only-inj" style="margin-left:auto">打开 .html 文件
         <input type="file" accept=".html,.htm" style="display:none" onchange="openHtmlFile(this)">
       </label>
@@ -888,6 +891,49 @@ function openMdFile(input) {
     t.value = ''; t.dataset.auto = '1';
     render();
   });
+}
+
+async function pdfLibForDraft() {
+  if (window.pdfjsLib) return window.pdfjsLib;
+  try {
+    if (window.parent && window.parent.pdfjsLib) return window.parent.pdfjsLib;
+  } catch (_) {}
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '../vendor/pdf.min.js'; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  if (!window.pdfjsLib) throw new Error('PDF 解析组件加载失败');
+  return window.pdfjsLib;
+}
+
+async function openPdfDraft(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > 30 * 1024 * 1024) { alert('PDF 文件不能超过 30MB，请拆分后导入。'); return; }
+  const info = document.getElementById('sec-count');
+  info.textContent = '正在本地提取 PDF 文字，请稍候…';
+  try {
+    const lib = await pdfLibForDraft();
+    lib.GlobalWorkerOptions.workerSrc = '../vendor/pdf.worker.min.js';
+    const doc = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const sections = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      const content = await page.getTextContent();
+      const text = content.items.map(item => item.str || '').join(' ').replace(/\s+/g, ' ').trim();
+      if (text) sections.push('## 第 ' + n + ' 页\n\n' + text);
+    }
+    if (!sections.length) throw new Error('未能提取文字。该 PDF 可能是扫描件，请先进行文字识别，或改用手工粘贴内容。');
+    const base = file.name.replace(/\.pdf$/i, '') || '培训课件';
+    document.getElementById('md-input').value = '# ' + base + '\n\n> 以下内容由本机从 PDF 提取为可编辑初稿。请补充项目风险、现场照片/插图和应急联系方式后再提交审核。\n\n' + sections.join('\n\n');
+    const t = document.getElementById('meta-title');
+    t.value = ''; t.dataset.auto = '1';
+    render();
+  } catch (e) {
+    info.textContent = 'PDF 导入失败：' + (e && e.message ? e.message : e);
+  }
 }
 
 function openHtmlFile(input) {
