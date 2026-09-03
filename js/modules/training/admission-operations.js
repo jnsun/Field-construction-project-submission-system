@@ -24,6 +24,8 @@ const TrainingAdmissionOperations = {
   },
 
   async load() {
+    // 到期状态不能只依赖扫码时判断；进入执行台先刷新当前账号可管理范围。
+    await sb.rpc('training_refresh_expired_admissions');
     const results = await Promise.all([
       sb.from('site_projects').select('id, project_code, name, status').order('created_at', { ascending: false }),
       sb.from('site_project_members').select('id, project_id, employee_id, contractor_id, membership_type, status, joined_at').order('joined_at', { ascending: false }),
