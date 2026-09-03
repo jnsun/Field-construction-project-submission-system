@@ -8,6 +8,12 @@
 
 # 通用忽略
 node_modules/
+.env
+.env.*
+!.env.example
+backups/
+js/config.local.js
+test-results/
 *.log
 .DS_Store
 Thumbs.db
