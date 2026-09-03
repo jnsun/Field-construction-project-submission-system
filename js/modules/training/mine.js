@@ -324,7 +324,7 @@ const TrainingMine = {
     this.state.htmlCourse = { courseId: c.id };
     stage.innerHTML = `
       <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
-      <iframe id="learn-html-frame" src="${Utils.escapeHtml(url)}"
+      <iframe id="learn-html-frame" src="${Utils.escapeHtml(url)}" sandbox="allow-scripts allow-downloads" referrerpolicy="no-referrer"
         title="courseware" style="width:100%;height:66vh;border:1px solid #e5e7eb;border-radius:6px;background:#fff">
       </iframe>
       <p class="text-muted" style="font-size:12px;margin-top:6px">

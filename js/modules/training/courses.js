@@ -215,13 +215,27 @@ const TrainingCourses = {
         ? parseInt(document.getElementById('cs-duration').value, 10) : null,
     };
     if (!payload.title) { alert('请填写课件名称'); return; }
-    if (type === 'link' && !payload.file_url) { alert('请填写外链地址'); return; }
+    if (type === 'link') {
+      try { if (!payload.file_url || new URL(payload.file_url).protocol !== 'https:') throw new Error(); }
+      catch (_) { alert('外链地址必须使用 HTTPS'); return; }
+    }
 
     // 上传文件
     const fileInput = document.getElementById('cs-file');
     if ((type === 'pdf' || type === 'video' || type === 'image' || type === 'html')
         && fileInput && fileInput.files.length) {
       const file = fileInput.files[0];
+      const rules = {
+        pdf: { limit: 30 * 1024 * 1024, types: ['application/pdf'], message: 'PDF' },
+        video: { limit: 50 * 1024 * 1024, types: ['video/mp4', 'video/webm'], message: 'MP4 或 WEBM 视频' },
+        image: { limit: 10 * 1024 * 1024, types: ['image/png', 'image/jpeg', 'image/webp'], message: 'PNG、JPG 或 WEBP 图片' },
+        html: { limit: 10 * 1024 * 1024, types: ['text/html', 'application/xhtml+xml'], message: 'HTML 课件' },
+      };
+      const rule = rules[type];
+      const hasAllowedExtension = type !== 'html' || /\.html?$/i.test(file.name);
+      if (!rule || file.size > rule.limit || (file.type && !rule.types.includes(file.type)) || !hasAllowedExtension) {
+        alert(`${rule?.message || '课件'}格式不正确或文件过大`); return;
+      }
       // Storage key 白名单不含中文等非 ASCII 字符（否则报 Invalid key），
       // key 一律用 时间戳_随机串.后缀，原文件名展示走 title 字段（与证照模块同模式）
       const ext = (file.name.match(/\.([A-Za-z0-9]{1,8})$/) || [null, 'bin'])[1].toLowerCase();
