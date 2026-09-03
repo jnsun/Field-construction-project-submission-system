@@ -48,4 +48,4 @@ tools/restore-test-db.ps1 -DatabaseUrl $env:SAFETY_TEST_DB_URL -BackupFile backu
 
 ## 验收与限制
 
-运行 `node tests/audit-handlers.js` 前，将 Node 加入 PATH。浏览器 E2E 还需启动 Chrome 调试端口 `127.0.0.1:9333`。当前机器已安装 PostgreSQL 客户端工具；真实备份、恢复和清理仍须通过一次数据库密码认证后完成。
+运行 `node tests/audit-handlers.js` 前，将 Node 加入 PATH。浏览器 E2E 还需启动 Chrome 调试端口 `127.0.0.1:9333`。当前机器已安装 PostgreSQL 客户端工具；测试库完整/结构备份已生成并通过 `pg_restore --list` 校验，夹具清理和重建已完成。D03 仍须单独完成匿名历史副本迁移和恢复演练，不把该后续验证写为 D02 已通过。
