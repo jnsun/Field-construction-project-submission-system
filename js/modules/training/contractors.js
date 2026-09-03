@@ -94,7 +94,7 @@ const TrainingContractors = {
       <th>项目</th><th>外协单位</th><th>合同编号 / 名称</th><th>有效期</th><th>状态</th><th>附件路径</th><th>操作</th></tr></thead><tbody>
       ${this.state.contracts.length ? this.state.contracts.map(c => `<tr><td>${Utils.escapeHtml(this.projectName(c.project_id))}</td><td>${Utils.escapeHtml(this.companyName(c.contractor_id))}</td>
         <td>${Utils.escapeHtml(c.contract_no || '—')}<br>${Utils.escapeHtml(c.contract_name || '—')}</td><td>${Utils.escapeHtml([c.start_date, c.end_date].filter(Boolean).join(' ~ ') || '—')}</td>
-        <td>${this.contractStatus(c.status)}</td><td>${Utils.escapeHtml(c.storage_path || '—')}</td><td>${canEdit && c.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewContract('${c.id}','valid')">通过</button><button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewContract('${c.id}','terminated')">驳回</button>` : ''}</td></tr>`).join('')
+        <td>${this.contractStatus(c.status)}</td><td>${c.storage_path ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openAttachment('${encodeURIComponent(c.storage_path)}')">查看附件</button>` : '—'}</td><td>${canEdit && c.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewContract('${c.id}','valid')">通过</button><button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewContract('${c.id}','terminated')">驳回</button>` : ''}</td></tr>`).join('')
         : TrainingModule.emptyRow(7, '暂无合同记录')}</tbody></table></div></div>`;
   },
 
@@ -127,7 +127,7 @@ const TrainingContractors = {
         <td>${Utils.escapeHtml(this.companyName(d.contractor_id))}${e.name ? `<br>${Utils.escapeHtml(e.name)}` : ''}</td><td>${Utils.escapeHtml(this.projectName(d.project_id))}</td>
         <td>${Utils.escapeHtml(d.certificate_no || '—')}</td><td>${Utils.escapeHtml([d.valid_from, d.valid_until].filter(Boolean).join(' ~ ') || '长期/未填')}</td>
         <td>${d.review_status === 'approved' ? this.status('已通过', 'badge-success') : d.review_status === 'rejected' ? this.status('已驳回', 'badge-danger') : this.status('待审核', 'badge-warning')}</td>
-        <td>${Utils.escapeHtml(d.storage_path || '—')}</td><td>${canEdit && d.review_status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewDocument('${d.id}','approved')">通过</button>
+        <td>${d.storage_path ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openAttachment('${encodeURIComponent(d.storage_path)}')">查看附件</button>` : '—'}</td><td>${canEdit && d.review_status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewDocument('${d.id}','approved')">通过</button>
           <button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewDocument('${d.id}','rejected')">驳回</button>` : ''}</td></tr>`; }).join('')
         : TrainingModule.emptyRow(8, '暂无资质或证照')}</tbody></table></div></div>`;
   },
@@ -283,6 +283,14 @@ const TrainingContractors = {
     const upload = await sb.storage.from(typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
     if (upload.error) { Utils.toast(`附件上传失败：${upload.error.message}`, 'error'); return ''; }
     return path;
+  },
+
+  async openAttachment(encodedPath) {
+    const path = decodeURIComponent(encodedPath);
+    const bucket = typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates';
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) { Utils.toast(error?.message || '附件暂时无法打开', 'error'); return; }
+    window.open(data.signedUrl, '_blank', 'noopener');
   },
 
   async reviewDocument(id, status) {
