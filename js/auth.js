@@ -50,21 +50,29 @@ const Auth = {
   },
 
   /**
-   * 登录（仅支持邮箱，避免在登录前暴露手机号和部门账号关联关系）
-   * @param {string} identifier 登录邮箱
+   * 登录：邮箱或已绑定手机号 + 密码。手机号直接交由 Supabase Auth 校验，
+   * 不通过数据库查询解析账号，避免登录前暴露手机号与账号的关联关系。
+   * @param {string} identifier 登录邮箱或手机号
    * @param {string} password
    * @returns {Promise<{success: boolean, error?: string}>}
    */
   async login(identifier, password) {
-    const email = String(identifier || '').trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      return { success: false, error: '请使用登录邮箱登录。如忘记邮箱，请联系管理员查询。' };
-    }
+    const value = String(identifier || '').trim();
+    const digits = value.replace(/^\+86/, '');
+    const isPhone = /^1[3-9]\d{9}$/.test(digits);
+    const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
+    if (!isPhone && !isEmail) return { success: false, error: '请输入登录邮箱或 11 位手机号。' };
 
-    const { data, error } = await sb.auth.signInWithPassword({
-      email,
-      password,
-    });
+    let result = isPhone
+      ? await sb.auth.signInWithPassword({ phone: `+86${digits}`, password })
+      : await sb.auth.signInWithPassword({ email: value.toLowerCase(), password });
+
+    // 兼容历史手机号账号：早期账户以“手机号@login.local”作为底层邮箱保存，
+    // 回退不查询 profiles，也不会暴露手机号是否已经注册。
+    if (isPhone && result.error) {
+      result = await sb.auth.signInWithPassword({ email: `${digits}@login.local`, password });
+    }
+    const { data, error } = result;
 
     if (error) {
       return { success: false, error: this.mapAuthError(error.message) };
@@ -104,6 +112,8 @@ const Auth = {
     if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(id)) {
       return id.toLowerCase();
     }
+    const phone = id.replace(/^\+86/, '');
+    if (/^1[3-9]\d{9}$/.test(phone)) return `${phone}@login.local`;
     return null;
   },
 
