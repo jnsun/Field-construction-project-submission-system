@@ -109,6 +109,7 @@ const TrainingAdmissionMine = {
       <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#64748b;margin-top:8px">
         <span>工种：${Utils.escapeHtml(r.work_position || '未填写')}</span>
         <span>培训：${r.task_done || 0}/${r.task_total || 0} 项完成</span>
+        ${r.due_at ? `<span style="color:${r.status !== 'eligible' && new Date(r.due_at) < new Date() ? '#b91c1c' : '#64748b'}">${r.urgent ? '当天加急 · ' : ''}截止：${Utils.escapeHtml(new Date(r.due_at).toLocaleString().replace(/:\d{2}$/, ''))}</span>` : ''}
         <span>有效至：${Utils.escapeHtml(r.valid_until || '待生成')}</span>
       </div>${reason}
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${r.status === 'exam_pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.startAdmissionExam('${r.admission_id}')">开始综合考试</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSigning('${r.admission_id}')">三级教育签字</button>${r.certificate_no ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openCredential('${r.admission_id}')">查看电子记录凭证</button>` : ''}</div>
