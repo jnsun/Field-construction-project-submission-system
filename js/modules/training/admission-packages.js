@@ -18,7 +18,7 @@ const TrainingAdmissionPackages = {
 
   async load() {
     const [packages, items, projects, plans, rules] = await Promise.all([
-      sb.from('training_admission_packages').select('id, project_id, title, version_no, validity_years, pause_retrain_days, exam_plan_id, status, source_document_path, review_note, approved_by, approved_at, created_at').order('created_at', { ascending: false }),
+      sb.from('training_admission_packages').select('id, project_id, title, version_no, validity_years, pause_retrain_days, exam_plan_id, status, source_document_path, review_note, approved_by, approved_at, created_at, supersedes_package_id').order('created_at', { ascending: false }),
       sb.from('training_admission_package_items').select('package_id, plan_id, level, required, sort_order'),
       sb.from('site_projects').select('id, project_code, name, status').order('created_at', { ascending: false }),
       sb.from('training_plans').select('id, title, level, category, plan_year, publish_status, status').order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
@@ -50,9 +50,20 @@ const TrainingAdmissionPackages = {
         <td>${Utils.escapeHtml(String(p.validity_years || 1))} 年</td><td>${p.pause_retrain_days || 0} 天</td><td>${this.badge(p.status)}${p.approved_at ? `<br><span class="text-muted" style="font-size:11px">签发：${Utils.escapeHtml(p.approved_at.slice(0, 16).replace('T', ' '))}</span>` : ''}${p.review_note ? `<br><span class="text-muted" style="font-size:11px">${Utils.escapeHtml(p.review_note)}</span>` : ''}</td>
         <td>${canEdit ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionPackages.openForm('${p.id}')">编辑</button>
           ${p.status === 'draft' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionPackages.submitReview('${p.id}')">提交审核</button>` : ''}
+          ${p.status === 'published' ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionPackages.cloneVersion('${p.id}')">新版本</button>` : ''}
           ${p.status !== 'published' ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionPackages.openSpecialRules('${p.id}')">高风险专项</button>` : ''}
           ${p.status === 'pending_review' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionPackages.openReview('${p.id}')">审核签发</button>` : ''}` : ''}</td></tr>`; }).join('')
         : TrainingModule.emptyRow(8, '暂无准入培训包，请先创建公司级/经营实体级/项目级培训计划')}</tbody></table></div></div>`;
+  },
+
+  async cloneVersion(id) {
+    const p = this.state.packages.find(x => x.id === id);
+    if (!p || !confirm(`确认以“${p.title}”创建新版本？原培训包和人员历史准入记录不会修改。`)) return;
+    const { data, error } = await sb.rpc('training_clone_admission_package', { p_package_id: id });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    Utils.toast('已创建培训包新版本，请替换需更新的项目级/专项计划后重新审核', 'success');
+    await this.load();
+    if (data) this.openForm(data);
   },
 
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
