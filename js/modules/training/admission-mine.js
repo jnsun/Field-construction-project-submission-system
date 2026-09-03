@@ -129,17 +129,18 @@ const TrainingAdmissionMine = {
   },
 
   async openSigning(admissionId) {
-    const [tasks, signatures] = await Promise.all([
+    const [tasks, signatures, admission] = await Promise.all([
       sb.from('training_admission_tasks').select('id, level, status, training_plans(title)').eq('admission_id', admissionId).order('level'),
-      sb.from('training_admission_signatures').select('task_id, signer_role').eq('admission_id', admissionId),
+      sb.from('training_admission_signatures').select('task_id, signer_role, cycle_no').eq('admission_id', admissionId),
+      sb.from('training_admissions').select('training_cycle_no').eq('id', admissionId).single(),
     ]);
-    if (tasks.error || signatures.error) { Utils.toast((tasks.error || signatures.error).message, 'error'); return; }
+    if (tasks.error || signatures.error || admission.error) { Utils.toast((tasks.error || signatures.error || admission.error).message, 'error'); return; }
     const list = tasks.data || [];
     const sigs = signatures.data || [];
     const employeeSigned = id => sigs.some(s => s.task_id === id && s.signer_role === 'employee');
     const labels = { company: '公司级教育', entity: '经营实体级教育', project: '项目级教育', special: '专项培训' };
     const allReady = list.length > 0 && list.every(t => t.status === 'completed' && employeeSigned(t.id));
-    const finalSigned = sigs.some(s => !s.task_id && s.signer_role === 'employee');
+    const finalSigned = sigs.some(s => !s.task_id && s.signer_role === 'employee' && s.cycle_no === admission.data.training_cycle_no);
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
     host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''\"><div class="modal" onclick="event.stopPropagation()" style="max-width:650px"><div class="modal-header"><h3>三级教育电子签字</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><p class="hint">每个已完成层级均需本人手写签字；全部逐级签完后，方可签署完整准入记录。</p><div style="display:grid;gap:8px;margin-top:12px">${list.map(t => { const done = t.status === 'completed'; const signed = employeeSigned(t.id); return `<div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><div><b>${Utils.escapeHtml(labels[t.level] || t.level)}</b><div class="text-muted" style="font-size:12px;margin-top:3px">${Utils.escapeHtml(t.training_plans?.title || '')}</div></div>${signed ? '<span class="badge badge-success">已签字</span>' : done ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.openSignCanvas('${admissionId}','${t.id}','${Utils.escapeHtml(labels[t.level] || t.level)}')">本人签字</button>` : '<span class="badge badge-warning">待完成学习</span>'}</div>`; }).join('')}</div><div style="border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><div><b>完整准入记录</b><div class="text-muted" style="font-size:12px;margin-top:3px">签署后等待项目现场确认</div></div>${finalSigned ? '<span class="badge badge-success">已签署</span>' : allReady ? `<button class="btn btn-primary" onclick="TrainingAdmissionMine.openSignCanvas('${admissionId}','','完整准入记录')">签署完整记录</button>` : '<span class="badge badge-warning">请先完成逐级签字</span>'}</div></div></div></div>`;
   },
