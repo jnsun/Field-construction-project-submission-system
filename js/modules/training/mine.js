@@ -28,6 +28,8 @@ const TrainingMine = {
     htmlCourse: null,       // 当前打开的 HTML 课件 { courseId }（message 校验用）
     hbSessions: {},         // course_id -> 心跳会话 id（training_study_logs.id）
     fileUrls: {},           // course_id -> 短期签名链接
+    studyQuizPassed: {},    // course_id -> 已通过的学习确认节点
+    studyQuizPending: null,
   },
 
   TYPE_LABEL: {
@@ -377,6 +379,9 @@ const TrainingMine = {
     const p = Math.min(100, Math.max(Number(prev.progress || 0), Number(pct || 0)));
     const pos = Math.max(Number(prev.max_position || 0), Number(position || 0));
 
+    const gate = this.nextStudyQuizGate(courseId, Number(prev.progress || 0), p);
+    if (gate) { await this.openStudyQuiz(courseId, gate, pct, position); return; }
+
     // 变化太小就不打搅数据库（完成时必须上报一次）
     if (p < this.PASS && p - Number(prev.progress || 0) < 5) return;
 
@@ -405,6 +410,40 @@ const TrainingMine = {
     } finally {
       this.state.saving = false;
     }
+  },
+
+  nextStudyQuizGate(courseId, previous, current) {
+    if (this.state.studyQuizPending || current < previous) return null;
+    const passed = this.state.studyQuizPassed[courseId] || new Set();
+    return [45, 85].find(point => previous < point && current >= point && !passed.has(point)) || null;
+  },
+
+  async openStudyQuiz(courseId, gate, pct, position) {
+    this.state.studyQuizPending = { courseId, gate, pct, position };
+    const { data, error } = await sb.rpc('training_study_quiz_for_course', { p_course_id: courseId });
+    const question = data?.question;
+    if (error || !question) {
+      (this.state.studyQuizPassed[courseId] ||= new Set()).add(gate);
+      this.state.studyQuizPending = null;
+      await this.report(courseId, pct, position);
+      return;
+    }
+    const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
+    const options = Array.isArray(question.options) ? question.options : [];
+    host.innerHTML = `<div class="modal-overlay"><div class="modal" style="max-width:620px"><div class="modal-header"><h3>学习确认</h3></div><div class="modal-body"><p class="hint">请完成确认题后继续学习。</p><p style="font-weight:600;line-height:1.7">${Utils.escapeHtml(question.stem || '')}</p><div style="display:grid;gap:8px;margin-top:14px">${options.map(x => `<label style="display:flex;gap:8px;padding:9px;border:1px solid #e5e7eb;border-radius:6px"><input type="radio" name="study-quiz-answer" value="${Utils.escapeHtml(x.key || '')}"><span><b>${Utils.escapeHtml(x.key || '')}.</b> ${Utils.escapeHtml(x.text || '')}</span></label>`).join('')}</div><div id="study-quiz-feedback" style="margin-top:12px"></div></div><div class="modal-footer"><button class="btn btn-primary" onclick="TrainingMine.submitStudyQuiz('${courseId}', ${gate}, '${question.id}', ${Number(pct)}, ${Number(position)})">提交答案</button></div></div></div>`;
+  },
+
+  async submitStudyQuiz(courseId, gate, questionId, pct, position) {
+    const answer = document.querySelector('input[name="study-quiz-answer"]:checked')?.value;
+    const feedback = document.getElementById('study-quiz-feedback');
+    if (!answer) { if (feedback) feedback.innerHTML = '<span style="color:#b91c1c">请选择一个答案。</span>'; return; }
+    const { data, error } = await sb.rpc('training_study_quiz_answer', { p_course_id: courseId, p_question_id: questionId, p_answer: answer });
+    if (error) { if (feedback) feedback.innerHTML = `<span style="color:#b91c1c">提交失败：${Utils.escapeHtml(error.message)}</span>`; return; }
+    if (!data?.correct) { if (feedback) feedback.innerHTML = `<span style="color:#b91c1c">答案不正确，请重新阅读并再试一次。${data?.analysis ? ` ${Utils.escapeHtml(data.analysis)}` : ''}</span>`; return; }
+    (this.state.studyQuizPassed[courseId] ||= new Set()).add(gate);
+    this.state.studyQuizPending = null;
+    const host = document.getElementById('training-modal-host'); if (host) host.innerHTML = '';
+    await this.report(courseId, pct, position);
   },
 
   // ------------------------------------------------------------- 各类渲染
