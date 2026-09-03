@@ -88,6 +88,9 @@
       <label class="btn only-md">导入 PDF 初稿
         <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="openPdfDraft(this)">
       </label>
+      <label class="btn only-md">导入 Word 初稿
+        <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="openDocxDraft(this)">
+      </label>
       <label class="btn only-inj" style="margin-left:auto">打开 .html 文件
         <input type="file" accept=".html,.htm" style="display:none" onchange="openHtmlFile(this)">
       </label>
@@ -933,6 +936,73 @@ async function openPdfDraft(input) {
     render();
   } catch (e) {
     info.textContent = 'PDF 导入失败：' + (e && e.message ? e.message : e);
+  }
+}
+
+async function docxDocumentXml(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('不是有效的 .docx 文件');
+  let at = view.getUint32(eocd + 16, true);
+  const count = view.getUint16(eocd + 10, true);
+  for (let n = 0; n < count; n++) {
+    if (view.getUint32(at, true) !== 0x02014b50) throw new Error('Word 文件目录损坏');
+    const method = view.getUint16(at + 10, true), compressed = view.getUint32(at + 20, true);
+    const nameLen = view.getUint16(at + 28, true), extraLen = view.getUint16(at + 30, true), commentLen = view.getUint16(at + 32, true);
+    const name = new TextDecoder().decode(bytes.slice(at + 46, at + 46 + nameLen));
+    const local = view.getUint32(at + 42, true);
+    if (name === 'word/document.xml') {
+      if (view.getUint32(local, true) !== 0x04034b50) throw new Error('Word 正文位置无效');
+      const localNameLen = view.getUint16(local + 26, true), localExtraLen = view.getUint16(local + 28, true);
+      const data = bytes.slice(local + 30 + localNameLen + localExtraLen, local + 30 + localNameLen + localExtraLen + compressed);
+      if (method === 0) return new TextDecoder().decode(data);
+      if (method === 8 && typeof DecompressionStream !== 'undefined') {
+        const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        return new TextDecoder().decode(new Uint8Array(await new Response(stream).arrayBuffer()));
+      }
+      throw new Error('当前浏览器不支持解压此 Word 文件，请使用较新的 Chrome、Edge 或微信内置浏览器');
+    }
+    at += 46 + nameLen + extraLen + commentLen;
+  }
+  throw new Error('Word 文件中没有找到正文内容');
+}
+
+async function openDocxDraft(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > 30 * 1024 * 1024) { alert('Word 文件不能超过 30MB，请拆分后导入。'); return; }
+  const info = document.getElementById('sec-count');
+  info.textContent = '正在本地读取 Word 正文，请稍候…';
+  try {
+    const xml = await docxDocumentXml(file);
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if (doc.querySelector('parsererror')) throw new Error('Word 正文解析失败');
+    const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    let usedTitle = false;
+    const lines = [];
+    Array.from(doc.getElementsByTagNameNS(ns, 'p')).forEach(p => {
+      const text = (p.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!text) return;
+      const style = p.getElementsByTagNameNS(ns, 'pStyle')[0]?.getAttributeNS(ns, 'val') || '';
+      if (/heading\s*1|标题\s*1/i.test(style) && !usedTitle) { lines.push('# ' + text); usedTitle = true; }
+      else if (/heading|标题/i.test(style)) lines.push('## ' + text);
+      else lines.push(text);
+    });
+    if (!lines.length) throw new Error('未能从 Word 中读到正文。请确认文件不是扫描图片或受密码保护。');
+    const base = file.name.replace(/\.docx$/i, '') || '培训课件';
+    if (!usedTitle) lines.unshift('# ' + base);
+    lines.splice(1, 0, '', '> 以下内容由本机从 Word 提取为可编辑初稿。图片、复杂表格和版式需人工补充；请结合项目风险、现场照片和应急联系方式完善后再提交审核。');
+    document.getElementById('md-input').value = lines.join('\n\n');
+    const t = document.getElementById('meta-title');
+    t.value = ''; t.dataset.auto = '1';
+    render();
+  } catch (e) {
+    info.textContent = 'Word 导入失败：' + (e && e.message ? e.message : e);
   }
 }
 
