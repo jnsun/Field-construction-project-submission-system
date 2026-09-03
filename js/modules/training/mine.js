@@ -30,6 +30,11 @@ const TrainingMine = {
     fileUrls: {},           // course_id -> 短期签名链接
     studyQuizPassed: {},    // course_id -> 已通过的学习确认节点
     studyQuizPending: null,
+    pendingProgress: {},    // 弱网时待回传的课件进度（只保存在当前账号的浏览器中）
+    queueKey: '',
+    queueUserId: '',
+    syncFlushing: false,
+    networkBound: false,
   },
 
   TYPE_LABEL: {
@@ -39,6 +44,7 @@ const TrainingMine = {
 
   // ---------------------------------------------------------------- 列表
   async render(box) {
+    await this.initWeakNetworkSupport();
     box.innerHTML = `
       <div class="toolbar">
         <div class="toolbar-left">
@@ -51,6 +57,84 @@ const TrainingMine = {
       <div id="mine-list"></div>
     `;
     await this.load();
+  },
+
+  // 弱网现场：先把已产生的学习进度放在当前账号的本机缓冲中，恢复网络后再由服务端复核。
+  async initWeakNetworkSupport() {
+    const { data } = await sb.auth.getSession();
+    const uid = data?.session?.user?.id;
+    if (uid && this.state.queueUserId !== uid) {
+      // 公用手机切换账号时绝不复用上一人的缓冲进度。
+      this.state.queueUserId = uid;
+      this.state.queueKey = `training-pending-progress-v1:${uid}`;
+      try { this.state.pendingProgress = JSON.parse(localStorage.getItem(this.state.queueKey) || '{}') || {}; } catch (_) { this.state.pendingProgress = {}; }
+    }
+    if (!this.state.networkBound) {
+      this.state.networkBound = true;
+      window.addEventListener('online', () => {
+        this.updateWeakNetworkHint();
+        this.flushPendingProgress();
+      });
+      window.addEventListener('offline', () => this.updateWeakNetworkHint());
+    }
+    if (navigator.onLine) this.flushPendingProgress();
+  },
+
+  persistPendingProgress() {
+    if (!this.state.queueKey) return;
+    try { localStorage.setItem(this.state.queueKey, JSON.stringify(this.state.pendingProgress)); } catch (_) { /* 本机存储不可用时仍保留当前页面内存 */ }
+  },
+
+  queueProgress(courseId, progress, position) {
+    const old = this.state.pendingProgress[courseId] || {};
+    this.state.pendingProgress[courseId] = {
+      progress: Math.max(Number(old.progress || 0), Number(progress || 0)),
+      position: Math.max(Number(old.position || 0), Number(position || 0)),
+      queuedAt: Date.now(),
+    };
+    this.persistPendingProgress();
+    this.updateWeakNetworkHint();
+  },
+
+  updateWeakNetworkHint() {
+    const hint = document.getElementById('learn-sync-status');
+    if (!hint) return;
+    const count = Object.keys(this.state.pendingProgress || {}).length;
+    if (!navigator.onLine) {
+      hint.innerHTML = `<span style="color:#b45309">当前网络不稳定，${count || '新的'}学习进度已暂存，恢复网络后自动上传。</span>`;
+    } else if (count) {
+      hint.innerHTML = `<span style="color:#2563eb">有 ${count} 项学习进度正在同步，请保持页面打开。</span>`;
+    } else {
+      hint.textContent = '学习进度已同步';
+    }
+  },
+
+  async flushPendingProgress() {
+    if (this.state.syncFlushing || !navigator.onLine || !Object.keys(this.state.pendingProgress || {}).length) { this.updateWeakNetworkHint(); return; }
+    this.state.syncFlushing = true;
+    let completed = false;
+    try {
+      for (const [courseId, item] of Object.entries({ ...this.state.pendingProgress })) {
+        const { data, error } = await sb.rpc('training_save_course_progress', {
+          p_course_id: courseId, p_progress: Number(item.progress || 0), p_position: Number(item.position || 0),
+        });
+        if (error) break; // 保留队列，下次联网或刷新后继续；服务端仍会重新验证参训范围。
+        delete this.state.pendingProgress[courseId];
+        completed = completed || !!data?.completed;
+        this.persistPendingProgress();
+      }
+    } catch (_) {
+      // 网络再次中断时不清队列。
+    } finally {
+      this.state.syncFlushing = false;
+      this.updateWeakNetworkHint();
+    }
+    if (completed) {
+      const hint = document.getElementById('learn-hint');
+      const mode = this.state.plan?.exam_mode || 'none';
+      if (hint) hint.innerHTML = `<b style="color:#22c55e">${mode === 'none' ? '全部必修课件已完成，系统已自动记录本次培训。' : '全部必修课件已学完，请返回列表开始考试。'}</b>`;
+      await this.load();
+    }
   },
 
   async load() {
@@ -255,6 +339,7 @@ const TrainingMine = {
     if (!r) return;
     this.state.plan = r;
     this.state.activeId = '';
+    await this.flushPendingProgress();
 
     const [{ data: courses, error: e1 }, { data: prog, error: e2 }] = await Promise.all([
       sb.from('training_courses').select('*').eq('plan_id', planId).order('sort_order'),
@@ -267,6 +352,16 @@ const TrainingMine = {
     this.state.fileUrls = {};
     this.state.progress = {};
     (prog || []).forEach(p => { this.state.progress[p.course_id] = p; });
+    // 离线缓冲优先展示较大的本地进度，避免员工恢复页面后看到进度倒退。
+    Object.entries(this.state.pendingProgress || {}).forEach(([courseId, p]) => {
+      const remote = this.state.progress[courseId] || {};
+      this.state.progress[courseId] = {
+        ...remote,
+        progress: Math.max(Number(remote.progress || 0), Number(p.progress || 0)),
+        max_position: Math.max(Number(remote.max_position || 0), Number(p.position || 0)),
+        finished: !!remote.finished || Number(p.progress || 0) >= this.PASS,
+      };
+    });
 
     if (!this.state.courses.length) {
       alert('该培训还没有课件，请联系管理员添加后再学习。');
@@ -307,13 +402,14 @@ const TrainingMine = {
             </div>
           </div>
           <div class="modal-footer" style="justify-content:space-between">
-            <span id="learn-hint" class="text-muted" style="font-size:12px"></span>
+            <div style="display:grid;gap:3px"><span id="learn-hint" class="text-muted" style="font-size:12px"></span><span id="learn-sync-status" class="text-muted" style="font-size:12px"></span></div>
             <div style="display:flex;gap:8px"><button class="btn btn-secondary" onclick="TrainingMine.downloadCurrentCourse()">下载当前课件</button><button class="btn btn-secondary" onclick="TrainingMine.finishLearn()">关闭</button></div>
           </div>
         </div>
       </div>
     `;
     this.renderNav();
+    this.updateWeakNetworkHint();
   },
 
   renderNav() {
@@ -414,26 +510,8 @@ const TrainingMine = {
     };
     this.renderNav();
 
-    if (this.state.saving) return;
-    this.state.saving = true;
-    try {
-      const { data } = await sb.rpc('training_save_course_progress', {
-        p_course_id: courseId, p_progress: p, p_position: pos,
-      });
-      if (data && data.completed) {
-        const hint = document.getElementById('learn-hint');
-        const mode = this.state.plan?.exam_mode || 'none';
-        const msg = mode === 'none'
-          ? '全部必修课件已完成，系统已自动记录本次培训。'
-          : '全部必修课件已学完，请返回列表开始考试，考试通过并签字后本次培训才会归档。';
-        if (hint) hint.innerHTML = `<b style="color:#22c55e">${msg}</b>`;
-        await this.load();
-      }
-    } catch (e) {
-      // 静默失败，下次继续上报
-    } finally {
-      this.state.saving = false;
-    }
+    this.queueProgress(courseId, p, pos);
+    await this.flushPendingProgress();
   },
 
   nextStudyQuizGate(courseId, previous, current) {
