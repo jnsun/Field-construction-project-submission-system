@@ -179,8 +179,9 @@ const TrainingContractors = {
   },
 
   openMemberForm() {
-    this.modal('建立外协人员档案并加入项目', `<p class="hint">第一版后台可代为建档；外协人员通过邀请码自助申请的流程将在小程序登录接入后启用。</p>
+    this.modal('建立外协人员档案并加入项目', `<p class="hint">项目部代为建档时，身份证号会加密保存到本项目入场档案，不写入普通人员表。</p>
       <div class="form-row"><div class="form-group"><label>姓名 <span class="required">*</span></label><input id="me-name" class="form-control"></div><div class="form-group"><label>手机号 <span class="required">*</span></label><input id="me-phone" class="form-control"></div></div>
+      <div class="form-group"><label>身份证号 <span class="required">*</span></label><input id="me-id-number" class="form-control" maxlength="18" autocomplete="off" placeholder="18 位大陆居民身份证号"></div>
       <div class="form-row"><div class="form-group"><label>工种</label><input id="me-position" class="form-control" placeholder="如：钻探工 / 电工"></div><div class="form-group"><label>项目 <span class="required">*</span></label><select id="me-project" class="form-control">${this.projectOptions()}</select></div></div>
       <div class="form-group"><label>外协单位 <span class="required">*</span></label><select id="me-company" class="form-control">${this.companyOptions()}</select></div>`, 'TrainingContractors.submitMember()');
   },
@@ -188,21 +189,20 @@ const TrainingContractors = {
   async submitMember() {
     const v = id => (document.getElementById(id) || {}).value || '';
     const project = this.project(v('me-project'));
-    const name = v('me-name').trim(), phone = v('me-phone').trim();
-    if (!name || !phone || !project.id || !v('me-company')) { Utils.toast('姓名、手机号、项目和外协单位不能为空', 'error'); return; }
-    const emp = await sb.from('training_employees').insert({ name, phone, position: v('me-position').trim() || null, department_id: project.lead_entity_id, emp_type: 'employee', status: 'active', remark: '外协人员', created_by: (Auth.currentUser || {}).id }).select('id').single();
-    if (emp.error) { Utils.toast(emp.error.message, 'error'); return; }
-    const member = await sb.from('site_project_members').insert({ project_id: project.id, employee_id: emp.data.id, contractor_id: v('me-company'), membership_type: 'external', created_by: (Auth.currentUser || {}).id });
-    if (member.error) { Utils.toast(member.error.message, 'error'); return; }
+    const name = v('me-name').trim(), phone = v('me-phone').trim(), idNumber = v('me-id-number').trim().toUpperCase(), position = v('me-position').trim();
+    if (!name || !phone || !idNumber || !position || !project.id || !v('me-company')) { Utils.toast('姓名、手机号、身份证号、工种、项目和外协单位不能为空', 'error'); return; }
+    if (!/^[1-9]\d{16}[\dX]$/.test(idNumber)) { Utils.toast('请填写 18 位大陆居民身份证号', 'error'); return; }
+    const { data, error } = await sb.rpc('training_batch_add_contractor_members', { p_project_id: project.id, p_contractor_id: v('me-company'), p_people: [{ name, phone, id_number: idNumber, position }] });
+    if (error || data?.[0]?.result_code === 'failed') { Utils.toast(error?.message || data?.[0]?.result_message || '人员建档失败', 'error'); return; }
     this.close(); Utils.toast('外协人员已建档并加入项目', 'success'); await this.load();
   },
 
-  MEMBER_IMPORT_HEADERS: ['姓名*', '手机号*', '工种/岗位*'],
+  MEMBER_IMPORT_HEADERS: ['姓名*', '手机号*', '身份证号*', '工种/岗位*'],
   downloadMemberTemplate() {
     if (typeof XLSX === 'undefined') { Utils.toast('Excel 组件未加载，请刷新页面后重试', 'error'); return; }
-    const data = [this.MEMBER_IMPORT_HEADERS, ['张三', '13800138000', '钻探工']];
-    const sheet = XLSX.utils.aoa_to_sheet(data); sheet['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 18 }];
-    const help = XLSX.utils.aoa_to_sheet([['填写说明'], ['1. 姓名、手机号、工种/岗位均为必填项。'], ['2. 项目和外协单位在导入页面选择，不要写在表格内。'], ['3. 本模板不收集身份证号、合同、资质和证照附件；这些资料仍在外协台账中人工登记和审核。'], ['4. 同一手机号只能对应同一姓名；与其他外协单位存在有效归属冲突时，该行会导入失败。']]); help['!cols'] = [{ wch: 72 }];
+    const data = [this.MEMBER_IMPORT_HEADERS, ['张三', '13800138000', '110101199001011234', '钻探工']];
+    const sheet = XLSX.utils.aoa_to_sheet(data); sheet['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 18 }];
+    const help = XLSX.utils.aoa_to_sheet([['填写说明'], ['1. 姓名、手机号、身份证号、工种/岗位均为必填项。'], ['2. 身份证号必须为 18 位大陆居民身份证号，系统将加密保存。'], ['3. 项目和外协单位在导入页面选择，不要写在表格内。'], ['4. 合同、资质和证照附件仍在外协台账中人工登记和审核。'], ['5. 同一手机号只能对应同一姓名；与其他外协单位存在有效归属冲突时，该行会导入失败。']]); help['!cols'] = [{ wch: 72 }];
     const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '外协人员导入'); XLSX.utils.book_append_sheet(book, help, '填写说明');
     XLSX.writeFile(book, `项目外协人员导入模板_${Utils.formatDate(new Date())}.xlsx`);
   },
@@ -215,7 +215,7 @@ const TrainingContractors = {
   renderMemberImport() {
     const rows = this.state.memberImportRows || []; const result = this.state.memberImportResult;
     const valid = rows.filter(r => !r.errors.length); const invalid = rows.filter(r => r.errors.length);
-    const preview = result ? `<p>导入完成：新建 <b>${result.filter(r => r.result_code === 'created').length}</b> 人，复用档案 <b>${result.filter(r => r.result_code === 'reused').length}</b> 人，失败 <b style="color:#b91c1c">${result.filter(r => r.result_code === 'failed').length}</b> 人。</p><div style="max-height:260px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>结果</th><th>说明</th></tr></thead><tbody>${result.map(r => `<tr><td>${r.row_no}</td><td>${Utils.escapeHtml(r.result_code)}</td><td>${Utils.escapeHtml(r.result_message)}</td></tr>`).join('')}</tbody></table></div>` : `<p class="hint">表格仅导入人员基本信息。导入成功后会自动加入项目，但不会自动下发培训；请在“准入执行”页批量下发。</p><div class="form-row"><div class="form-group"><label>项目 <span class="required">*</span></label><select id="contractor-import-project" class="form-control">${this.projectOptions(this.state.memberImportProject)}</select></div><div class="form-group"><label>外协单位 <span class="required">*</span></label><select id="contractor-import-company" class="form-control">${this.companyOptions(this.state.memberImportCompany)}</select></div></div><div class="form-group"><label>Excel 文件</label><input id="contractor-import-file" type="file" accept=".xlsx,.xls" class="form-control"></div>${rows.length ? `<p>可导入 <b>${valid.length}</b> 行；需修正 <b style="color:#b91c1c">${invalid.length}</b> 行。</p><div style="max-height:220px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>姓名</th><th>手机号</th><th>工种</th><th>检查结果</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.rowNo}</td><td>${Utils.escapeHtml(r.name)}</td><td>${Utils.escapeHtml(r.phone)}</td><td>${Utils.escapeHtml(r.position)}</td><td>${r.errors.length ? `<span style="color:#b91c1c">${Utils.escapeHtml(r.errors.join('；'))}</span>` : '<span style="color:#15803d">可导入</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+    const preview = result ? `<p>导入完成：新建 <b>${result.filter(r => r.result_code === 'created').length}</b> 人，复用档案 <b>${result.filter(r => r.result_code === 'reused').length}</b> 人，失败 <b style="color:#b91c1c">${result.filter(r => r.result_code === 'failed').length}</b> 人。</p><div style="max-height:260px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>结果</th><th>说明</th></tr></thead><tbody>${result.map(r => `<tr><td>${r.row_no}</td><td>${Utils.escapeHtml(r.result_code)}</td><td>${Utils.escapeHtml(r.result_message)}</td></tr>`).join('')}</tbody></table></div>` : `<p class="hint">表格将建立加密身份证档案并自动加入项目，但不会自动下发培训；请在“准入执行”页批量下发。</p><div class="form-row"><div class="form-group"><label>项目 <span class="required">*</span></label><select id="contractor-import-project" class="form-control">${this.projectOptions(this.state.memberImportProject)}</select></div><div class="form-group"><label>外协单位 <span class="required">*</span></label><select id="contractor-import-company" class="form-control">${this.companyOptions(this.state.memberImportCompany)}</select></div></div><div class="form-group"><label>Excel 文件</label><input id="contractor-import-file" type="file" accept=".xlsx,.xls" class="form-control"></div>${rows.length ? `<p>可导入 <b>${valid.length}</b> 行；需修正 <b style="color:#b91c1c">${invalid.length}</b> 行。</p><div style="max-height:220px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>姓名</th><th>手机号</th><th>身份证号</th><th>工种</th><th>检查结果</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.rowNo}</td><td>${Utils.escapeHtml(r.name)}</td><td>${Utils.escapeHtml(r.phone)}</td><td>${Utils.escapeHtml(r.idNumber ? `${r.idNumber.slice(0, 3)}***********${r.idNumber.slice(-4)}` : '')}</td><td>${Utils.escapeHtml(r.position)}</td><td>${r.errors.length ? `<span style="color:#b91c1c">${Utils.escapeHtml(r.errors.join('；'))}</span>` : '<span style="color:#15803d">可导入</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
     this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingContractors.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:760px"><div class="modal-header"><h3>批量导入项目外协人员</h3><button class="modal-close" onclick="TrainingContractors.close()">×</button></div><div class="modal-body">${preview}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingContractors.close()">${result ? '关闭' : '取消'}</button>${result ? '' : `<button class="btn btn-secondary" onclick="TrainingContractors.parseMemberImport()">解析文件</button>${rows.length && valid.length ? '<button class="btn btn-primary" onclick="TrainingContractors.submitMemberImport()">确认导入</button>' : ''}`}</div></div></div>`;
   },
   async parseMemberImport() {
@@ -229,12 +229,13 @@ const TrainingContractors = {
     if (raw.length < 2) { Utils.toast('表格中没有人员数据', 'error'); return; }
     const phones = new Set(); const rows = [];
     raw.slice(1).forEach((line, index) => {
-      const name = String(line[0] || '').trim(), phone = String(line[1] || '').trim(), position = String(line[2] || '').trim();
-      if (!name && !phone && !position) return;
-      const errors = []; if (!name || !phone || !position) errors.push('姓名、手机号和工种均必填');
+      const name = String(line[0] || '').trim(), phone = String(line[1] || '').trim(), idNumber = String(line[2] || '').trim().toUpperCase(), position = String(line[3] || '').trim();
+      if (!name && !phone && !idNumber && !position) return;
+      const errors = []; if (!name || !phone || !idNumber || !position) errors.push('姓名、手机号、身份证号和工种均必填');
       if (phone && !/^1[3-9]\d{9}$/.test(phone)) errors.push('手机号格式不正确');
+      if (idNumber && !/^[1-9]\d{16}[\dX]$/.test(idNumber)) errors.push('身份证号必须为 18 位大陆居民身份证号');
       if (phone && phones.has(phone)) errors.push('本表手机号重复'); if (phone) phones.add(phone);
-      rows.push({ rowNo: index + 2, name, phone, position, errors });
+      rows.push({ rowNo: index + 2, name, phone, idNumber, position, errors });
     });
     if (rows.length > 300) { Utils.toast('单次最多导入 300 人，请分批处理', 'error'); return; }
     this.state.memberImportProject = project; this.state.memberImportCompany = company; this.state.memberImportRows = rows; this.renderMemberImport();
@@ -242,7 +243,7 @@ const TrainingContractors = {
   async submitMemberImport() {
     const rows = (this.state.memberImportRows || []).filter(r => !r.errors.length); if (!rows.length) { Utils.toast('没有可导入的人员', 'error'); return; }
     if (!confirm(`确认将 ${rows.length} 名外协人员加入项目？`)) return;
-    const { data, error } = await sb.rpc('training_batch_add_contractor_members', { p_project_id: this.state.memberImportProject, p_contractor_id: this.state.memberImportCompany, p_people: rows.map(r => ({ name: r.name, phone: r.phone, position: r.position })) });
+    const { data, error } = await sb.rpc('training_batch_add_contractor_members', { p_project_id: this.state.memberImportProject, p_contractor_id: this.state.memberImportCompany, p_people: rows.map(r => ({ name: r.name, phone: r.phone, id_number: r.idNumber, position: r.position })) });
     if (error) { Utils.toast(error.message, 'error'); return; }
     this.state.memberImportResult = data || []; this.renderMemberImport(); await this.load();
   },
