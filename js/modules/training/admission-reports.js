@@ -2,11 +2,11 @@
 // js/modules/training/admission-reports.js —— 准入固定报表
 // =============================================================
 const TrainingAdmissionReports = {
-  state: { projects: [], report: 'ledger', rows: [] },
+  state: { projects: [], report: 'ledger', rows: [], year: new Date().getFullYear() },
   labels: { ledger: '三级教育台账', cards: '三级安全教育记录卡', signatures: '培训签到表', exam: '考试成绩单', annual: '年度培训统计' },
 
   async render(box) {
-    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><label>报表：</label><select id="admission-report-type" onchange="TrainingAdmissionReports.changeType()">${Object.entries(this.labels).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><label>项目：</label><select id="admission-report-project" onchange="TrainingAdmissionReports.loadReport()"><option value="">全部项目</option></select></div><div class="toolbar-right"><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.loadReport()">刷新</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.printReport()">打印 / 保存 PDF</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionReports.exportCsv()">导出 CSV</button></div></div><div id="admission-report-body"></div>`;
+    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><label>报表：</label><select id="admission-report-type" onchange="TrainingAdmissionReports.changeType()">${Object.entries(this.labels).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><label>年度：</label><input id="admission-report-year" type="number" min="2020" max="2100" value="${this.state.year}" style="width:88px" onchange="TrainingAdmissionReports.changeYear()"><label>项目：</label><select id="admission-report-project" onchange="TrainingAdmissionReports.loadReport()"><option value="">全部项目</option></select></div><div class="toolbar-right"><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.loadReport()">刷新</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.printReport()">打印 / 保存 PDF</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionReports.exportCsv()">导出 CSV</button></div></div><div id="admission-report-body"></div>`;
     const { data, error } = await sb.from('site_projects').select('id, project_code, name').order('created_at', { ascending: false });
     if (error) throw error;
     this.state.projects = data || [];
@@ -16,12 +16,13 @@ const TrainingAdmissionReports = {
   },
 
   changeType() { this.loadReport(); },
+  changeYear() { this.state.year = Number(document.getElementById('admission-report-year')?.value) || new Date().getFullYear(); this.loadReport(); },
 
   async loadReport() {
     const type = (document.getElementById('admission-report-type') || {}).value || 'ledger';
     const projectId = (document.getElementById('admission-report-project') || {}).value || null;
-    const rpc = type === 'signatures' ? 'training_admission_signature_report' : (type === 'cards' ? 'training_admission_record_cards' : 'training_admission_report');
-    const result = await sb.rpc(rpc, { p_project_id: projectId });
+    const rpc = type === 'signatures' ? 'training_admission_signature_report' : (type === 'cards' ? 'training_admission_record_cards' : (type === 'annual' ? 'training_admission_annual_stats' : 'training_admission_report'));
+    const result = await sb.rpc(rpc, type === 'annual' ? { p_year: this.state.year, p_project_id: projectId } : { p_project_id: projectId });
     if (result.error) { const body = document.getElementById('admission-report-body'); if (body) body.innerHTML = `<div class="alert alert-danger">${Utils.escapeHtml(result.error.message)}</div>`; return; }
     this.state.report = type; this.state.rows = result.data || [];
     this.renderReport();
@@ -49,8 +50,9 @@ const TrainingAdmissionReports = {
 
   renderAnnual(box) {
     const rows = this.state.rows;
-    const total = rows.length, eligible = rows.filter(r => r.admission_status === 'eligible').length, passed = rows.filter(r => r.exam_score != null && Number(r.exam_score) >= 80).length;
-    box.innerHTML = `<div class="stats-grid">${this.card('准入记录', total, 'total')}${this.card('当前可上岗', eligible, 'success')}${this.card('考试有成绩', passed, 'info')}${this.card('禁止/失效', total - eligible, total - eligible ? 'warning' : 'success')}</div><div class="card"><div class="card-header"><h2>年度培训统计口径</h2></div><div class="card-body"><p>统计范围：当前账号可查看的项目准入记录。正式年度报表将继续补充公司级、经营实体级和项目级课件学时、签到人数、考试通过率。</p></div></div>`;
+    const sum = key => rows.reduce((n, x) => n + Number(x[key] || 0), 0);
+    const total = sum('admission_total'), eligible = sum('eligible_total'), passed = sum('exam_passed_total');
+    box.innerHTML = `<div class="stats-grid">${this.card('准入记录', total, 'total')}${this.card('当前可上岗', eligible, 'success')}${this.card('综合考试通过', passed, 'info')}${this.card('累计有效学时', sum('effective_hours'), 'warning')}</div><div class="card"><div class="card-header"><h2>${this.state.year}年度项目培训统计</h2></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr><th>项目</th><th>准入人数</th><th>可上岗</th><th>公司级</th><th>经营实体级</th><th>项目级</th><th>专项</th><th>有效学时</th><th>考试通过/次数</th><th>禁止/失效</th></tr></thead><tbody>${rows.length ? rows.map(r => `<tr><td>${Utils.escapeHtml(r.project_code)} · ${Utils.escapeHtml(r.project_name)}</td><td>${r.admission_total}</td><td>${r.eligible_total}</td><td>${r.company_completed}</td><td>${r.entity_completed}</td><td>${r.project_completed}</td><td>${r.special_completed}</td><td>${r.effective_hours}</td><td>${r.exam_passed_total} / ${r.exam_attempts_total}</td><td>${r.blocked_total}</td></tr>`).join('') : TrainingModule.emptyRow(10, '本年度暂无项目准入记录')}</tbody></table></div></div>`;
   },
 
   card(label, value, cls) { return `<div class="stat-card ${cls}"><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`; },
@@ -58,7 +60,9 @@ const TrainingAdmissionReports = {
   exportCsv() {
     if (!this.state.rows.length) { Utils.toast('暂无数据可导出', 'info'); return; }
     const type = this.state.report;
-    const columns = type === 'cards'
+    const columns = type === 'annual'
+      ? [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'admission_total', label: '准入人数' }, { key: 'eligible_total', label: '可上岗人数' }, { key: 'company_completed', label: '公司级完成' }, { key: 'entity_completed', label: '经营实体级完成' }, { key: 'project_completed', label: '项目级完成' }, { key: 'special_completed', label: '专项完成' }, { key: 'effective_hours', label: '有效学时' }, { key: 'exam_passed_total', label: '考试通过' }, { key: 'exam_attempts_total', label: '考试次数' }, { key: 'blocked_total', label: '禁止或失效' }]
+      : type === 'cards'
       ? [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'employee_name', label: '人员' }, { key: 'employee_no', label: '工号' }, { key: 'department_name', label: '部门' }, { key: 'work_position', label: '工种' }, { key: 'phone', label: '联系电话' }, { key: 'id_number', label: '身份证号' }, { key: 'contractor_name', label: '外协单位' }, { key: 'admission_status', label: '状态' }, { key: 'valid_until', label: '有效至' }]
       : type === 'signatures'
       ? [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'employee_name', label: '人员' }, { key: 'level_name', label: '培训层级' }, { key: 'signer_role', label: '签署角色' }, { key: 'signed_at', label: '签署时间' }, { key: 'record_hash', label: '记录哈希' }]
@@ -76,7 +80,10 @@ const TrainingAdmissionReports = {
     const esc = v => Utils.escapeHtml(v == null ? '' : String(v));
     if (type === 'cards') { this.printRecordCards(rows, project); return; }
     let head = '', body = '';
-    if (type === 'signatures') {
+    if (type === 'annual') {
+      head = '<tr><th>序号</th><th>项目</th><th>准入人数</th><th>可上岗</th><th>公司级</th><th>经营实体级</th><th>项目级</th><th>专项</th><th>有效学时</th><th>考试通过/次数</th><th>禁止/失效</th></tr>';
+      body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.project_code)} ${esc(r.project_name)}</td><td>${r.admission_total}</td><td>${r.eligible_total}</td><td>${r.company_completed}</td><td>${r.entity_completed}</td><td>${r.project_completed}</td><td>${r.special_completed}</td><td>${esc(r.effective_hours)}</td><td>${r.exam_passed_total} / ${r.exam_attempts_total}</td><td>${r.blocked_total}</td></tr>`).join('');
+    } else if (type === 'signatures') {
       head = '<tr><th>序号</th><th>项目</th><th>人员</th><th>培训层级</th><th>签署角色</th><th>签署时间</th><th>记录哈希</th></tr>';
       body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.project_code)} ${esc(r.project_name)}</td><td>${esc(r.employee_name)}</td><td>${esc(r.level_name)}</td><td>${esc(r.signer_role)}</td><td>${esc((r.signed_at || '').slice(0, 16).replace('T', ' '))}</td><td>${esc(r.record_hash || '')}</td></tr>`).join('');
     } else {
