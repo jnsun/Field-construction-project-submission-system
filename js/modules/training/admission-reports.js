@@ -3,7 +3,7 @@
 // =============================================================
 const TrainingAdmissionReports = {
   state: { projects: [], report: 'ledger', rows: [], year: new Date().getFullYear() },
-  labels: { ledger: '三级教育台账', cards: '三级安全教育记录卡', signatures: '培训签到表', exam: '考试成绩单', annual: '年度培训统计' },
+  labels: { ledger: '三级教育台账', cards: '三级安全教育记录卡', signatures: '培训签到表', exam: '考试成绩单', contractors: '外协人员台账', annual: '年度培训统计' },
 
   async render(box) {
     box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><label>报表：</label><select id="admission-report-type" onchange="TrainingAdmissionReports.changeType()">${Object.entries(this.labels).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><label>年度：</label><input id="admission-report-year" type="number" min="2020" max="2100" value="${this.state.year}" style="width:88px" onchange="TrainingAdmissionReports.changeYear()"><label>项目：</label><select id="admission-report-project" onchange="TrainingAdmissionReports.loadReport()"><option value="">全部项目</option></select></div><div class="toolbar-right"><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.loadReport()">刷新</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReports.printReport()">打印 / 保存 PDF</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionReports.exportCsv()">导出 CSV</button></div></div><div id="admission-report-body"></div>`;
@@ -21,7 +21,7 @@ const TrainingAdmissionReports = {
   async loadReport() {
     const type = (document.getElementById('admission-report-type') || {}).value || 'ledger';
     const projectId = (document.getElementById('admission-report-project') || {}).value || null;
-    const rpc = type === 'signatures' ? 'training_admission_signature_report' : (type === 'cards' ? 'training_admission_record_cards' : (type === 'annual' ? 'training_admission_annual_stats' : 'training_admission_report'));
+    const rpc = type === 'signatures' ? 'training_admission_signature_report' : (type === 'cards' ? 'training_admission_record_cards' : (type === 'contractors' ? 'training_contractor_personnel_ledger' : (type === 'annual' ? 'training_admission_annual_stats' : 'training_admission_report')));
     const result = await sb.rpc(rpc, type === 'annual' ? { p_year: this.state.year, p_project_id: projectId } : { p_project_id: projectId });
     if (result.error) { const body = document.getElementById('admission-report-body'); if (body) body.innerHTML = `<div class="alert alert-danger">${Utils.escapeHtml(result.error.message)}</div>`; return; }
     this.state.report = type; this.state.rows = result.data || [];
@@ -35,6 +35,10 @@ const TrainingAdmissionReports = {
     if (type === 'cards') { this.renderCards(box); return; }
     if (type === 'signatures') {
       box.innerHTML = `<div class="card"><div class="card-header"><h2>培训签到表（${this.state.rows.length}）</h2></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr><th>项目</th><th>人员</th><th>培训层级</th><th>签署角色</th><th>签署时间</th><th>记录哈希</th></tr></thead><tbody>${this.state.rows.length ? this.state.rows.map(r => `<tr><td>${Utils.escapeHtml(r.project_code)} · ${Utils.escapeHtml(r.project_name)}</td><td>${Utils.escapeHtml(r.employee_name)}</td><td>${Utils.escapeHtml(r.level_name)}</td><td>${Utils.escapeHtml(r.signer_role)}</td><td>${Utils.escapeHtml((r.signed_at || '').slice(0, 16).replace('T', ' '))}</td><td>${Utils.escapeHtml(r.record_hash || '')}</td></tr>`).join('') : TrainingModule.emptyRow(6, '暂无电子签到记录')}</tbody></table></div></div>`;
+      return;
+    }
+    if (type === 'contractors') {
+      box.innerHTML = `<div class="card"><div class="card-header"><h2>外协人员台账（${this.state.rows.length}）</h2></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:1180px"><thead><tr><th>项目</th><th>人员 / 工种</th><th>外协单位</th><th>合同</th><th>特种作业证</th><th>在场状态</th><th>准入状态</th><th>有效至</th></tr></thead><tbody>${this.state.rows.length ? this.state.rows.map(r => `<tr><td>${Utils.escapeHtml(r.project_code)} · ${Utils.escapeHtml(r.project_name)}</td><td><b>${Utils.escapeHtml(r.employee_name)}</b><br><span class="text-muted">${Utils.escapeHtml(r.phone || '')} · ${Utils.escapeHtml(r.work_position || '未填工种')}</span></td><td>${Utils.escapeHtml(r.contractor_name || '')}<br><span class="text-muted">${Utils.escapeHtml(r.unified_code || '')}</span></td><td>${Utils.escapeHtml(r.contract_no || '未登记')}<br><span class="text-muted">${Utils.escapeHtml(r.contract_status || '—')}</span></td><td>${Utils.escapeHtml(r.special_certificates || '无')}<br><span class="text-muted">${Utils.escapeHtml(r.certificate_status || '')}</span></td><td>${Utils.escapeHtml(r.member_status === 'active' ? '在场' : (r.member_status || '—'))}</td><td>${r.admission_status === 'not_started' ? '<span class="badge badge-danger">未发起准入</span>' : this.status(r.admission_status)}</td><td>${Utils.escapeHtml(r.valid_until || '—')}</td></tr>`).join('') : TrainingModule.emptyRow(8, '暂无外协人员记录')}</tbody></table></div></div>`;
       return;
     }
     const rows = this.state.rows;
@@ -66,6 +70,8 @@ const TrainingAdmissionReports = {
       ? [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'employee_name', label: '人员' }, { key: 'employee_no', label: '工号' }, { key: 'department_name', label: '部门' }, { key: 'work_position', label: '工种' }, { key: 'phone', label: '联系电话' }, { key: 'id_number', label: '身份证号' }, { key: 'contractor_name', label: '外协单位' }, { key: 'admission_status', label: '状态' }, { key: 'valid_until', label: '有效至' }]
       : type === 'signatures'
       ? [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'employee_name', label: '人员' }, { key: 'level_name', label: '培训层级' }, { key: 'signer_role', label: '签署角色' }, { key: 'signed_at', label: '签署时间' }, { key: 'record_hash', label: '记录哈希' }]
+      : type === 'contractors'
+      ? [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'employee_name', label: '人员' }, { key: 'phone', label: '手机号' }, { key: 'work_position', label: '工种' }, { key: 'contractor_name', label: '外协单位' }, { key: 'unified_code', label: '统一社会信用代码' }, { key: 'contract_no', label: '合同编号' }, { key: 'contract_name', label: '合同名称' }, { key: 'contract_status', label: '合同状态' }, { key: 'special_certificates', label: '特种作业证' }, { key: 'certificate_status', label: '证照审核状态' }, { key: 'member_status', label: '在场状态' }, { key: 'admission_status', label: '准入状态' }, { key: 'valid_until', label: '凭证有效至' }]
       : [{ key: 'project_code', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'employee_name', label: '人员' }, { key: 'phone', label: '手机号' }, { key: 'work_position', label: '工种' }, { key: 'contractor_name', label: '外协单位' }, { key: 'company_done', label: '公司级完成数' }, { key: 'entity_done', label: '经营实体级完成数' }, { key: 'project_done', label: '项目级完成数' }, { key: 'special_done', label: '专项完成数' }, { key: 'exam_score', label: '考试成绩' }, { key: 'admission_status', label: '状态' }, { key: 'valid_until', label: '凭证有效至' }];
     Utils.exportCSV(this.state.rows, `培训准入${this.labels[type] || '报表'}_${Utils.formatDate(new Date())}.csv`, columns);
   },
@@ -86,6 +92,9 @@ const TrainingAdmissionReports = {
     } else if (type === 'signatures') {
       head = '<tr><th>序号</th><th>项目</th><th>人员</th><th>培训层级</th><th>签署角色</th><th>签署时间</th><th>记录哈希</th></tr>';
       body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.project_code)} ${esc(r.project_name)}</td><td>${esc(r.employee_name)}</td><td>${esc(r.level_name)}</td><td>${esc(r.signer_role)}</td><td>${esc((r.signed_at || '').slice(0, 16).replace('T', ' '))}</td><td>${esc(r.record_hash || '')}</td></tr>`).join('');
+    } else if (type === 'contractors') {
+      head = '<tr><th>序号</th><th>项目</th><th>人员/工种</th><th>外协单位</th><th>合同</th><th>特种作业证</th><th>在场状态</th><th>准入状态</th><th>有效至</th></tr>';
+      body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.project_code)} ${esc(r.project_name)}</td><td>${esc(r.employee_name)} / ${esc(r.work_position || '—')}</td><td>${esc(r.contractor_name)}</td><td>${esc(r.contract_no || '未登记')}（${esc(r.contract_status || '—')}）</td><td>${esc(r.special_certificates || '无')}（${esc(r.certificate_status || '')}）</td><td>${esc(r.member_status === 'active' ? '在场' : r.member_status || '—')}</td><td>${esc(r.admission_status === 'not_started' ? '未发起准入' : this.statusText(r.admission_status))}</td><td>${esc(r.valid_until || '—')}</td></tr>`).join('');
     } else {
       head = '<tr><th>序号</th><th>项目</th><th>人员</th><th>工种</th><th>外协单位</th><th>公司级</th><th>经营实体级</th><th>项目级</th><th>专项</th><th>考试成绩</th><th>上岗状态</th><th>有效至</th></tr>';
       body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.project_code)} ${esc(r.project_name)}</td><td>${esc(r.employee_name)}</td><td>${esc(r.work_position || '')}</td><td>${esc(r.contractor_name || '内部员工')}</td><td>${r.company_done || 0}</td><td>${r.entity_done || 0}</td><td>${r.project_done || 0}</td><td>${r.special_done || 0}</td><td>${r.exam_score == null ? '—' : esc(r.exam_score)}</td><td>${esc(this.statusText(r.admission_status))}</td><td>${esc(r.valid_until || '—')}</td></tr>`).join('');
