@@ -19,12 +19,13 @@ DECLARE
   v_position TEXT;
   v_company_status TEXT;
 BEGIN
-  SELECT m, COALESCE(m.work_type, e.position) INTO v_member, v_position
+  SELECT m.* INTO v_member
   FROM public.site_project_members m
-  JOIN public.training_employees e ON e.id = m.employee_id
   WHERE m.project_id = p_project_id AND m.employee_id = p_employee_id
     AND (p_member_id IS NULL OR m.id = p_member_id);
   IF NOT FOUND OR v_member.membership_type <> 'external' THEN RETURN NULL; END IF;
+  SELECT COALESCE(v_member.work_type, e.position) INTO v_position
+  FROM public.training_employees e WHERE e.id = v_member.employee_id;
 
   SELECT c.status INTO v_company_status FROM public.contractor_companies c WHERE c.id = v_member.contractor_id;
   IF v_company_status IS DISTINCT FROM 'active' THEN RETURN '外协单位尚未审核通过或已停用'; END IF;
