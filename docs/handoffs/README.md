@@ -16,3 +16,4 @@ Web/后端、小程序和集成线只能创建自己发起的交接文件，不�
 ## 当前交接
 
 - [D02 共享基线](D02-shared-baseline.md)
+- [D03 数据库验证](D03-database-verification.md)

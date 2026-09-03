@@ -4,7 +4,7 @@
 
 盘点工作树：`E:\codex\safety-web` / `track/web-backend`
 
-基线提交：`f6c7745`（D02-D05 测试与安全检查点）
+基线提交：`20b4034`（D02 双线所有权基线）；D03 的后续验证证据见 `docs/03-database-migration-verification.md`。
 
 本文件是当前检查点的静态事实基线，不替代 Supabase 平台、Storage、微信公众平台或生产环境的现场验收。D00 仅更新文档，不修改业务代码、SQL 迁移、RLS 或部署配置。
 
@@ -32,7 +32,7 @@ project-reporting/
 | --- | --- | --- |
 | 前端/Web/H5 | 原生 HTML、CSS、JavaScript；入口 `index.html` | 无 React、Vue、TypeScript 或打包器；同一站点承担桌面与手机浏览器界面。 |
 | 后端 | Supabase Auth、PostgREST、PostgreSQL RPC、Storage | 未发现仓库内 Node/Python API、Edge Function 或独立后端服务。 |
-| 数据库 | `sql/` 手工脚本；`training-admission-v1-v16.manifest.json` | v1-v16 有受校验 manifest 和验证工具；完整 SQL 集合仍没有统一增量迁移器。 |
+| 数据库 | `sql/` 手工脚本；`training-admission-v1-v16.manifest.json`、`training-admission-v17-v49.manifest.json` | v1-v49 有受校验清单和验证工具；完整 SQL 集合仍没有统一增量迁移器。 |
 | 认证 | `js/auth.js`、Supabase `signInWithPassword` | 当前为邮箱/手机号映射密码登录；不是微信登录或短信 OTP。 |
 | 文件存储 | Supabase Storage | 证照、课程、签字等文件路径与策略由 SQL/RPC 管理；测试库已核验桶为私有。 |
 | PDF/二维码/Excel | `vendor/pdf.min.js`、`jspdf.umd.min.js`、`qrcode-generator.js`、`xlsx.full.min.js` | 本地库用于课件、报表、凭证与导入导出，不依赖外部二维码服务。 |
@@ -62,7 +62,7 @@ node tests/e2e/d05-security-baseline.js
 2. 培训底座包含组织、账号、在线学习、题库考试和人员中心脚本；准入主链为 `training-admission-v1.sql` 至 `v47.sql`。
 3. D03 manifest 固化 v1-v16 的顺序、SHA-256 校验和和空库 bootstrap 文件；`tests/verify-d03-migration-files.js` 验证它们。
 4. v48 修复项目删除审计触发器的历史外键冲突；v49 收紧高权限函数默认授权、固定搜索路径并锁定签字记录。
-5. D03 尚未完成匿名历史副本迁移与恢复演练；完整 v17-v47 链也未形成可重复、已验收的执行记录。
+5. D03 已完成匿名 v17 前副本的 v17-v49 迁移、账本幂等与应用范围恢复验证；v1-v16 匿名历史副本重放及托管 Supabase 的全自动恢复仍未验收。
 
 ## 4. 功能与需求定位
 
@@ -79,7 +79,7 @@ T01-T27 的唯一验收编号、角色、正常/异常路径、测试与试点�
 
 | 工作树 | 分支 | 状态 | 所有权 |
 | --- | --- | --- | --- |
-| `E:\codex\safety-web` | `track/web-backend` | D02 当前基线为 `4014821`；任务包文档可保持未跟踪 | 数据库迁移、RLS、服务端规则、共享契约、Web/H5、部署。 |
+| `E:\codex\safety-web` | `track/web-backend` | D02 基线为 `20b4034`；D03 取证改动待独立提交；任务包文档可保持未跟踪 | 数据库迁移、RLS、服务端规则、共享契约、Web/H5、部署。 |
 | `E:\codex\safety-mini` | `track/miniprogram` | D02 当前基线为 `4014821` | 小程序客户端及 `miniprogram/**`。 |
 | `E:\codex\safety-integration` | `integration/dual-track` | D02 当前基线为 `f6c7745`，仅接收已验收提交 | 契约合并、联合测试和发布。 |
 | `E:\codex\safety\project-reporting` | `training-module` | 不属于本工作树的未提交材料仍保留 | 不得在未审查前混入双线分支。 |
@@ -92,14 +92,14 @@ T01-T27 的唯一验收编号、角色、正常/异常路径、测试与试点�
 | --- | --- | --- | --- | --- |
 | D00-R01 | 已解决 | D01 矩阵已包含执行泳道、前置门、契约版本、跨线负责人、变更单和合并状态 | 以矩阵追踪接口变更 | D01 |
 | D00-R02 | 已解决 | D02 已建立文件所有权、正式交接目录和 C01 机制 | 小程序仍不得消费未冻结接口 | D02 |
-| D00-R03 | P1 | D03 缺匿名历史副本和恢复演练 | 迁移不能视为完整通过 | D03 |
+| D00-R03 | P1 | D03 已完成 v17-v49 匿名副本、对象/数据指纹与应用范围恢复验证；v1-v16 匿名历史副本及 Supabase 全量恢复仍缺证据 | 迁移不能视为完整通过 | D03 |
 | D00-R04 | P1 | D04 没有版本化机器可读 API 契约、类型和 Mock | 小程序不能安全消费真实接口 | D04 |
 | D00-R05 | P1 | D05 仍要求轮换历史暴露的浏览器密钥，并验证 v17-v47 与完整角色矩阵 | G0 不得放行 | D05 |
 | D00-R06 | P2 | Pages CI 未运行静态、数据库或权限测试 | 发布可能绕过回归 | 后续 CI/发布任务 |
 | D00-R07 | P2 | 现场签字、导出、二维码重放/限流与各角色 RLS 尚未完整验收 | 资格与个人信息保护不足 | T19、T26 |
 | D00-R08 | P2 | 未验收自动提醒调度和微信回调服务 | 不能声称每日提醒或小程序消息已可用 | D23、D28-BE |
 
-建议顺序：D02 已完成双线所有权、交接文档和测试环境交接；下一步按 D03、D04、D05 的未完成证据逐项关闭。G0 未通过前，小程序只能使用 Mock 与匿名测试数据。
+建议顺序：继续关闭 D03 的匿名历史副本与托管恢复缺口，再按 D04、D05 的未完成证据逐项关闭。G0 未通过前，小程序只能使用 Mock 与匿名测试数据。
 
 ## 7. D00 验收记录
 

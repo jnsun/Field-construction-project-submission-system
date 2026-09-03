@@ -8,6 +8,6 @@
 | D00 | — | 代码库只读盘点与现状清单 | D00-AC01 至 D00-AC04 | 已完成（静态盘点）；线上 Supabase 状态待专项核验 | [代码库盘点](00-codebase-inventory.md) |
 | D01 | T01-T27 | 需求追踪矩阵与验收编号 | D01-AC01 至 D01-AC04；T01-AC01 至 T27-ACnn | 已完成（原计划已固化；双线泳道、前置门、契约、负责人、变更与合并字段已建立；业务实现状态仍待各任务回归） | [需求验收矩阵](01-requirement-traceability-matrix.md) |
 | D02 | — | 安全开发基线、备份、测试环境与测试数据 | D02-AC01 至 D02-AC03 | 已完成（环境、匿名夹具、备份/清理基线、三工作树、文件所有权、交接和 C01 规则已建立；历史副本迁移与恢复完整性由 D03 验证） | [环境基线](02-local-test-environment.md)；[双线所有权](02-dual-track-ownership.md) |
-| D03 | T24 | 数据库 v1-v16 升级与完整性验证 | D03-AC01 至 D03-AC04 | 部分完成（隔离空库已完成 bootstrap、v1-v16 与权限加固验证；匿名历史副本和备份恢复演练待完成） | [数据库迁移验证](03-database-migration-verification.md) |
+| D03 | T24 | 数据库 v1-v16 升级与完整性验证 | D03-AC01 至 D03-AC04 | 部分完成（v1-v16 空库及 v17-v49 匿名副本已验证，迁移账本/对象/历史指纹与应用范围恢复有证据；v1-v16 匿名历史副本与 Supabase 全量恢复仍未闭环） | [数据库迁移验证](03-database-migration-verification.md)；[D03 交接](handoffs/D03-database-verification.md) |
 | D04 | T25-A | 现有业务基线冒烟与端到端测试骨架 | D04-S01 至 D04-S12、D04-LIVE | 部分完成（12 项静态入口检查通过；3 项实时 API 基线失败，已记录为 T25-AC01、T25-AC03、T25-AC07 缺口） | [D04 基线报告](04-e2e-smoke-baseline.md) |
 | D05 | T19、T26-A | 安全、隐私、RLS、导出与二维码基线审查 | D05-AC01 至 D05-AC05 | 部分完成（已修复高权限函数默认公开执行与签字可改删；5 项匿名/实体负向 API 测试通过；完整角色、导出及二维码状态机仍待 T26 专项验证） | [D05 安全基线](05-security-baseline.md) |
