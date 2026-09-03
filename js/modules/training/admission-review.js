@@ -3,7 +3,7 @@
 // 自助申请入口会在微信/手机号登录接入后复用 project_join_applications。
 // =============================================================
 const TrainingAdmissionReview = {
-  state: { projects: [], applications: [], attachments: [], companies: [], profiles: [], roles: [] },
+  state: { projects: [], applications: [], attachments: [], companies: [], profiles: [], roles: [], reapprovals: [] },
   APP_STATUS: {
     pending_project_review: ['待项目审核', 'badge-warning'],
     pending_entity_review: ['待经营实体复核', 'badge-info'],
@@ -11,7 +11,7 @@ const TrainingAdmissionReview = {
   },
 
   async render(box) {
-    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">外协人员入场审核与项目经理、安全员任命</span></div><div class="toolbar-right"><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReview.load()">刷新</button></div></div><div id="admission-review-summary"></div><div id="admission-applications"></div><div id="admission-roles" style="margin-top:16px"></div>`;
+    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">外协人员入场审核与项目经理、安全员任命</span></div><div class="toolbar-right"><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionReview.load()">刷新</button></div></div><div id="admission-review-summary"></div><div id="admission-applications"></div><div id="admission-personnel-reviews" style="margin-top:16px"></div><div id="admission-roles" style="margin-top:16px"></div>`;
     await this.load();
   },
 
@@ -23,9 +23,10 @@ const TrainingAdmissionReview = {
       sb.from('contractor_companies').select('id, name, status').order('name'),
       sb.from('profiles').select('id, full_name, email, department_id, role, admin_level').order('full_name'),
       sb.from('site_project_roles').select('id, project_id, user_id, role, active').eq('active', true),
+      sb.from('training_personnel_reapproval_requests').select('id, project_id, employee_id, changed_fields, status, requested_at, review_note, training_employees(name, phone, position)').order('requested_at', { ascending: false }),
     ]);
     const error = results.find(r => r.error); if (error) throw error.error;
-    [this.state.projects, this.state.applications, this.state.attachments, this.state.companies, this.state.profiles, this.state.roles] = results.map(r => r.data || []);
+    [this.state.projects, this.state.applications, this.state.attachments, this.state.companies, this.state.profiles, this.state.roles, this.state.reapprovals] = results.map(r => r.data || []);
     this.renderContent();
   },
 
@@ -68,13 +69,19 @@ const TrainingAdmissionReview = {
     const cross = this.state.applications.filter(a => a.status === 'pending_entity_review').length;
     const summary = document.getElementById('admission-review-summary');
     if (summary) summary.innerHTML = `<div class="stats-grid" style="margin-bottom:12px"><div class="stat-card warning"><div class="stat-value">${pending}</div><div class="stat-label">待项目审核</div></div><div class="stat-card info"><div class="stat-value">${cross}</div><div class="stat-label">待跨项目复核</div></div><div class="stat-card total"><div class="stat-value">${this.state.roles.length}</div><div class="stat-label">已任命项目角色</div></div></div>`;
-    this.renderApplications(); this.renderRoles();
+    this.renderApplications(); this.renderPersonnelReviews(); this.renderRoles();
   },
 
   renderApplications() {
     const box = document.getElementById('admission-applications'); if (!box) return;
     const rows = this.state.applications;
     box.innerHTML = `<div class="card"><div class="card-header"><h2>外协入场申请（${rows.length}）</h2><span class="text-muted">首次申请经项目审核；人员已有其他项目在场记录时，自动转经营实体复核。</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:1040px"><thead><tr><th>申请人员</th><th>项目</th><th>外协单位 / 工种</th><th>附件</th><th>提交时间</th><th>状态</th><th>审核说明</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(a => { const files = this.attachments(a.id); return `<tr><td><b>${Utils.escapeHtml(a.name)}</b><br><span class="text-muted">${Utils.escapeHtml(a.phone)}</span></td><td>${Utils.escapeHtml(this.projectName(a.project_id))}</td><td>${Utils.escapeHtml(this.company(a.contractor_id).name || a.contractor_name_input || '—')}<br><span class="text-muted">${Utils.escapeHtml(a.position || '未填工种')}</span></td><td>${files.length ? files.map(x => { const label = Utils.escapeHtml({ qualification: '单位资质', contract: '合同', special_certificate: '特种作业证' }[x.attachment_type] || '附件'); const transfer = a.status === 'approved' && !x.imported_at && TrainingModule.canEdit() ? `<button class="btn btn-sm btn-primary" style="margin-top:4px" onclick="TrainingAdmissionReview.openImportAttachment('${x.id}','${x.attachment_type}')">转入待审核台账</button>` : (x.imported_at ? '<span class="badge badge-success" style="margin-top:4px">已转入台账</span>' : ''); return `${label}<br><span class="text-muted">${Utils.escapeHtml(x.original_name || x.storage_path)}</span><br><button class="btn btn-sm btn-secondary" style="margin-top:4px" onclick="TrainingAdmissionReview.openAttachment('${encodeURIComponent(x.storage_path)}')">查看</button>${transfer}`; }).join('<hr style="border:0;border-top:1px solid #eee">') : '未提交'}</td><td>${Utils.escapeHtml((a.created_at || '').slice(0, 16).replace('T', ' '))}</td><td>${this.badge(a.status)}</td><td>${Utils.escapeHtml(a.review_note || '—')}</td><td>${this.actionButtons(a)}</td></tr>`; }).join('') : TrainingModule.emptyRow(8, '暂无外协入场申请')}</tbody></table></div></div>`;
+  },
+
+  renderPersonnelReviews() {
+    const box = document.getElementById('admission-personnel-reviews'); if (!box) return;
+    const rows = this.state.reapprovals;
+    box.innerHTML = `<div class="card"><div class="card-header"><h2>人员关键资料复核（${rows.filter(x => x.status === 'pending').length} 待处理）</h2><span class="text-muted">身份证号、照片、岗位/工种、所属单位变更后，系统自动禁止上岗。</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:900px"><thead><tr><th>人员</th><th>项目</th><th>变更字段</th><th>申请时间</th><th>状态</th><th>复核说明</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(x => { const person = x.training_employees || {}; const status = x.status === 'pending' ? '<span class="badge badge-warning">待复核</span>' : x.status === 'approved' ? '<span class="badge badge-success">已通过</span>' : '<span class="badge badge-danger">已驳回</span>'; const actions = x.status === 'pending' && TrainingModule.canEdit() ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionReview.reviewPersonnelChange('${x.id}','approve')">通过</button><button class="btn btn-sm btn-danger" onclick="TrainingAdmissionReview.reviewPersonnelChange('${x.id}','reject')">驳回</button>` : '—'; return `<tr><td><b>${Utils.escapeHtml(person.name || '—')}</b><br><span class="text-muted">${Utils.escapeHtml(person.phone || '')} · ${Utils.escapeHtml(person.position || '')}</span></td><td>${Utils.escapeHtml(this.projectName(x.project_id))}</td><td>${Utils.escapeHtml((x.changed_fields || []).join('、'))}</td><td>${Utils.escapeHtml(String(x.requested_at || '').slice(0, 16).replace('T', ' '))}</td><td>${status}</td><td>${Utils.escapeHtml(x.review_note || '—')}</td><td>${actions}</td></tr>`; }).join('') : TrainingModule.emptyRow(7, '暂无人员关键资料复核')}</tbody></table></div></div>`;
   },
 
   actionButtons(app) {
@@ -121,5 +128,13 @@ const TrainingAdmissionReview = {
     const data = Array.isArray(result.data) ? result.data[0] : result.data;
     Utils.toast(data?.status === 'pending_entity_review' ? '项目审核已通过，已转经营实体复核' : (action === 'approve' ? '入场申请已通过' : '申请已驳回'), 'success');
     await this.load();
+  },
+
+  async reviewPersonnelChange(requestId, action) {
+    const note = action === 'reject' ? prompt('请填写驳回原因') : prompt('可填写复核备注（可留空）', '');
+    if (note === null || (action === 'reject' && !note)) return;
+    const { error } = await sb.rpc('training_review_personnel_reapproval', { p_request_id: requestId, p_action: action, p_note: note || null });
+    if (error) { Utils.toast(error.message || '人员资料复核失败', 'error'); return; }
+    Utils.toast(action === 'approve' ? '人员资料已复核，资格已重新计算' : '人员资料变更已驳回，仍保持禁止上岗', 'success'); await this.load();
   },
 };
