@@ -19,7 +19,7 @@ const TrainingAdmissionReview = {
     const results = await Promise.all([
       sb.from('site_projects').select('id, project_code, name, status, lead_entity_id').order('created_at', { ascending: false }),
       sb.from('project_join_applications').select('id, project_id, employee_id, name, phone, position, contractor_id, contractor_name_input, status, review_note, created_at, project_reviewed_at, entity_reviewed_at').order('created_at', { ascending: false }),
-      sb.from('project_join_application_attachments').select('id, application_id, attachment_type, original_name, storage_path').order('created_at'),
+      sb.from('project_join_application_attachments').select('id, application_id, attachment_type, original_name, storage_path, imported_at').order('created_at'),
       sb.from('contractor_companies').select('id, name, status').order('name'),
       sb.from('profiles').select('id, full_name, email, department_id, role, admin_level').order('full_name'),
       sb.from('site_project_roles').select('id, project_id, user_id, role, active').eq('active', true),
@@ -45,6 +45,24 @@ const TrainingAdmissionReview = {
     window.open(data.signedUrl, '_blank', 'noopener');
   },
 
+  openImportAttachment(attachmentId, type) {
+    if (type !== 'special_certificate') { this.importAttachment(attachmentId); return; }
+    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingAdmissionReview.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><h3>转入特种作业证台账</h3><button class="modal-close" onclick="TrainingAdmissionReview.close()">×</button></div><div class="modal-body"><p class="hint">请核对原附件后补充证书信息。转入后仍为待审核状态。</p><div class="form-group"><label>证书类型 <span class="required">*</span></label><select id="import-cert-type" class="form-control"><option value="">请选择</option><option>爆破</option><option>钻探</option><option>电工</option><option>焊工</option></select></div><div class="form-row"><div class="form-group"><label>证书编号 <span class="required">*</span></label><input id="import-cert-no" class="form-control"></div><div class="form-group"><label>有效至 <span class="required">*</span></label><input id="import-cert-until" type="date" class="form-control"></div></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionReview.close()">取消</button><button class="btn btn-primary" onclick="TrainingAdmissionReview.importAttachment('${attachmentId}', true)">转入待审核台账</button></div></div></div>`;
+  },
+
+  async importAttachment(attachmentId, special = false) {
+    const payload = { p_attachment_id: attachmentId };
+    if (special) {
+      payload.p_certificate_type = document.getElementById('import-cert-type')?.value || null;
+      payload.p_certificate_no = document.getElementById('import-cert-no')?.value.trim() || null;
+      payload.p_valid_until = document.getElementById('import-cert-until')?.value || null;
+      if (!payload.p_certificate_type || !payload.p_certificate_no || !payload.p_valid_until) { Utils.toast('请完整填写证书信息', 'error'); return; }
+    }
+    const { error } = await sb.rpc('site_project_import_application_attachment', payload);
+    if (error) { Utils.toast(error.message || '转入台账失败', 'error'); return; }
+    this.close(); Utils.toast('附件已转入待审核台账，请在“外协与入场”完成审核', 'success'); await this.load();
+  },
+
   renderContent() {
     const pending = this.state.applications.filter(a => a.status === 'pending_project_review').length;
     const cross = this.state.applications.filter(a => a.status === 'pending_entity_review').length;
@@ -56,7 +74,7 @@ const TrainingAdmissionReview = {
   renderApplications() {
     const box = document.getElementById('admission-applications'); if (!box) return;
     const rows = this.state.applications;
-    box.innerHTML = `<div class="card"><div class="card-header"><h2>外协入场申请（${rows.length}）</h2><span class="text-muted">首次申请经项目审核；人员已有其他项目在场记录时，自动转经营实体复核。</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:1040px"><thead><tr><th>申请人员</th><th>项目</th><th>外协单位 / 工种</th><th>附件</th><th>提交时间</th><th>状态</th><th>审核说明</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(a => { const files = this.attachments(a.id); return `<tr><td><b>${Utils.escapeHtml(a.name)}</b><br><span class="text-muted">${Utils.escapeHtml(a.phone)}</span></td><td>${Utils.escapeHtml(this.projectName(a.project_id))}</td><td>${Utils.escapeHtml(this.company(a.contractor_id).name || a.contractor_name_input || '—')}<br><span class="text-muted">${Utils.escapeHtml(a.position || '未填工种')}</span></td><td>${files.length ? files.map(x => `${Utils.escapeHtml({ qualification: '单位资质', contract: '合同', special_certificate: '特种作业证' }[x.attachment_type] || '附件')}<br><span class="text-muted">${Utils.escapeHtml(x.original_name || x.storage_path)}</span><br><button class="btn btn-sm btn-secondary" style="margin-top:4px" onclick="TrainingAdmissionReview.openAttachment('${encodeURIComponent(x.storage_path)}')">查看</button>`).join('<hr style="border:0;border-top:1px solid #eee">') : '未提交'}</td><td>${Utils.escapeHtml((a.created_at || '').slice(0, 16).replace('T', ' '))}</td><td>${this.badge(a.status)}</td><td>${Utils.escapeHtml(a.review_note || '—')}</td><td>${this.actionButtons(a)}</td></tr>`; }).join('') : TrainingModule.emptyRow(8, '暂无外协入场申请')}</tbody></table></div></div>`;
+    box.innerHTML = `<div class="card"><div class="card-header"><h2>外协入场申请（${rows.length}）</h2><span class="text-muted">首次申请经项目审核；人员已有其他项目在场记录时，自动转经营实体复核。</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:1040px"><thead><tr><th>申请人员</th><th>项目</th><th>外协单位 / 工种</th><th>附件</th><th>提交时间</th><th>状态</th><th>审核说明</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(a => { const files = this.attachments(a.id); return `<tr><td><b>${Utils.escapeHtml(a.name)}</b><br><span class="text-muted">${Utils.escapeHtml(a.phone)}</span></td><td>${Utils.escapeHtml(this.projectName(a.project_id))}</td><td>${Utils.escapeHtml(this.company(a.contractor_id).name || a.contractor_name_input || '—')}<br><span class="text-muted">${Utils.escapeHtml(a.position || '未填工种')}</span></td><td>${files.length ? files.map(x => { const label = Utils.escapeHtml({ qualification: '单位资质', contract: '合同', special_certificate: '特种作业证' }[x.attachment_type] || '附件'); const transfer = a.status === 'approved' && !x.imported_at && TrainingModule.canEdit() ? `<button class="btn btn-sm btn-primary" style="margin-top:4px" onclick="TrainingAdmissionReview.openImportAttachment('${x.id}','${x.attachment_type}')">转入待审核台账</button>` : (x.imported_at ? '<span class="badge badge-success" style="margin-top:4px">已转入台账</span>' : ''); return `${label}<br><span class="text-muted">${Utils.escapeHtml(x.original_name || x.storage_path)}</span><br><button class="btn btn-sm btn-secondary" style="margin-top:4px" onclick="TrainingAdmissionReview.openAttachment('${encodeURIComponent(x.storage_path)}')">查看</button>${transfer}`; }).join('<hr style="border:0;border-top:1px solid #eee">') : '未提交'}</td><td>${Utils.escapeHtml((a.created_at || '').slice(0, 16).replace('T', ' '))}</td><td>${this.badge(a.status)}</td><td>${Utils.escapeHtml(a.review_note || '—')}</td><td>${this.actionButtons(a)}</td></tr>`; }).join('') : TrainingModule.emptyRow(8, '暂无外协入场申请')}</tbody></table></div></div>`;
   },
 
   actionButtons(app) {

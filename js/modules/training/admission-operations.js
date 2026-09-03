@@ -40,6 +40,11 @@ const TrainingAdmissionOperations = {
     const error = results.find(r => r.error);
     if (error) throw error.error;
     [this.state.projects, this.state.members, this.state.employees, this.state.packages, this.state.admissions, this.state.signatures, this.state.roles, this.state.accesses] = results.map(r => r.data || []);
+    const refreshes = await Promise.all(this.state.projects.filter(p => p.status !== 'closed').map(p => sb.rpc('training_refresh_external_admissions', { p_project_id: p.id, p_contractor_id: null })));
+    if (refreshes.some(r => !r.error && r.data > 0)) {
+      const latest = await sb.from('training_admissions').select('id, project_id, employee_id, package_id, status, exam_score, exam_attempts, final_signed_at, site_confirmed_at, valid_until, due_at, urgent, blocked_reason, retrain_required, retrain_reason, training_cycle_no, created_at').order('created_at', { ascending: false });
+      if (!latest.error) this.state.admissions = latest.data || [];
+    }
     this.renderTable();
   },
 

@@ -291,6 +291,8 @@ const TrainingContractors = {
     if (status === 'rejected' && !note) return;
     const result = await sb.from('contractor_documents').update({ review_status: status, reviewed_by: (Auth.currentUser || {}).id, reviewed_at: new Date().toISOString(), review_note: note || null }).eq('id', id);
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
+    const doc = this.state.documents.find(x => x.id === id);
+    if (doc?.project_id) await sb.rpc('training_refresh_external_admissions', { p_project_id: doc.project_id, p_contractor_id: doc.contractor_id || null });
     Utils.toast(status === 'approved' ? '资料已审核通过' : '资料已驳回', 'success'); await this.load();
   },
 
@@ -299,6 +301,7 @@ const TrainingContractors = {
     if (status === 'rejected' && !note) return;
     const result = await sb.from('contractor_companies').update({ status, reviewed_by: (Auth.currentUser || {}).id, reviewed_at: new Date().toISOString(), review_note: note || null }).eq('id', id);
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
+    await sb.rpc('training_refresh_external_admissions', { p_project_id: null, p_contractor_id: id });
     Utils.toast(status === 'active' ? '外协单位已审核通过' : '外协单位已驳回', 'success'); await this.load();
   },
 
@@ -307,6 +310,8 @@ const TrainingContractors = {
     if (status === 'terminated' && !note) return;
     const result = await sb.from('contractor_contracts').update({ status, reviewed_by: (Auth.currentUser || {}).id, reviewed_at: new Date().toISOString(), review_note: note || null }).eq('id', id);
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
+    const contract = this.state.contracts.find(x => x.id === id);
+    if (contract?.project_id) await sb.rpc('training_refresh_external_admissions', { p_project_id: contract.project_id, p_contractor_id: contract.contractor_id || null });
     Utils.toast(status === 'valid' ? '合同已审核通过' : '合同已终止', 'success'); await this.load();
   },
 };
