@@ -3,7 +3,7 @@
 // 目前支持扫码枪/小程序扫码后填入凭证编号；二维码图形在小程序接入时复用该接口。
 // ============================================================================
 const TrainingAdmissionVerify = {
-  state: { stream: null, scanning: false },
+  state: { stream: null, scanning: false, logs: [] },
   STATUS: {
     eligible: ['可上岗', 'badge-success'], blocked: ['禁止上岗', 'badge-danger'],
     expired: ['凭证已过期', 'badge-danger'], project_closed: ['项目已关闭', 'badge-muted'],
@@ -15,16 +15,32 @@ const TrainingAdmissionVerify = {
   },
 
   async render(box) {
+    await this.loadLogs();
     box.innerHTML = `<div class="card"><div class="card-header"><h2>二维码核验</h2><span class="text-muted">仅显示现场核验所需信息</span></div>
       <div class="card-body"><div style="display:flex;gap:8px;max-width:560px;flex-wrap:wrap">
         <input id="admission-verify-code" class="form-control" style="flex:1;min-width:220px" placeholder="扫描或输入电子凭证/临时通行编号">
         <button class="btn btn-secondary" onclick="TrainingAdmissionVerify.openScanner()">扫码</button><button class="btn btn-primary" onclick="TrainingAdmissionVerify.verify()">核验</button>
       </div><p class="text-muted" style="font-size:12px;margin-top:8px">核验结果实时判断项目状态、培训有效期和特种作业证状态。临时通行仅为短时例外，不以截图为准。</p>
-      <div id="admission-verify-result" style="margin-top:16px"></div></div></div>`;
+      <div id="admission-verify-result" style="margin-top:16px"></div></div></div><div id="admission-verify-logs">${this.renderLogs()}</div>`;
     const input = document.getElementById('admission-verify-code');
     input?.addEventListener('keydown', e => { if (e.key === 'Enter') this.verify(); });
     input?.focus();
   },
+
+  async loadLogs() {
+    const { data, error } = await sb.rpc('training_recent_verification_logs', { p_project_id: null, p_limit: 20 });
+    this.state.logs = error ? [] : (data || []);
+  },
+
+  renderLogs() {
+    const type = { certificate: '上岗凭证', temporary: '临时通行', visitor: '访客告知' };
+    const status = { eligible: '可上岗', temporary_access: '临时通行', visitor_notice: '访客告知有效', blocked: '禁止上岗', expired: '已过期', project_closed: '项目已关闭' };
+    const rows = this.state.logs;
+    return `<div class="card" style="margin-top:16px"><div class="card-header"><h2>最近现场核验</h2><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionVerify.reloadLogs()">刷新</button></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:760px"><thead><tr><th>时间</th><th>项目</th><th>人员 / 工种</th><th>凭证</th><th>核验结果</th><th>核验人</th></tr></thead><tbody>${rows.length ? rows.map(x => `<tr><td>${Utils.escapeHtml(String(x.verified_at || '').slice(0, 16).replace('T', ' '))}</td><td>${Utils.escapeHtml(x.project_code || '')} ${Utils.escapeHtml(x.project_name || '')}</td><td>${Utils.escapeHtml(x.employee_name || '')}<br><span class="text-muted">${Utils.escapeHtml(x.work_position || '')}</span></td><td>${Utils.escapeHtml(type[x.credential_type] || x.credential_type || '')}<br><span class="text-muted">末尾 ${Utils.escapeHtml(x.code_suffix || '—')}</span></td><td>${Utils.escapeHtml(status[x.result_status] || x.result_status || '')}${x.reason ? `<br><span style="color:#b91c1c;font-size:12px">${Utils.escapeHtml(x.reason)}</span>` : ''}</td><td>${Utils.escapeHtml(x.verifier_name || '—')}</td></tr>`).join('') : TrainingModule.emptyRow(6, '暂无现场核验记录')}</tbody></table></div></div>`;
+  },
+
+  async reloadLogs() { await this.loadLogs(); this.refreshLogPanel(); },
+  refreshLogPanel() { const panel = document.getElementById('admission-verify-logs'); if (panel) panel.innerHTML = this.renderLogs(); },
 
   async verify() {
     const input = document.getElementById('admission-verify-code');
@@ -54,7 +70,18 @@ const TrainingAdmissionVerify = {
       if (v) row = { ...v, certificate_no: v.pass_code, admission_status: v.access_status, valid_until: v.expires_at ? new Date(v.expires_at).toLocaleString() : null, blocked_reason: v.notice_content };
     }
     if (!row) { if (result) result.innerHTML = '<div class="alert alert-danger">未找到可由您核验的有效项目凭证、临时通行或访客安全告知。请核对编号或确认您已被任命为该项目经理/安全员。</div>'; return; }
+    const type = row.admission_status === 'temporary_access' ? 'temporary' : (row.admission_status === 'visitor_notice' ? 'visitor' : 'certificate');
+    await this.record(row, type, code);
     this.show(row);
+  },
+
+  async record(row, type, code) {
+    if (!row.project_id || !row.employee_id) return;
+    const { error } = await sb.rpc('training_log_verification', {
+      p_project_id: row.project_id, p_employee_id: row.employee_id, p_credential_type: type,
+      p_result_status: row.admission_status, p_reason: row.blocked_reason || null, p_code: code,
+    });
+    if (!error) { await this.loadLogs(); this.refreshLogPanel(); }
   },
 
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
