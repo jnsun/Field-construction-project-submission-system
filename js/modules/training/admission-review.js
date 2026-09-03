@@ -3,7 +3,7 @@
 // 自助申请入口会在微信/手机号登录接入后复用 project_join_applications。
 // =============================================================
 const TrainingAdmissionReview = {
-  state: { projects: [], applications: [], companies: [], profiles: [], roles: [] },
+  state: { projects: [], applications: [], attachments: [], companies: [], profiles: [], roles: [] },
   APP_STATUS: {
     pending_project_review: ['待项目审核', 'badge-warning'],
     pending_entity_review: ['待经营实体复核', 'badge-info'],
@@ -19,12 +19,13 @@ const TrainingAdmissionReview = {
     const results = await Promise.all([
       sb.from('site_projects').select('id, project_code, name, status, lead_entity_id').order('created_at', { ascending: false }),
       sb.from('project_join_applications').select('id, project_id, employee_id, name, phone, position, contractor_id, contractor_name_input, status, review_note, created_at, project_reviewed_at, entity_reviewed_at').order('created_at', { ascending: false }),
+      sb.from('project_join_application_attachments').select('id, application_id, attachment_type, original_name, storage_path').order('created_at'),
       sb.from('contractor_companies').select('id, name, status').order('name'),
       sb.from('profiles').select('id, full_name, email, department_id, role, admin_level').order('full_name'),
       sb.from('site_project_roles').select('id, project_id, user_id, role, active').eq('active', true),
     ]);
     const error = results.find(r => r.error); if (error) throw error.error;
-    [this.state.projects, this.state.applications, this.state.companies, this.state.profiles, this.state.roles] = results.map(r => r.data || []);
+    [this.state.projects, this.state.applications, this.state.attachments, this.state.companies, this.state.profiles, this.state.roles] = results.map(r => r.data || []);
     this.renderContent();
   },
 
@@ -34,6 +35,15 @@ const TrainingAdmissionReview = {
   projectName(id) { const p = this.project(id); return p.project_code ? `${p.project_code} · ${p.name}` : '—'; },
   profileName(id) { const p = this.profile(id); return p.full_name || p.email || (id ? id.slice(0, 8) : '—'); },
   badge(status) { const v = this.APP_STATUS[status] || [status || '未知', 'badge-muted']; return `<span class="badge ${v[1]}">${v[0]}</span>`; },
+  attachments(id) { return this.state.attachments.filter(x => x.application_id === id); },
+
+  async openAttachment(encodedPath) {
+    const path = decodeURIComponent(encodedPath);
+    const bucket = typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates';
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) { Utils.toast(error?.message || '附件暂时无法打开', 'error'); return; }
+    window.open(data.signedUrl, '_blank', 'noopener');
+  },
 
   renderContent() {
     const pending = this.state.applications.filter(a => a.status === 'pending_project_review').length;
@@ -46,7 +56,7 @@ const TrainingAdmissionReview = {
   renderApplications() {
     const box = document.getElementById('admission-applications'); if (!box) return;
     const rows = this.state.applications;
-    box.innerHTML = `<div class="card"><div class="card-header"><h2>外协入场申请（${rows.length}）</h2><span class="text-muted">首次申请经项目审核；人员已有其他项目在场记录时，自动转经营实体复核。</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:960px"><thead><tr><th>申请人员</th><th>项目</th><th>外协单位 / 工种</th><th>提交时间</th><th>状态</th><th>审核说明</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(a => `<tr><td><b>${Utils.escapeHtml(a.name)}</b><br><span class="text-muted">${Utils.escapeHtml(a.phone)}</span></td><td>${Utils.escapeHtml(this.projectName(a.project_id))}</td><td>${Utils.escapeHtml(this.company(a.contractor_id).name || a.contractor_name_input || '—')}<br><span class="text-muted">${Utils.escapeHtml(a.position || '未填工种')}</span></td><td>${Utils.escapeHtml((a.created_at || '').slice(0, 16).replace('T', ' '))}</td><td>${this.badge(a.status)}</td><td>${Utils.escapeHtml(a.review_note || '—')}</td><td>${this.actionButtons(a)}</td></tr>`).join('') : TrainingModule.emptyRow(7, '暂无外协入场申请')}</tbody></table></div></div>`;
+    box.innerHTML = `<div class="card"><div class="card-header"><h2>外协入场申请（${rows.length}）</h2><span class="text-muted">首次申请经项目审核；人员已有其他项目在场记录时，自动转经营实体复核。</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:1040px"><thead><tr><th>申请人员</th><th>项目</th><th>外协单位 / 工种</th><th>附件</th><th>提交时间</th><th>状态</th><th>审核说明</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(a => { const files = this.attachments(a.id); return `<tr><td><b>${Utils.escapeHtml(a.name)}</b><br><span class="text-muted">${Utils.escapeHtml(a.phone)}</span></td><td>${Utils.escapeHtml(this.projectName(a.project_id))}</td><td>${Utils.escapeHtml(this.company(a.contractor_id).name || a.contractor_name_input || '—')}<br><span class="text-muted">${Utils.escapeHtml(a.position || '未填工种')}</span></td><td>${files.length ? files.map(x => `${Utils.escapeHtml({ qualification: '单位资质', contract: '合同', special_certificate: '特种作业证' }[x.attachment_type] || '附件')}<br><span class="text-muted">${Utils.escapeHtml(x.original_name || x.storage_path)}</span><br><button class="btn btn-sm btn-secondary" style="margin-top:4px" onclick="TrainingAdmissionReview.openAttachment('${encodeURIComponent(x.storage_path)}')">查看</button>`).join('<hr style="border:0;border-top:1px solid #eee">') : '未提交'}</td><td>${Utils.escapeHtml((a.created_at || '').slice(0, 16).replace('T', ' '))}</td><td>${this.badge(a.status)}</td><td>${Utils.escapeHtml(a.review_note || '—')}</td><td>${this.actionButtons(a)}</td></tr>`; }).join('') : TrainingModule.emptyRow(8, '暂无外协入场申请')}</tbody></table></div></div>`;
   },
 
   actionButtons(app) {
