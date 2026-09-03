@@ -7,4 +7,4 @@
 | P01 | T23-A | 小程序注册与合规资料并行准备 | P01-AC01 至 P01-AC04 | 已完成（资料初稿）；微信审核未开始 | [小程序注册与合规资料清单](miniprogram-registration-checklist.md) |
 | D00 | — | 代码库只读盘点与现状清单 | D00-AC01 至 D00-AC04 | 已完成（静态盘点）；线上 Supabase 状态待专项核验 | [代码库盘点](00-codebase-inventory.md) |
 | D01 | T01-T27 | 需求追踪矩阵与验收编号 | D01-AC01 至 D01-AC04；T01-AC01 至 T27-ACnn | 已完成（原计划已固化；实现状态待回归或阻塞控制） | [需求验收矩阵](01-requirement-traceability-matrix.md) |
-| D02 | — | 安全开发基线、备份、测试环境与测试数据 | D02-AC01 至 D02-AC03 | 已完成（脚本与匿名夹具基线）；待在独立测试库演练 | [本地测试环境](02-local-test-environment.md) |
+| D02 | — | 安全开发基线、备份、测试环境与测试数据 | D02-AC01 至 D02-AC03 | 部分完成（匿名人员与部门夹具已核验；独立测试库、测试账号和项目状态夹具待完成） | [本地测试环境](02-local-test-environment.md) |
