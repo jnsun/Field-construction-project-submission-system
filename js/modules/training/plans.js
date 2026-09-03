@@ -57,7 +57,7 @@ const TrainingPlans = {
   async load() {
     const [{ data, error }, tg] = await Promise.all([
       sb.from('training_plans')
-        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, exam_mode, approval_status, approval_note, submitted_at, approved_at')
+        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, exam_mode, approval_status, approval_note, submitted_at, approved_at, version_no, supersedes_plan_id')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_plan_targets')
         .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
@@ -192,7 +192,7 @@ const TrainingPlans = {
                 : rows.map(p => `
                   <tr>
                     <td>${this.levelBadge(p.level)}</td>
-                    <td title="${Utils.escapeHtml(p.title)}">${Utils.escapeHtml(p.title)}</td>
+                    <td title="${Utils.escapeHtml(p.title)}">${Utils.escapeHtml(p.title)}<br><span class="text-muted" style="font-size:11px">版本 v${p.version_no || 1}</span></td>
                     <td>${Utils.escapeHtml(p.category || '')}</td>
                     <td>${Utils.escapeHtml(TrainingModule.deptName(p.department_id))}</td>
                     <td>${this.dateRange(p)}</td>
@@ -213,6 +213,7 @@ const TrainingPlans = {
                               ? `<button class="btn btn-sm btn-primary" onclick="TrainingPlans.publish('${p.id}')">发布</button>`
                               : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
                         <button class="btn btn-sm btn-secondary" onclick="TrainingCourses.open('${p.id}')">课件</button>
+                        ${p.publish_status === 'published' ? `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.cloneVersion('${p.id}')">新版本</button>` : ''}
                         <button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openForm('${p.id}')">编辑</button>
                         <button class="btn btn-sm btn-danger" onclick="TrainingPlans.remove('${p.id}')">删除</button>`
                         : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
@@ -223,6 +224,16 @@ const TrainingPlans = {
         </div>
       </div>
     `;
+  },
+
+  async cloneVersion(id) {
+    const p = this.state.list.find(x => x.id === id);
+    if (!p || !confirm(`确认以“${p.title}”创建新版本？新版本会复制课件和适用范围，但不会复制员工学习、考试和签字记录。`)) return;
+    const { data, error } = await sb.rpc('training_clone_plan_version', { p_plan_id: id });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    Utils.toast('已创建新的草稿版本，请检查课件、试卷和截止日期后重新送审', 'success');
+    await this.load();
+    if (data) this.openForm(data);
   },
 
   levelBadge(lv) {
