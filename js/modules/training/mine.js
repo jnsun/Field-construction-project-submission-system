@@ -308,7 +308,7 @@ const TrainingMine = {
           </div>
           <div class="modal-footer" style="justify-content:space-between">
             <span id="learn-hint" class="text-muted" style="font-size:12px"></span>
-            <button class="btn btn-secondary" onclick="TrainingMine.finishLearn()">关闭</button>
+            <div style="display:flex;gap:8px"><button class="btn btn-secondary" onclick="TrainingMine.downloadCurrentCourse()">下载当前课件</button><button class="btn btn-secondary" onclick="TrainingMine.finishLearn()">关闭</button></div>
           </div>
         </div>
       </div>
@@ -341,6 +341,30 @@ const TrainingMine = {
           </div>
         </div>`;
     }).join('');
+  },
+
+  async downloadCurrentCourse() {
+    const c = this.state.courses.find(x => x.id === this.state.activeId);
+    if (!c) { Utils.toast('请先选择要下载的课件', 'info'); return; }
+    if (c.course_type === 'link' && !c.file_path) { Utils.toast('外部链接课件不能作为系统离线资料下载', 'info'); return; }
+    try {
+      let blob, ext;
+      if (c.course_type === 'text') {
+        blob = new Blob([c.content || ''], { type: 'text/plain;charset=utf-8' }); ext = 'txt';
+      } else {
+        const url = await this.fileUrl(c);
+        if (!url) throw new Error('课件文件不存在');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('课件下载失败');
+        blob = await response.blob();
+        ext = (c.file_path || '').split('.').pop().replace(/[^a-z0-9]/ig, '') ||
+          ({ html: 'html', pdf: 'pdf', video: 'mp4', image: 'jpg' }[c.course_type] || 'file');
+      }
+      const name = (c.title || '培训课件').replace(/[\\/:*?"<>|]/g, '_') + '.' + ext;
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      Utils.toast('课件已开始下载。离线查看不计入系统学习进度。', 'success');
+    } catch (e) { Utils.toast(`下载失败：${e.message || e}`, 'error'); }
   },
 
   async openCourse(courseId) {
