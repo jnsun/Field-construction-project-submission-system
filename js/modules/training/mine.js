@@ -403,7 +403,7 @@ const TrainingMine = {
           </div>
           <div class="modal-footer" style="justify-content:space-between">
             <div style="display:grid;gap:3px"><span id="learn-hint" class="text-muted" style="font-size:12px"></span><span id="learn-sync-status" class="text-muted" style="font-size:12px"></span></div>
-            <div style="display:flex;gap:8px"><button class="btn btn-secondary" onclick="TrainingMine.downloadCurrentCourse()">下载当前课件</button><button class="btn btn-secondary" onclick="TrainingMine.finishLearn()">关闭</button></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="TrainingMine.downloadCurrentCourse()">下载当前课件</button><button class="btn btn-secondary" onclick="TrainingMine.downloadCurrentTrainingPack()">下载当前培训包</button><button class="btn btn-secondary" onclick="TrainingMine.finishLearn()">关闭</button></div>
           </div>
         </div>
       </div>
@@ -439,28 +439,70 @@ const TrainingMine = {
     }).join('');
   },
 
+  async courseDownloadBlob(c) {
+    if (c.course_type === 'link' && !c.file_path) return null;
+    let blob, ext;
+    if (c.course_type === 'text') {
+      blob = new Blob([c.content || ''], { type: 'text/plain;charset=utf-8' }); ext = 'txt';
+    } else {
+      const url = await this.fileUrl(c);
+      if (!url) throw new Error(`课件“${c.title || ''}”文件不存在`);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`课件“${c.title || ''}”下载失败`);
+      blob = await response.blob();
+      ext = (c.file_path || '').split('.').pop().replace(/[^a-z0-9]/ig, '') ||
+        ({ html: 'html', pdf: 'pdf', video: 'mp4', image: 'jpg' }[c.course_type] || 'file');
+    }
+    return { blob, ext };
+  },
+
+  saveDownload(blob, name) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  },
+
+  courseDownloadName(c, ext, index = null) {
+    const prefix = index == null ? '' : `${String(index).padStart(2, '0')}_`;
+    return `${prefix}${(c.title || '培训课件').replace(/[\\/:*?\"<>|]/g, '_')}.${ext}`;
+  },
+
   async downloadCurrentCourse() {
     const c = this.state.courses.find(x => x.id === this.state.activeId);
     if (!c) { Utils.toast('请先选择要下载的课件', 'info'); return; }
     if (c.course_type === 'link' && !c.file_path) { Utils.toast('外部链接课件不能作为系统离线资料下载', 'info'); return; }
     try {
-      let blob, ext;
-      if (c.course_type === 'text') {
-        blob = new Blob([c.content || ''], { type: 'text/plain;charset=utf-8' }); ext = 'txt';
-      } else {
-        const url = await this.fileUrl(c);
-        if (!url) throw new Error('课件文件不存在');
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('课件下载失败');
-        blob = await response.blob();
-        ext = (c.file_path || '').split('.').pop().replace(/[^a-z0-9]/ig, '') ||
-          ({ html: 'html', pdf: 'pdf', video: 'mp4', image: 'jpg' }[c.course_type] || 'file');
-      }
-      const name = (c.title || '培训课件').replace(/[\\/:*?"<>|]/g, '_') + '.' + ext;
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      const item = await this.courseDownloadBlob(c);
+      this.saveDownload(item.blob, this.courseDownloadName(c, item.ext));
       Utils.toast('课件已开始下载。离线查看不计入系统学习进度。', 'success');
     } catch (e) { Utils.toast(`下载失败：${e.message || e}`, 'error'); }
+  },
+
+  async downloadCurrentTrainingPack() {
+    const offline = this.state.courses.filter(c => !(c.course_type === 'link' && !c.file_path));
+    const skipped = this.state.courses.length - offline.length;
+    if (!offline.length) { Utils.toast('当前培训包没有可下载的离线课件', 'info'); return; }
+    const maxBytes = 50 * 1024 * 1024;
+    const hint = document.getElementById('learn-hint');
+    if (hint) hint.textContent = `正在准备 ${offline.length} 个课件，请保持页面打开…`;
+    try {
+      const files = [];
+      for (const course of offline) {
+        const item = await this.courseDownloadBlob(course);
+        if (item) files.push({ course, ...item });
+      }
+      const total = files.reduce((sum, file) => sum + file.blob.size, 0);
+      if (total > maxBytes) {
+        Utils.toast(`当前培训包共 ${(total / 1024 / 1024).toFixed(1)}MB，超过 50MB 上限；请逐个下载`, 'error');
+        if (hint) hint.textContent = '培训包超过 50MB，请选择单个课件下载。';
+        return;
+      }
+      files.forEach((file, index) => this.saveDownload(file.blob, this.courseDownloadName(file.course, file.ext, index + 1)));
+      Utils.toast(`已开始下载 ${files.length} 个课件${skipped ? `，另有 ${skipped} 个外链课件未包含` : ''}。离线查看不计入学习进度。`, 'success');
+      if (hint) hint.textContent = `当前培训包 ${(total / 1024 / 1024).toFixed(1)}MB，已开始下载。`;
+    } catch (e) {
+      Utils.toast(`培训包下载失败：${e.message || e}`, 'error');
+      if (hint) hint.textContent = '培训包准备失败，请检查网络后重试。';
+    }
   },
 
   async openCourse(courseId) {
