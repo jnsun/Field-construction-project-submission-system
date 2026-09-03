@@ -19,7 +19,7 @@ const TrainingAdmissionOperations = {
         <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.generateDueReminders()">按规则提醒</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchRemind()">批量催办</button>
         ${TrainingModule.isCompanyAdmin() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.generateAllReminders()">全部项目提醒</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openReminderSettings()">提醒设置</button>' : ''}
         <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.load()">刷新</button>
-        ${TrainingModule.canManageAdmission() ? '<button class="btn btn-primary btn-sm" onclick="TrainingAdmissionOperations.openStartForm()">+ 发起准入</button>' : ''}</div></div>
+        ${TrainingModule.canManageAdmission() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchStart()">批量发起准入</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionOperations.openStartForm()">+ 发起准入</button>' : ''}</div></div>
       <div id="admission-op-summary"></div><div id="admission-op-table"></div>`;
     await this.load();
   },
@@ -95,6 +95,34 @@ const TrainingAdmissionOperations = {
   },
   refreshStartMembers() { const project = document.getElementById('ad-start-project')?.value || ''; const el = document.getElementById('ad-start-employee'); if (el) el.innerHTML = this.memberOptions(project); const pack = document.getElementById('ad-start-package'); if (pack) pack.innerHTML = this.packageOptions(project); },
   async submitStart() { const project = document.getElementById('ad-start-project')?.value; const employee = document.getElementById('ad-start-employee')?.value; const pack = document.getElementById('ad-start-package')?.value; if (!project || !employee || !pack) { Utils.toast('项目、人员和培训包不能为空', 'error'); return; } const r = await sb.rpc('training_start_admission', { p_project_id: project, p_employee_id: employee, p_package_id: pack }); if (r.error) { Utils.toast(r.error.message, 'error'); return; } await sb.rpc('training_send_admission_start_notice', { p_admission_id: r.data }); this.close(); Utils.toast('准入培训已发起，并已生成系统内任务提醒', 'success'); await this.load(); },
+
+  unstartedMembers(projectId) {
+    return this.state.members.filter(m => m.project_id === projectId && m.status === 'active')
+      .filter(m => !this.state.admissions.some(a => a.project_id === projectId && a.employee_id === m.employee_id));
+  },
+  openBatchStart() {
+    const projectId = this.state.filter || this.state.projects.find(p => p.status === 'active')?.id || '';
+    if (!projectId) { Utils.toast('当前没有可下发培训的在建项目', 'info'); return; }
+    this.modal('批量发起项目准入培训', `<p class="hint">仅列出本项目已在场、且尚未发起准入的人员。系统会逐人建档、下发培训任务并生成系统内提醒；已有记录不会覆盖。</p><div class="form-group"><label>项目 <span class="required">*</span></label><select id="ad-batch-project" class="form-control" onchange="TrainingAdmissionOperations.renderBatchStartPeople()">${this.projectOptions(projectId)}</select></div><div class="form-group"><label>已发布培训包 <span class="required">*</span></label><select id="ad-batch-package" class="form-control">${this.packageOptions(projectId)}</select></div><div id="ad-batch-people"></div>`, 'TrainingAdmissionOperations.submitBatchStart()');
+    this.renderBatchStartPeople();
+  },
+  renderBatchStartPeople() {
+    const projectId = document.getElementById('ad-batch-project')?.value || '';
+    const pack = document.getElementById('ad-batch-package'); if (pack) pack.innerHTML = this.packageOptions(projectId);
+    const people = this.unstartedMembers(projectId); const host = document.getElementById('ad-batch-people'); if (!host) return;
+    host.innerHTML = `<div class="form-group"><label>待下发人员（${people.length}）</label>${people.length ? `<label style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><input id="ad-batch-all" type="checkbox" checked onchange="document.querySelectorAll('.ad-batch-person').forEach(x => x.checked = this.checked)"> 全选本项目待下发人员</label><div style="max-height:250px;overflow:auto;border:1px solid #e5e7eb;border-radius:6px;padding:4px 10px">${people.map(m => { const e = this.employee(m.employee_id); return `<label style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6"><input class="ad-batch-person" type="checkbox" value="${m.employee_id}" checked><span><b>${this.esc(e.name)}</b>　${this.esc(e.position || '未填工种')}　<span class="text-muted">${this.esc(e.phone || '')}</span></span></label>`; }).join('')}</div>` : '<p class="text-muted">该项目所有在场人员均已有准入记录。</p>'}</div>`;
+  },
+  async submitBatchStart() {
+    const project = document.getElementById('ad-batch-project')?.value; const pack = document.getElementById('ad-batch-package')?.value;
+    const employees = Array.from(document.querySelectorAll('.ad-batch-person:checked')).map(x => x.value);
+    if (!project || !pack || !employees.length) { Utils.toast('请选择培训包和至少一名待下发人员', 'error'); return; }
+    if (!confirm(`确认向 ${employees.length} 名人员下发项目准入培训？`)) return;
+    const { data, error } = await sb.rpc('training_start_admission_batch', { p_project_id: project, p_employee_ids: employees, p_package_id: pack });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    const rows = data || []; const started = rows.filter(x => x.result_code === 'started').length; const skipped = rows.filter(x => x.result_code === 'skipped').length; const failed = rows.filter(x => x.result_code === 'failed');
+    if (failed.length) { this.modal('批量下发结果', `<p>已下发：<b>${started}</b> 人；跳过已有记录：<b>${skipped}</b> 人；失败：<b style="color:#b91c1c">${failed.length}</b> 人。</p><div style="max-height:220px;overflow:auto"><table class="data-table"><thead><tr><th>人员</th><th>失败原因</th></tr></thead><tbody>${failed.map(x => `<tr><td>${this.esc(this.employee(x.employee_id).name || x.employee_id)}</td><td>${this.esc(x.result_message)}</td></tr>`).join('')}</tbody></table></div>`, 'TrainingAdmissionOperations.close()'); } else { this.close(); Utils.toast(`已为 ${started} 名人员下发培训任务${skipped ? `，跳过 ${skipped} 名已有记录人员` : ''}`, 'success'); }
+    await this.load();
+  },
 
   retrainPackageOptions(admission) { return this.state.packages.filter(p => (!p.project_id || p.project_id === admission.project_id) && p.id !== admission.package_id && p.supersedes_package_id === admission.package_id).map(p => `<option value="${p.id}">${this.esc(p.title)} v${p.version_no || 1}</option>`).join(''); },
   openRetrainForm(admissionId, annual = false) { const a = this.state.admissions.find(x => x.id === admissionId); if (!a) return; const options = this.retrainPackageOptions(a); const kind = annual ? '年度复训' : '停工复训'; this.modal(`发起${kind}`, `<div class="alert alert-danger" style="margin-bottom:12px">该人员已被系统禁止上岗：${this.esc(a.retrain_reason || `${kind}待完成`)}。</div><p class="hint">请选择由原培训包复制出来、且已替换为新项目级/专项计划并完成签发的培训包版本。旧学习、考试和签字记录不会被覆盖。</p><div class="form-group"><label>已签发复训培训包 <span class="required">*</span></label><select id="ad-retrain-package" class="form-control"><option value="">请选择新版本培训包</option>${options}</select></div><div class="form-group"><label>复训说明</label><textarea id="ad-retrain-reason" class="form-control" rows="3" placeholder="例如：年度凭证到期，课件已更新"></textarea></div>${options ? '' : '<p class="text-muted">暂无可用的新版本。请先复制原培训包，替换项目级或专项培训计划，完成审核签发。</p>'}`, `TrainingAdmissionOperations.submitRetrain('${admissionId}', ${annual})`); },
