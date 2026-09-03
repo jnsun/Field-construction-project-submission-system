@@ -213,6 +213,12 @@ const App = {
    */
   routeTo(profile) {
     this.hideLoading();
+    // 项目邀请码来自项目经理生成的二维码。登录后直接进入员工端申请，
+    // 避免外协人员还要从首页手动寻找培训模块。
+    if (new URLSearchParams(location.search).get('invite')) {
+      this.openModule('training');
+      return;
+    }
     this.openDashboard();
   },
 

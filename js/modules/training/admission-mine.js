@@ -4,6 +4,8 @@
 // =============================================================
 const TrainingAdmissionMine = {
 
+  state: { autoInvite: '' },
+
   STATUS: {
     eligible: ['可上岗', 'badge-success'],
     blocked: ['禁止上岗', 'badge-danger'],
@@ -27,6 +29,11 @@ const TrainingAdmissionMine = {
       host.id = 'training-admission-mine';
       host.innerHTML = this.renderJoinEntry() + applications + (data?.length ? this.render(data) : '') + visitor + reminders;
       box.insertBefore(host, box.firstChild);
+      const invite = this.inviteToken();
+      if (invite && this.state.autoInvite !== invite) {
+        this.state.autoInvite = invite;
+        setTimeout(() => this.openJoinApplication(), 0);
+      }
     } catch (_) {
       // 迁移尚未执行时不影响原有我的培训页面。
     }
@@ -45,11 +52,33 @@ const TrainingAdmissionMine = {
     } catch (_) { return ''; }
   },
 
-  openJoinApplication() {
-    const token = new URLSearchParams(location.search).get('invite') || '';
+  inviteToken() { return new URLSearchParams(location.search).get('invite') || ''; },
+
+  clearInviteToken() {
+    const url = new URL(location.href);
+    url.searchParams.delete('invite');
+    history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    this.state.autoInvite = '';
+  },
+
+  async inviteInfo(token) {
+    const { data, error } = await sb.rpc('site_project_invite_summary', { p_token: token });
+    if (error || !data?.[0]) {
+      Utils.toast(error?.message || '邀请码无效或已过期，请联系项目经理获取新二维码', 'error');
+      return null;
+    }
+    return data[0];
+  },
+
+  async openJoinApplication() {
+    const token = this.inviteToken();
     const profile = Auth.currentProfile || {};
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
-    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="max-width:620px"><div class="modal-header"><h3>项目入场申请</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><p class="hint">提交后由项目经理审核；跨项目申请会自动转经营实体复核。审核通过后仍需完成培训、签字和现场确认，才可上岗。</p><div class="form-group"><label>项目邀请码 <span class="required">*</span></label><input id="join-token" class="form-control" value="${Utils.escapeHtml(token)}" autocomplete="off"></div><div class="form-row"><div class="form-group"><label>姓名 <span class="required">*</span></label><input id="join-name" class="form-control" value="${Utils.escapeHtml(profile.full_name || '')}"></div><div class="form-group"><label>手机号 <span class="required">*</span></label><input id="join-phone" class="form-control" inputmode="numeric"></div></div><div class="form-row"><div class="form-group"><label>工种/岗位 <span class="required">*</span></label><input id="join-position" class="form-control" placeholder="如：钻探工 / 电工"></div><div class="form-group"><label>外协单位名称 <span class="required">*</span></label><input id="join-company" class="form-control"></div></div><div class="form-group"><label>统一社会信用代码</label><input id="join-company-code" class="form-control"></div><div class="form-group"><label>本人现场照片 <span class="required">*</span></label><input id="join-photo" type="file" class="form-control" accept="image/png,image/jpeg,image/webp" capture="user"><p class="text-muted" style="font-size:12px;margin:4px 0 0">支持 JPG、PNG、WEBP，单张不超过 10MB。</p></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('training-modal-host').innerHTML=''">取消</button><button class="btn btn-primary" onclick="TrainingAdmissionMine.submitJoinApplication()">提交申请</button></div></div></div>`;
+    host.innerHTML = `<div class="modal-overlay"><div class="modal" style="max-width:620px"><div class="modal-header"><h3>项目入场申请</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><span class="text-muted">正在核对项目邀请码…</span></div></div></div>`;
+    const invite = token ? await this.inviteInfo(token) : null;
+    if (token && !invite) { host.innerHTML = ''; this.clearInviteToken(); return; }
+    const projectHint = invite ? `<div class="alert alert-success" style="margin-bottom:12px"><b>${Utils.escapeHtml(invite.project_code || '')} ${Utils.escapeHtml(invite.project_name || '')}</b><br><span style="font-size:12px">项目邀请码有效至：${Utils.escapeHtml(String(invite.expires_at || '').slice(0, 16).replace('T', ' '))}</span></div>` : '';
+    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="max-width:620px"><div class="modal-header"><h3>项目入场申请</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><p class="hint">提交后由项目经理审核；跨项目申请会自动转经营实体复核。审核通过后仍需完成培训、签字和现场确认，才可上岗。</p>${projectHint}<div class="form-group"><label>项目邀请码 <span class="required">*</span></label><input id="join-token" class="form-control" value="${Utils.escapeHtml(token)}" autocomplete="off"></div><div class="form-row"><div class="form-group"><label>姓名 <span class="required">*</span></label><input id="join-name" class="form-control" value="${Utils.escapeHtml(profile.full_name || '')}"></div><div class="form-group"><label>手机号 <span class="required">*</span></label><input id="join-phone" class="form-control" inputmode="numeric" value="${Utils.escapeHtml(profile.phone || '')}"></div></div><div class="form-row"><div class="form-group"><label>工种/岗位 <span class="required">*</span></label><input id="join-position" class="form-control" placeholder="如：钻探工 / 电工"></div><div class="form-group"><label>外协单位名称 <span class="required">*</span></label><input id="join-company" class="form-control"></div></div><div class="form-group"><label>统一社会信用代码</label><input id="join-company-code" class="form-control"></div><div class="form-group"><label>本人现场照片 <span class="required">*</span></label><input id="join-photo" type="file" class="form-control" accept="image/png,image/jpeg,image/webp" capture="user"><p class="text-muted" style="font-size:12px;margin:4px 0 0">支持 JPG、PNG、WEBP，单张不超过 10MB。</p></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('training-modal-host').innerHTML=''">取消</button><button class="btn btn-primary" onclick="TrainingAdmissionMine.submitJoinApplication()">提交申请</button></div></div></div>`;
   },
 
   async submitJoinApplication() {
@@ -59,6 +88,7 @@ const TrainingAdmissionMine = {
     if (!token || !name || !phone || !position || !company || !file) { Utils.toast('请完整填写必填信息并上传本人现场照片', 'error'); return; }
     if (!/^1[3-9]\d{9}$/.test(phone)) { Utils.toast('手机号格式不正确', 'error'); return; }
     if (file.size > 10 * 1024 * 1024 || (file.type && !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) { Utils.toast('现场照片仅支持 JPG、PNG、WEBP，且不能超过 10MB', 'error'); return; }
+    if (!await this.inviteInfo(token)) return;
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'; const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
     const path = `training-admission/join-applications/${Date.now()}-${random}.${ext}`; const bucket = typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates';
     const upload = await sb.storage.from(bucket).upload(path, file, { contentType: file.type, upsert: false });
@@ -66,6 +96,7 @@ const TrainingAdmissionMine = {
     const { error } = await sb.rpc('site_project_apply', { p_token: token, p_name: name, p_phone: phone, p_position: position, p_contractor_name: company, p_contractor_code: value('join-company-code') || null, p_photo_path: path });
     if (error) { Utils.toast(error.message, 'error'); return; }
     const host = document.getElementById('training-modal-host'); if (host) host.innerHTML = '';
+    this.clearInviteToken();
     Utils.toast('申请已提交，请等待项目经理审核', 'success'); await TrainingModule.renderView();
   },
 
