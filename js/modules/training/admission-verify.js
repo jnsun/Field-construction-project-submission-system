@@ -3,6 +3,7 @@
 // 目前支持扫码枪/小程序扫码后填入凭证编号；二维码图形在小程序接入时复用该接口。
 // ============================================================================
 const TrainingAdmissionVerify = {
+  state: { stream: null, scanning: false },
   STATUS: {
     eligible: ['可上岗', 'badge-success'], blocked: ['禁止上岗', 'badge-danger'],
     expired: ['凭证已过期', 'badge-danger'], project_closed: ['项目已关闭', 'badge-muted'],
@@ -17,7 +18,7 @@ const TrainingAdmissionVerify = {
     box.innerHTML = `<div class="card"><div class="card-header"><h2>二维码核验</h2><span class="text-muted">仅显示现场核验所需信息</span></div>
       <div class="card-body"><div style="display:flex;gap:8px;max-width:560px;flex-wrap:wrap">
         <input id="admission-verify-code" class="form-control" style="flex:1;min-width:220px" placeholder="扫描或输入电子凭证/临时通行编号">
-        <button class="btn btn-primary" onclick="TrainingAdmissionVerify.verify()">核验</button>
+        <button class="btn btn-secondary" onclick="TrainingAdmissionVerify.openScanner()">扫码</button><button class="btn btn-primary" onclick="TrainingAdmissionVerify.verify()">核验</button>
       </div><p class="text-muted" style="font-size:12px;margin-top:8px">核验结果实时判断项目状态、培训有效期和特种作业证状态。临时通行仅为短时例外，不以截图为准。</p>
       <div id="admission-verify-result" style="margin-top:16px"></div></div></div>`;
     const input = document.getElementById('admission-verify-code');
@@ -54,6 +55,38 @@ const TrainingAdmissionVerify = {
     }
     if (!row) { if (result) result.innerHTML = '<div class="alert alert-danger">未找到可由您核验的有效项目凭证、临时通行或访客安全告知。请核对编号或确认您已被任命为该项目经理/安全员。</div>'; return; }
     this.show(row);
+  },
+
+  host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
+  stopScanner() {
+    this.scanning = false;
+    (this.state.stream?.getTracks?.() || []).forEach(t => t.stop());
+    this.state.stream = null;
+    const host = document.getElementById('training-modal-host'); if (host) host.innerHTML = '';
+  },
+  async openScanner() {
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) { Utils.toast('当前浏览器不支持扫码，请使用微信/Chrome 扫码后输入编号', 'info'); return; }
+    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingAdmissionVerify.stopScanner()"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><h3>扫描准入二维码</h3><button class="modal-close" onclick="TrainingAdmissionVerify.stopScanner()">×</button></div><div class="modal-body"><video id="admission-scan-video" playsinline muted style="width:100%;background:#111827;border-radius:6px"></video><p id="admission-scan-tip" class="text-muted" style="margin-top:10px;font-size:13px">请将二维码置于画面中央。</p></div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionVerify.stopScanner()">取消</button></div></div></div>`;
+    try {
+      this.state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      const video = document.getElementById('admission-scan-video'); if (!video) return;
+      video.srcObject = this.state.stream; await video.play();
+      const detector = new BarcodeDetector({ formats: ['qr_code'] }); this.scanning = true;
+      const scan = async () => {
+        if (!this.scanning || !video.isConnected) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes[0]?.rawValue) {
+            const input = document.getElementById('admission-verify-code'); if (input) input.value = codes[0].rawValue.trim();
+            this.stopScanner(); await this.verify(); return;
+          }
+        } catch (_) { /* 摄像头刚启动或画面尚未稳定时继续尝试 */ }
+        setTimeout(scan, 180);
+      };
+      scan();
+    } catch (e) {
+      this.stopScanner(); Utils.toast(`无法打开摄像头：${e.message || e}`, 'error');
+    }
   },
 
   async image(path) {
