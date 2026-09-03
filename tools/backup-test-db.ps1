@@ -1,10 +1,31 @@
-param([Parameter(Mandatory=$true)][string]$DatabaseUrl, [string]$OutputDir = 'backups')
+param(
+  [Parameter(Mandatory=$true)][string]$DatabaseUrl,
+  [string]$OutputDir = 'backups',
+  [string]$ExpectedProjectRef
+)
 $ErrorActionPreference = 'Stop'
-if ($DatabaseUrl -notmatch '(?i)(test|staging|dev)') { throw '数据库地址未包含 test、staging 或 dev 标识，拒绝备份，避免误操作生产环境。' }
+$hasEnvironmentMarker = $DatabaseUrl -match '(?i)(test|staging|dev)'
+$matchesExpectedProject = $ExpectedProjectRef -and $DatabaseUrl -match [regex]::Escape($ExpectedProjectRef)
+if (-not $hasEnvironmentMarker -and -not $matchesExpectedProject) {
+  throw '数据库地址未包含 test、staging 或 dev 标识，且未匹配显式测试项目引用，拒绝备份。'
+}
 $pgDump = Get-Command pg_dump -ErrorAction SilentlyContinue
 if (-not $pgDump) { throw '未找到 pg_dump。请安装 PostgreSQL 客户端工具。' }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-& $pgDump.Source --format=custom --file "$OutputDir/safety-$stamp-full.dump" $DatabaseUrl
-& $pgDump.Source --schema-only --format=plain --file "$OutputDir/safety-$stamp-schema.sql" $DatabaseUrl
+$fullBackup = "$OutputDir/safety-$stamp-full.dump"
+$schemaBackup = "$OutputDir/safety-$stamp-schema.sql"
+
+& $pgDump.Source --format=custom --file $fullBackup $DatabaseUrl
+if ($LASTEXITCODE -ne 0) {
+  Remove-Item -LiteralPath $fullBackup -Force -ErrorAction SilentlyContinue
+  throw '完整结构备份失败，未保留不完整文件。'
+}
+
+& $pgDump.Source --schema-only --format=plain --file $schemaBackup $DatabaseUrl
+if ($LASTEXITCODE -ne 0) {
+  Remove-Item -LiteralPath $schemaBackup -Force -ErrorAction SilentlyContinue
+  throw '结构 SQL 备份失败，未保留不完整文件。'
+}
+
 Write-Output "备份完成：$OutputDir"

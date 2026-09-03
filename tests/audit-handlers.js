@@ -33,9 +33,12 @@ console.log(`1) 语法检查：${jsFiles.length} 个 JS 文件全部通过` + (p
 // ---------- 2. index.html 引用文件存在 ----------
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const refs = [...html.matchAll(/(?:src|href)="((?:js|css|vendor|tests)\/[^"]+)"/g)].map(m => m[1]);
+const deploymentGeneratedRefs = new Set(['js/config.runtime.js']);
 for (const r of refs) {
   checks++;
-  if (!fs.existsSync(path.join(ROOT, r))) problems.push(`[缺失] index.html 引用不存在: ${r}`);
+  if (!fs.existsSync(path.join(ROOT, r)) && !deploymentGeneratedRefs.has(r)) {
+    problems.push(`[缺失] index.html 引用不存在: ${r}`);
+  }
 }
 console.log(`2) index.html 引用检查：${refs.length} 个引用` + (problems.some(p => p.includes('[缺失]')) ? ' ✗' : ' 全部存在 ✓'));
 
@@ -105,3 +108,4 @@ console.log('\n========== 审计汇总 ==========');
 console.log(`共执行 ${checks} 项检查，发现问题 ${problems.length} 个`);
 if (problems.length) problems.forEach(p => console.log('  ✗ ' + p));
 else console.log('全部通过 ✓');
+process.exitCode = problems.length ? 1 : 0;

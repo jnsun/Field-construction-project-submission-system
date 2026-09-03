@@ -3,22 +3,26 @@
   "version": 1,
   "bootstrapFilesForEmptyDatabase": [
     "schema.sql",
+    "login-account.sql",
     "user-management.sql",
     "phone-login.sql",
     "super-admin.sql",
     "training-management.sql",
     "training-fix-v13.sql",
+    "d03-department-bootstrap-compat.sql",
     "department-tree.sql",
     "department-entity-permissions.sql",
     "department-fix-v1.sql",
     "account-rpc-v2.sql",
+    "d03-training-signatures-bootstrap-compat.sql",
     "training-online-v2.sql",
     "training-content-library.sql",
     "exam-module.sql",
-    "personnel-center-v1.sql"
+    "personnel-center-v1.sql",
+    "d03-project-reports-bootstrap-compat.sql"
   ],
   "migrations": [
-    { "version": 1, "file": "training-admission-v1.sql", "sha256": "B6BCD428F14881FB697AC368AE320E189EB5F3230E0D6220310E28C338D67209" },
+    { "version": 1, "file": "training-admission-v1.sql", "sha256": "17EEF619D66E5AEBC74546F4B67F24B31246EC65A8376D2E361C6BDABDBF1927" },
     { "version": 2, "file": "training-admission-v2.sql", "sha256": "30B6F8E2E8797858B2E49F8B9DB366958158DFB5739CE17A9522856E85E3C9B9" },
     { "version": 3, "file": "training-admission-v3.sql", "sha256": "4C7C716485171F54E1B9CA83AD04F6FC5CB21A0453C0C81A001ED1587E4A7E24" },
     { "version": 4, "file": "training-admission-v4.sql", "sha256": "2F93722C235F0ED3A3F9844746789C1DB0D4C2E1F242CDBDD831B77539AA3452" },

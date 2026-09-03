@@ -468,8 +468,12 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS trg_site_projects_audit ON public.site_projects;
+DROP TRIGGER IF EXISTS trg_site_projects_audit_delete ON public.site_projects;
 CREATE TRIGGER trg_site_projects_audit
-  AFTER INSERT OR UPDATE OR DELETE ON public.site_projects
+  AFTER INSERT OR UPDATE ON public.site_projects
+  FOR EACH ROW EXECUTE FUNCTION public.site_project_audit_trigger();
+CREATE TRIGGER trg_site_projects_audit_delete
+  BEFORE DELETE ON public.site_projects
   FOR EACH ROW EXECUTE FUNCTION public.site_project_audit_trigger();
 
 CREATE OR REPLACE FUNCTION public.training_temporary_access_guard()

@@ -9,8 +9,13 @@
  *   5. RLS：经营实体管理员直连 profiles 只见本部门子树
  *   6. RLS：公司级管理员直连 profiles 仍见全量；departments 两账号均可全读（设计如此）
  */
-const SUPABASE_URL = 'https://exwsuwhqqpsqekzkmdol.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4d3N1d2hxcXBzcWVremttZG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MzUyNTcsImV4cCI6MjEwMzExMTI1N30.bMqWlGbJ0IGL9mgT33r9IjUQiJ7E2dwADKHNU04ukW0';
+const { required } = require('./test-config');
+const SUPABASE_URL = required('SAFETY_SUPABASE_URL');
+const SUPABASE_ANON_KEY = required('SAFETY_SUPABASE_ANON_KEY');
+const TEST_ADMIN_EMAIL = required('SAFETY_TEST_ADMIN_EMAIL');
+const TEST_ADMIN_PASSWORD = required('SAFETY_TEST_ADMIN_PASSWORD');
+const TEST_ENTITY_EMAIL = required('SAFETY_TEST_ENTITY_EMAIL');
+const TEST_ENTITY_PASSWORD = required('SAFETY_TEST_ENTITY_PASSWORD');
 
 const results = [];
 function report(name, pass, detail) {
@@ -18,23 +23,7 @@ function report(name, pass, detail) {
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? '  → ' + detail : ''}`);
 }
 
-async function login(emailOrPhone, password) {
-  // 与前端 auth.js 同链路：手机号先经 resolve_login_identifier 解析出真实邮箱
-  const isEmail = String(emailOrPhone).includes('@');
-  let email = emailOrPhone;
-  if (!isEmail) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/resolve_login_identifier`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ p_identifier: emailOrPhone }),
-    });
-    const json = await res.json();
-    if (!res.ok || !json || !json.email) {
-      throw new Error(`解析登录标识失败 ${emailOrPhone}: ${JSON.stringify(json)}`);
-    }
-    email = json.email;
-    console.log(`[login] ${emailOrPhone} → ${email}`);
-  }
+async function login(email, password) {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
@@ -64,8 +53,8 @@ function rest(token) {
 }
 
 async function main() {
-  const adminToken = await login('jnsun@qq.com', '31803180');
-  const entityToken = await login('13835938299', '123456');
+  const adminToken = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+  const entityToken = await login(TEST_ENTITY_EMAIL, TEST_ENTITY_PASSWORD);
   const adminApi = rest(adminToken);
   const entityApi = rest(entityToken);
 

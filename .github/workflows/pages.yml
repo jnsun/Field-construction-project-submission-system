@@ -30,6 +30,21 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Generate browser runtime configuration
+        env:
+          SAFETY_SUPABASE_URL: ${{ secrets.SAFETY_SUPABASE_URL }}
+          SAFETY_SUPABASE_ANON_KEY: ${{ secrets.SAFETY_SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$SAFETY_SUPABASE_URL"
+          test -n "$SAFETY_SUPABASE_ANON_KEY"
+          node - <<'NODE' > js/config.runtime.js
+          const value = {
+            url: process.env.SAFETY_SUPABASE_URL,
+            anonKey: process.env.SAFETY_SUPABASE_ANON_KEY,
+          };
+          process.stdout.write(`window.__SAFETY_SUPABASE_CONFIG__ = ${JSON.stringify(value)};\n`);
+          NODE
+
       - name: Upload site files
         uses: actions/upload-pages-artifact@v3
         with:

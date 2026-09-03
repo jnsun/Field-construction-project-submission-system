@@ -88,7 +88,7 @@ const App = {
           </div>
           <div class="alert alert-warning">
             <p style="font-weight:600;margin-bottom:8px;">请先配置 Supabase 连接信息</p>
-            <p>打开 <code>js/config.js</code> 文件，将 <code>SUPABASE_URL</code> 和 <code>SUPABASE_ANON_KEY</code> 替换为您 Supabase 项目的凭据。</p>
+            <p>请由部署环境生成 <code>js/config.runtime.js</code>，或仅在本机复制 <code>js/config.runtime.example.js</code> 后填写测试项目配置。</p>
             <p style="margin-top:8px;">获取方式：Supabase 控制台 → Settings → API</p>
           </div>
         </div>

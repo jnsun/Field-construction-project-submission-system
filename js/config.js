@@ -7,8 +7,9 @@
  *   - anon public key -> 填入 SUPABASE_ANON_KEY
  */
 
-const SUPABASE_URL = 'https://exwsuwhqqpsqekzkmdol.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4d3N1d2hxcXBzcWVremttZG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MzUyNTcsImV4cCI6MjEwMzExMTI1N30.bMqWlGbJ0IGL9mgT33r9IjUQiJ7E2dwADKHNU04ukW0';
+const runtimeConfig = globalThis.__SAFETY_SUPABASE_CONFIG__ || {};
+const SUPABASE_URL = typeof runtimeConfig.url === 'string' ? runtimeConfig.url : 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = typeof runtimeConfig.anonKey === 'string' ? runtimeConfig.anonKey : 'YOUR_SUPABASE_ANON_KEY';
 
 // 初始化 Supabase 客户端（全局可用）
 // 使用 try-catch 防止 SDK 加载失败时阻塞整个应用

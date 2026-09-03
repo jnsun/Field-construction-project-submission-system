@@ -3,8 +3,11 @@
  * 逻辑：公司级登录 → 按 remark 含 E6测试 查 training_employees
  *      → 检查是否被培训记录引用（有引用则跳过并报告）→ 删除 → 复核
  */
-const SUPABASE_URL = 'https://exwsuwhqqpsqekzkmdol.supabase.co';
-const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4d3N1d2hxcXBzcWVremttZG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MzUyNTcsImV4cCI6MjEwMzExMTI1N30.bMqWlGbJ0IGL9mgT33r9IjUQiJ7E2dwADKHNU04ukW0';
+const { required } = require('./test-config');
+const SUPABASE_URL = required('SAFETY_SUPABASE_URL');
+const KEY = required('SAFETY_SUPABASE_ANON_KEY');
+const TEST_ADMIN_EMAIL = required('SAFETY_TEST_ADMIN_EMAIL');
+const TEST_ADMIN_PASSWORD = required('SAFETY_TEST_ADMIN_PASSWORD');
 
 async function api(tok, method, path, body) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -24,7 +27,7 @@ const main = async () => {
   const lr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: KEY },
-    body: JSON.stringify({ email: 'jnsun@qq.com', password: '31803180' }),
+    body: JSON.stringify({ email: TEST_ADMIN_EMAIL, password: TEST_ADMIN_PASSWORD }),
   });
   const tok = (await lr.json()).access_token;
   if (!tok) throw new Error('登录失败');

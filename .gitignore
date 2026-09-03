@@ -13,6 +13,7 @@ node_modules/
 !.env.example
 backups/
 js/config.local.js
+js/config.runtime.js
 test-results/
 *.log
 .DS_Store

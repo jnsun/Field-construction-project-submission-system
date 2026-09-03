@@ -16,6 +16,14 @@ The current designated test database already contains v17+ objects. It is suitab
 
 For a fresh test database, run the bootstrap files only through [run-d03-migration-verification.ps1](../tools/run-d03-migration-verification.ps1); do not execute deprecated `department-management.sql`.
 
+`login-account.sql` is intentionally before `phone-login.sql`: the latter reuses `change_own_email()` and fails on a clean database if that dependency is skipped.
+
+`d03-department-bootstrap-compat.sql` is intentionally before `department-tree.sql`: it creates the two reporting-view columns that the active department scripts require but no longer create from `schema.sql`.
+
+`d03-training-signatures-bootstrap-compat.sql` resolves an online-learning and exam-module cycle by creating the exact assignment and signature tables before online-learning Storage policies reference them.
+
+`d03-project-reports-bootstrap-compat.sql` restores the legacy `project_reports.project_status` column expected by v1 and v16. It is an idempotent empty-database bridge and leaves the original `schema.sql` baseline unchanged.
+
 ## Test procedure
 
 Install PostgreSQL client tools (`psql`, `pg_dump`, and `pg_restore`) locally. Keep the target database URL only in the terminal or local environment; do not place it in the repository.
@@ -62,7 +70,7 @@ The schema inventory records tables, columns, constraints, indexes, functions, t
 | --- | --- | --- |
 | Manifest covers v1-v16 in order | Ready for automated validation | `tests/verify-d03-migration-files.js` |
 | Hash and static safety checks | Ready for automated validation | `tests/verify-d03-migration-files.js` |
-| Empty database migration | Blocked pending disposable Supabase project or local PostgreSQL | Runner output under `test-results/d03/` |
+| Empty database migration | Passed on 2026-09-03 in isolated `safety-d03-migration-test` Supabase project; bootstrap bridges, v1-v16 and post-v16 hardening all completed | Dashboard SQL execution log and object-existence query; no production data used |
 | Anonymized historical-copy migration | Blocked pending sanitized backup and restore target | Runner output under `test-results/d03/` |
 | Backup and restore drill | Blocked pending PostgreSQL client tools and disposable target | `tools/run-d03-restore-drill.ps1` |
 | Current test database structure inspection | Ready; read-only | `sql/d03-schema-inventory.sql` |
@@ -73,3 +81,10 @@ The schema inventory records tables, columns, constraints, indexes, functions, t
 - A v17 sentinel function exists, so the D03 runner correctly blocks an in-place v1-v16 replay.
 - The v1-v16 function-name set currently contains 49 `SECURITY DEFINER` overloads. All have a fixed search path when the approved `public, vault` variant is included, but all 49 are still executable by `PUBLIC` and `anon` until the D03 hardening SQL is applied.
 - Five Storage object policies reference the `training-courses` bucket. Full policy-definition comparison remains part of the isolated migration run.
+
+## 2026-09-03 isolated empty-database evidence
+
+- Created an isolated disposable Supabase test project; no existing test or production project was modified.
+- Executed the manifest bootstrap chain, `training-admission-v1.sql` through `training-admission-v16.sql`, and `training-admission-v16-d03-hardening.sql` successfully.
+- The empty run exposed three omitted baseline dependencies: `change_own_email()`, two department reporting columns, and the online-learning assignment/signature cycle. Existing D03 bootstrap compatibility scripts cover the first three; `d03-project-reports-bootstrap-compat.sql` now restores the legacy `project_reports.project_status` column required by v1/v16.
+- Verified after v1 that `public.site_projects` and `public.training_admissions` exist. The historical-copy migration and backup/restore drill remain blocked until a sanitized source backup and PostgreSQL client tools are available.

@@ -35,6 +35,26 @@ FROM (VALUES
   ('测试-证照过期','D02-010','焊工','13900000010','special','active','D02-TEST')
 ) AS v(name, employee_no, position, phone, emp_type, status, remark)
 WHERE NOT EXISTS (SELECT 1 FROM public.training_employees e WHERE e.phone = v.phone);
+
+-- Rebind the three anonymous D02 login accounts after fixture cleanup recreates employees.
+UPDATE public.profiles p
+SET employee_id = e.id,
+    department_id = e.department_id,
+    role = CASE e.employee_no WHEN 'D02-004' THEN 'employee' ELSE 'admin' END,
+    admin_level = CASE e.employee_no
+      WHEN 'D02-001' THEN 'company'
+      WHEN 'D02-002' THEN 'dept'
+      ELSE NULL
+    END,
+    updated_at = NOW()
+FROM public.training_employees e
+WHERE e.employee_no IN ('D02-001', 'D02-002', 'D02-004')
+  AND (
+    (e.employee_no = 'D02-001' AND lower(p.email) LIKE 'd02-company-%@example.invalid')
+    OR (e.employee_no = 'D02-002' AND lower(p.email) LIKE 'd02-entity-%@example.invalid')
+    OR (e.employee_no = 'D02-004' AND lower(p.email) LIKE 'd02-employee-%@example.invalid')
+  );
+
 INSERT INTO public.safety_test_fixture_registry(run_key,table_name,record_id,fixture_role)
 SELECT 'D02-TEST-20260903','training_employees',id,remark FROM public.training_employees WHERE remark='D02-TEST'
 ON CONFLICT DO NOTHING;

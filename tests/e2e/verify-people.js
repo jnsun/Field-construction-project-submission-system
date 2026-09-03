@@ -13,8 +13,13 @@
  *   8. 公司级 people_unlink_account / people_link_account 正常
  *   9. 清理：删除测试账号与测试档案
  */
-const SUPABASE_URL = 'https://exwsuwhqqpsqekzkmdol.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4d3N1d2hxcXBzcWVremttZG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MzUyNTcsImV4cCI6MjEwMzExMTI1N30.bMqWlGbJ0IGL9mgT33r9IjUQiJ7E2dwADKHNU04ukW0';
+const { required } = require('./test-config');
+const SUPABASE_URL = required('SAFETY_SUPABASE_URL');
+const SUPABASE_ANON_KEY = required('SAFETY_SUPABASE_ANON_KEY');
+const TEST_ADMIN_EMAIL = required('SAFETY_TEST_ADMIN_EMAIL');
+const TEST_ADMIN_PASSWORD = required('SAFETY_TEST_ADMIN_PASSWORD');
+const TEST_ENTITY_EMAIL = required('SAFETY_TEST_ENTITY_EMAIL');
+const TEST_ENTITY_PASSWORD = required('SAFETY_TEST_ENTITY_PASSWORD');
 
 const results = [];
 function report(name, pass, detail) {
@@ -22,19 +27,7 @@ function report(name, pass, detail) {
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? '  → ' + detail : ''}`);
 }
 
-async function login(emailOrPhone, password) {
-  const isEmail = String(emailOrPhone).includes('@');
-  let email = emailOrPhone;
-  if (!isEmail) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/resolve_login_identifier`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ p_identifier: emailOrPhone }),
-    });
-    const json = await res.json();
-    if (!res.ok || !json || !json.email) throw new Error(`解析登录标识失败 ${emailOrPhone}: ${JSON.stringify(json)}`);
-    email = json.email;
-  }
+async function login(email, password) {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
@@ -67,8 +60,8 @@ function rest(token) {
 const randPhone = () => '19' + String(Math.floor(Math.random() * 1e9)).padStart(9, '0');
 
 async function main() {
-  const adminToken = await login('jnsun@qq.com', '31803180');
-  const entityToken = await login('13835938299', '123456');
+  const adminToken = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+  const entityToken = await login(TEST_ENTITY_EMAIL, TEST_ENTITY_PASSWORD);
   const adminApi = rest(adminToken);
   const entityApi = rest(entityToken);
 
@@ -88,6 +81,7 @@ async function main() {
   const deptId = rootDept.json && rootDept.json[0] && rootDept.json[0].id;
   if (!deptId) throw new Error('找不到公司根部门');
   const testPhone = randPhone();
+  const testPassword = `P1${Date.now()}aA!`;
   const empRes = await adminApi('POST', 'training_employees',
     { name: '__P1测试员工__', department_id: deptId, phone: testPhone, status: 'active', emp_type: 'employee', job_grade: '测试岗' },
     { Prefer: 'return=representation' });
@@ -96,7 +90,7 @@ async function main() {
 
   const acctPhone = testPhone; // 缺省取档案手机号
   const createRes = await adminApi('POST', 'rpc/people_create_account', {
-    p_employee_id: emp.id, p_email: null, p_password: 'p1test123', p_role: 'employee',
+    p_employee_id: emp.id, p_email: null, p_password: testPassword, p_role: 'employee',
   });
   const userId = createRes.json && (createRes.json.user_id || (createRes.json.user_id));
   report('3. people_create_account 开通并绑定', createRes.status === 200 && !!userId,
@@ -114,7 +108,7 @@ async function main() {
 
   // ---- 4. 测试账号登录 + 自视图 ----
   let empToken = null;
-  try { empToken = await login(acctPhone, 'p1test123'); } catch (e) { /* 下方报告 */ }
+  try { empToken = await login(acctPhone, testPassword); } catch (e) { /* 下方报告 */ }
   if (empToken) {
     const prof = await rest(empToken)('POST', 'rpc/employee_self_profile', {});
     const p = prof.json || {};
