@@ -5,7 +5,8 @@
 -- 二维码核验、员工凭证等对外场景仍使用脱敏信息。
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION public.training_admission_record_cards(p_project_id UUID DEFAULT NULL)
+DROP FUNCTION IF EXISTS public.training_admission_record_cards(UUID);
+CREATE FUNCTION public.training_admission_record_cards(p_project_id UUID DEFAULT NULL)
 RETURNS TABLE (
   admission_id UUID,
   project_code TEXT,
@@ -18,8 +19,10 @@ RETURNS TABLE (
   id_number TEXT,
   contractor_name TEXT,
   admission_status TEXT,
+  training_cycle_no INT,
   levels JSONB,
   signatures JSONB,
+  retraining_cycles JSONB,
   final_signed_at TIMESTAMPTZ,
   site_confirmed_at TIMESTAMPTZ,
   valid_until DATE
@@ -41,11 +44,11 @@ BEGIN
               THEN e.id_number
               WHEN e.id_number IS NULL THEN NULL
               ELSE regexp_replace(e.id_number, '^(.{3}).*(.{4})$', '\1***********\2') END,
-         cc.name,
-         a.status,
+         cc.name, a.status, a.training_cycle_no,
          COALESCE((
            SELECT jsonb_agg(jsonb_build_object(
              'level', t.level,
+             'cycle_no', t.cycle_no,
              'plan_title', tp.title,
              'required_hours', tp.required_hours,
              'completed_at', t.completed_at,
@@ -58,7 +61,7 @@ BEGIN
                SELECT jsonb_agg(c.title ORDER BY c.sort_order, c.created_at)
                FROM public.training_courses c WHERE c.plan_id = t.plan_id
              ), '[]'::jsonb)
-           ) ORDER BY CASE t.level WHEN 'company' THEN 1 WHEN 'entity' THEN 2 WHEN 'project' THEN 3 ELSE 4 END, t.created_at)
+           ) ORDER BY t.cycle_no, CASE t.level WHEN 'company' THEN 1 WHEN 'entity' THEN 2 WHEN 'project' THEN 3 ELSE 4 END, t.created_at)
            FROM public.training_admission_tasks t
            JOIN public.training_plans tp ON tp.id = t.plan_id
            WHERE t.admission_id = a.id
@@ -68,10 +71,20 @@ BEGIN
            FROM (
              SELECT DISTINCT ON (s.signer_role) s.signer_role, s.signed_at
              FROM public.training_admission_signatures s
-             WHERE s.admission_id = a.id AND s.task_id IS NULL
+             WHERE s.admission_id = a.id AND s.task_id IS NULL AND s.cycle_no = a.training_cycle_no
              ORDER BY s.signer_role, s.signed_at DESC
            ) x
          ), '{}'::jsonb),
+         COALESCE((
+           SELECT jsonb_agg(jsonb_build_object(
+             'cycle_no', rc.cycle_no, 'trigger_type', rc.trigger_type, 'reason', rc.reason,
+             'started_at', rc.started_at, 'old_package_title', oldp.title, 'new_package_title', newp.title
+           ) ORDER BY rc.cycle_no)
+           FROM public.training_admission_retraining_cycles rc
+           LEFT JOIN public.training_admission_packages oldp ON oldp.id = rc.old_package_id
+           JOIN public.training_admission_packages newp ON newp.id = rc.new_package_id
+           WHERE rc.admission_id = a.id
+         ), '[]'::jsonb),
          a.final_signed_at, a.site_confirmed_at, a.valid_until
   FROM public.training_admissions a
   JOIN public.site_projects p ON p.id = a.project_id
