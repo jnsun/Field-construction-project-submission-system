@@ -13,7 +13,7 @@ const TrainingContractors = {
       <div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">外协资料人工审核台账</span></div>
         <div class="toolbar-right">
           <button class="btn btn-secondary btn-sm" onclick="TrainingContractors.load()">刷新</button>
-          ${TrainingModule.canManageAdmission() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button>` : ''}
+          ${TrainingModule.canManageAdmission() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openIdentityImport()">补录身份证档案</button>` : ''}
           ${TrainingModule.canEdit() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.downloadMemberTemplate()">导入模板</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openMemberImport()">批量导入人员</button><button class="btn btn-primary btn-sm" onclick="TrainingContractors.openCompanyForm()">+ 新建外协单位</button>` : ''}
         </div>
       </div>
@@ -108,12 +108,12 @@ const TrainingContractors = {
     box.innerHTML = `<div class="card"><div class="card-header"><h2>项目外协人员台账（${this.state.members.filter(m => m.membership_type !== 'internal').length}）</h2>
       ${TrainingModule.canEdit() ? '<button class="btn btn-primary btn-sm" onclick="TrainingContractors.openMemberForm()">+ 建立人员并加入项目</button>' : ''}</div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr>
-      <th>姓名</th><th>手机号</th><th>工种</th><th>项目</th><th>外协单位</th><th>状态</th><th>入场时间</th></tr></thead><tbody>
+      <th>姓名</th><th>手机号</th><th>工种</th><th>项目</th><th>外协单位</th><th>状态</th><th>入场时间</th><th>档案</th></tr></thead><tbody>
       ${this.state.members.filter(m => m.membership_type !== 'internal').length ? this.state.members.filter(m => m.membership_type !== 'internal').map(m => { const e = this.employee(m.employee_id); return `<tr>
         <td>${Utils.escapeHtml(e.name || '—')}</td><td>${Utils.escapeHtml(e.phone || '—')}</td><td>${Utils.escapeHtml(e.position || '—')}</td>
         <td>${Utils.escapeHtml(this.projectName(m.project_id))}</td><td>${Utils.escapeHtml(this.companyName(m.contractor_id))}</td>
-        <td>${m.status === 'active' ? this.status('在场', 'badge-success') : this.status(m.status === 'left' ? '已离场' : '已撤销')}</td><td>${Utils.escapeHtml((m.joined_at || '').slice(0, 10))}</td></tr>`; }).join('')
-        : TrainingModule.emptyRow(7, '暂无项目外协人员')}</tbody></table></div></div>`;
+        <td>${m.status === 'active' ? this.status('在场', 'badge-success') : this.status(m.status === 'left' ? '已离场' : '已撤销')}</td><td>${Utils.escapeHtml((m.joined_at || '').slice(0, 10))}</td><td>${TrainingModule.canManageAdmission() && ['active', 'left'].includes(m.status) ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openIdentityBackfill('${m.project_id}','${m.employee_id}')">补录身份证号</button>` : '—'}</td></tr>`; }).join('')
+        : TrainingModule.emptyRow(8, '暂无项目外协人员')}</tbody></table></div></div>`;
   },
 
   renderDocuments() {
@@ -246,6 +246,58 @@ const TrainingContractors = {
     const { data, error } = await sb.rpc('training_batch_add_contractor_members', { p_project_id: this.state.memberImportProject, p_contractor_id: this.state.memberImportCompany, p_people: rows.map(r => ({ name: r.name, phone: r.phone, id_number: r.idNumber, position: r.position })) });
     if (error) { Utils.toast(error.message, 'error'); return; }
     this.state.memberImportResult = data || []; this.renderMemberImport(); await this.load();
+  },
+
+  openIdentityBackfill(projectId, employeeId) {
+    const person = this.employee(employeeId);
+    this.modal('补录加密身份证档案', `<p class="hint">身份证号仅以加密形式留存在本项目入场档案，用于固定台账与检查归档。</p><p><b>${Utils.escapeHtml(person.name || '—')}</b>　${Utils.escapeHtml(person.phone || '')}　${Utils.escapeHtml(this.projectName(projectId))}</p><div class="form-group"><label>身份证号 <span class="required">*</span></label><input id="identity-backfill-number" class="form-control" maxlength="18" autocomplete="off" placeholder="18 位大陆居民身份证号"></div>`, `TrainingContractors.submitIdentityBackfill('${projectId}','${employeeId}')`);
+  },
+
+  async submitIdentityBackfill(projectId, employeeId) {
+    const person = this.employee(employeeId); const idNumber = document.getElementById('identity-backfill-number')?.value.trim().toUpperCase() || '';
+    if (!/^[1-9]\d{16}[\dX]$/.test(idNumber)) { Utils.toast('请填写 18 位大陆居民身份证号', 'error'); return; }
+    const { data, error } = await sb.rpc('training_backfill_contractor_identities', { p_project_id: projectId, p_people: [{ name: person.name, phone: person.phone, id_number: idNumber }] });
+    if (error || data?.[0]?.result_code === 'failed') { Utils.toast(error?.message || data?.[0]?.result_message || '身份证档案补录失败', 'error'); return; }
+    this.close(); Utils.toast(data?.[0]?.result_code === 'already_recorded' ? '该人员已留存身份证档案' : '已加密留存身份证档案', 'success'); await this.load();
+  },
+
+  IDENTITY_IMPORT_HEADERS: ['姓名*', '手机号*', '身份证号*'],
+  downloadIdentityTemplate() {
+    if (typeof XLSX === 'undefined') { Utils.toast('Excel 组件未加载，请刷新页面后重试', 'error'); return; }
+    const sheet = XLSX.utils.aoa_to_sheet([this.IDENTITY_IMPORT_HEADERS, ['张三', '13800138000', '110101199001011234']]); sheet['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 22 }];
+    const help = XLSX.utils.aoa_to_sheet([['填写说明'], ['1. 仅用于补录已在当前项目台账中的外协人员。'], ['2. 姓名和手机号必须与项目外协人员台账一致。'], ['3. 身份证号必须为 18 位大陆居民身份证号，导入后加密保存。']]); help['!cols'] = [{ wch: 68 }];
+    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '身份证补录'); XLSX.utils.book_append_sheet(book, help, '填写说明'); XLSX.writeFile(book, `外协身份证补录模板_${Utils.formatDate(new Date())}.xlsx`);
+  },
+
+  openIdentityImport() {
+    this.state.identityImportRows = null; this.state.identityImportResult = null;
+    this.state.identityImportProject = this.state.projects.find(p => p.status !== 'closed')?.id || ''; this.renderIdentityImport();
+  },
+
+  renderIdentityImport() {
+    const rows = this.state.identityImportRows || []; const result = this.state.identityImportResult; const valid = rows.filter(r => !r.errors.length);
+    const content = result ? `<p>补录完成：成功 <b>${result.filter(r => ['recorded', 'already_recorded'].includes(r.result_code)).length}</b> 人，失败 <b style="color:#b91c1c">${result.filter(r => r.result_code === 'failed').length}</b> 人。</p><div style="max-height:260px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>结果</th><th>说明</th></tr></thead><tbody>${result.map(r => `<tr><td>${r.row_no}</td><td>${Utils.escapeHtml(r.result_code)}</td><td>${Utils.escapeHtml(r.result_message)}</td></tr>`).join('')}</tbody></table></div>` : `<p class="hint">仅补录当前项目台账中的在场或已离场外协人员。身份证号预览始终脱敏。</p><div class="form-row"><div class="form-group"><label>项目 <span class="required">*</span></label><select id="identity-import-project" class="form-control">${this.projectOptions(this.state.identityImportProject)}</select></div><div class="form-group" style="display:flex;align-items:end"><button class="btn btn-secondary" onclick="TrainingContractors.downloadIdentityTemplate()">下载模板</button></div></div><div class="form-group"><label>Excel 文件</label><input id="identity-import-file" type="file" accept=".xlsx,.xls" class="form-control"></div>${rows.length ? `<p>可补录 <b>${valid.length}</b> 行；需修正 <b style="color:#b91c1c">${rows.length - valid.length}</b> 行。</p><div style="max-height:220px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>姓名</th><th>手机号</th><th>身份证号</th><th>检查结果</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.rowNo}</td><td>${Utils.escapeHtml(r.name)}</td><td>${Utils.escapeHtml(r.phone)}</td><td>${Utils.escapeHtml(r.idNumber ? `${r.idNumber.slice(0, 3)}***********${r.idNumber.slice(-4)}` : '')}</td><td>${r.errors.length ? `<span style="color:#b91c1c">${Utils.escapeHtml(r.errors.join('；'))}</span>` : '<span style="color:#15803d">可补录</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingContractors.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:760px"><div class="modal-header"><h3>批量补录外协身份证档案</h3><button class="modal-close" onclick="TrainingContractors.close()">×</button></div><div class="modal-body">${content}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingContractors.close()">${result ? '关闭' : '取消'}</button>${result ? '' : `<button class="btn btn-secondary" onclick="TrainingContractors.parseIdentityImport()">解析文件</button>${valid.length ? '<button class="btn btn-primary" onclick="TrainingContractors.submitIdentityImport()">确认补录</button>' : ''}`}</div></div></div>`;
+  },
+
+  async parseIdentityImport() {
+    const projectId = document.getElementById('identity-import-project')?.value || ''; const file = document.getElementById('identity-import-file')?.files?.[0];
+    if (!projectId || !file) { Utils.toast('请选择项目和 Excel 文件', 'error'); return; }
+    if (typeof XLSX === 'undefined' || !/\.(xlsx|xls)$/i.test(file.name)) { Utils.toast('请选择 .xlsx 或 .xls 格式文件', 'error'); return; }
+    const book = XLSX.read(await file.arrayBuffer(), { type: 'array' }); const raw = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], { header: 1, defval: '', blankrows: false });
+    if (raw.length < 2) { Utils.toast('表格中没有人员数据', 'error'); return; }
+    const phones = new Set(); const rows = [];
+    raw.slice(1).forEach((line, index) => { const name = String(line[0] || '').trim(), phone = String(line[1] || '').trim(), idNumber = String(line[2] || '').trim().toUpperCase(); if (!name && !phone && !idNumber) return; const errors = []; if (!name || !phone || !idNumber) errors.push('姓名、手机号和身份证号均必填'); if (phone && !/^1[3-9]\d{9}$/.test(phone)) errors.push('手机号格式不正确'); if (idNumber && !/^[1-9]\d{16}[\dX]$/.test(idNumber)) errors.push('身份证号必须为 18 位大陆居民身份证号'); if (phone && phones.has(phone)) errors.push('本表手机号重复'); if (phone) phones.add(phone); rows.push({ rowNo: index + 2, name, phone, idNumber, errors }); });
+    if (rows.length > 300) { Utils.toast('单次最多补录 300 人，请分批处理', 'error'); return; }
+    this.state.identityImportProject = projectId; this.state.identityImportRows = rows; this.renderIdentityImport();
+  },
+
+  async submitIdentityImport() {
+    const rows = (this.state.identityImportRows || []).filter(r => !r.errors.length); if (!rows.length) { Utils.toast('没有可补录的人员', 'error'); return; }
+    if (!confirm(`确认补录 ${rows.length} 名外协人员的身份证档案？`)) return;
+    const { data, error } = await sb.rpc('training_backfill_contractor_identities', { p_project_id: this.state.identityImportProject, p_people: rows.map(r => ({ name: r.name, phone: r.phone, id_number: r.idNumber })) });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    this.state.identityImportResult = data || []; this.renderIdentityImport(); await this.load();
   },
 
   openDocumentForm() {
