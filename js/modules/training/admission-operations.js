@@ -3,7 +3,7 @@
 // 学习、考试和员工签字仍复用现有「我的培训」流程。
 // =============================================================
 const TrainingAdmissionOperations = {
-  state: { projects: [], members: [], employees: [], packages: [], admissions: [], signatures: [], roles: [], accesses: [], filter: '' },
+  state: { projects: [], members: [], employees: [], packages: [], admissions: [], signatures: [], roles: [], accesses: [], filter: '', actionFilter: '' },
   STATUS: {
     pending: ['待学习', 'badge-warning'], learning: ['学习中', 'badge-info'],
     exam_pending: ['待考试', 'badge-warning'], exam_failed: ['考试未通过', 'badge-danger'],
@@ -14,7 +14,7 @@ const TrainingAdmissionOperations = {
 
   async render(box) {
     box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">项目准入执行与资格核验</span></div>
-      <div class="toolbar-right"><select id="admission-op-project" onchange="TrainingAdmissionOperations.onFilter()"><option value="">全部项目</option></select>
+      <div class="toolbar-right"><select id="admission-op-project" onchange="TrainingAdmissionOperations.onFilter()"><option value="">全部项目</option></select><select id="admission-op-action" onchange="TrainingAdmissionOperations.onActionFilter()"><option value=""${!this.state.actionFilter ? ' selected' : ''}>全部人员</option><option value="start"${this.state.actionFilter === 'start' ? ' selected' : ''}>待下发培训</option><option value="learn"${this.state.actionFilter === 'learn' ? ' selected' : ''}>待完成学习</option><option value="exam"${this.state.actionFilter === 'exam' ? ' selected' : ''}>待考试/补考</option><option value="sign"${this.state.actionFilter === 'sign' ? ' selected' : ''}>待电子签字</option><option value="confirm"${this.state.actionFilter === 'confirm' ? ' selected' : ''}>待现场确认</option><option value="retrain"${this.state.actionFilter === 'retrain' ? ' selected' : ''}>待年度/停工复训</option><option value="blocked"${this.state.actionFilter === 'blocked' ? ' selected' : ''}>禁止上岗/资格异常</option></select>
         <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.printBlocked()">打印禁止上岗名单</button>
         <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.generateDueReminders()">按规则提醒</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchRemind()">批量催办</button>
         ${TrainingModule.isCompanyAdmin() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.generateAllReminders()">全部项目提醒</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openReminderSettings()">提醒设置</button>' : ''}
@@ -44,6 +44,8 @@ const TrainingAdmissionOperations = {
   },
 
   onFilter() { this.state.filter = document.getElementById('admission-op-project')?.value || ''; this.renderTable(); },
+  onActionFilter() { this.state.actionFilter = document.getElementById('admission-op-action')?.value || ''; this.renderTable(); },
+  setActionFilter(action) { this.state.actionFilter = action; const el = document.getElementById('admission-op-action'); if (el) el.value = action; this.renderTable(); },
   project(id) { return this.state.projects.find(x => x.id === id) || {}; },
   employee(id) { return this.state.employees.find(x => x.id === id) || {}; },
   package(id) { return this.state.packages.find(x => x.id === id) || {}; },
@@ -53,22 +55,36 @@ const TrainingAdmissionOperations = {
   myProjectRole(projectId) { const rs = this.state.roles.filter(r => r.project_id === projectId && r.active); return rs.some(r => r.role === 'project_manager') ? 'project_manager' : (rs.some(r => r.role === 'safety_officer') ? 'safety_officer' : ''); },
   hasOwnManagerSign(admissionId, role, cycleNo) { return this.state.signatures.some(s => s.admission_id === admissionId && !s.task_id && s.signer_role === role && s.signer_user_id === Auth.currentUser?.id && s.cycle_no === cycleNo); },
   activeAccess(admissionId) { return this.state.accesses.find(x => x.admission_id === admissionId && !x.revoked_at && new Date(x.expires_at) > new Date()); },
+  actionFor(row) {
+    const a = row.a;
+    if (!a) return 'start';
+    if (a.status === 'expired' || a.retrain_required) return 'retrain';
+    if (a.status === 'pending_site_confirm') return 'confirm';
+    if (a.status === 'pending_sign') return 'sign';
+    if (['exam_pending', 'exam_failed'].includes(a.status)) return 'exam';
+    if (['pending', 'learning'].includes(a.status)) return 'learn';
+    if (a.status === 'blocked' || a.status === 'project_closed') return 'blocked';
+    return '';
+  },
+  actionLabel(action) { return ({ start: '待下发培训', learn: '待完成学习', exam: '待考试/补考', sign: '待电子签字', confirm: '待现场确认', retrain: '待年度/停工复训', blocked: '禁止上岗/资格异常' })[action] || '全部人员'; },
 
   renderTable() {
     const filter = document.getElementById('admission-op-project');
     if (filter) filter.innerHTML = `<option value="">全部项目</option>${this.state.projects.map(p => `<option value="${p.id}"${p.id === this.state.filter ? ' selected' : ''}>${this.esc(this.projectName(p.id))}</option>`).join('')}`;
-    const rows = this.state.members.filter(m => m.status === 'active' && (!this.state.filter || m.project_id === this.state.filter)).map(m => {
+    const allRows = this.state.members.filter(m => m.status === 'active' && (!this.state.filter || m.project_id === this.state.filter)).map(m => {
       const e = this.employee(m.employee_id);
       const a = this.state.admissions.find(x => x.project_id === m.project_id && x.employee_id === m.employee_id);
       return { m, e, a };
     });
-    const eligible = rows.filter(r => r.a?.status === 'eligible').length;
-    const blocked = rows.filter(r => !r.a || ['blocked', 'expired', 'project_closed'].includes(r.a.status)).length;
+    const rows = this.state.actionFilter ? allRows.filter(r => this.actionFor(r) === this.state.actionFilter) : allRows;
+    const eligible = allRows.filter(r => r.a?.status === 'eligible').length;
+    const blocked = allRows.filter(r => r.a && ['blocked', 'project_closed'].includes(r.a.status)).length;
+    const actionCounts = ['start', 'learn', 'exam', 'sign', 'confirm', 'retrain', 'blocked'].map(action => ({ action, count: allRows.filter(r => this.actionFor(r) === action).length })).filter(x => x.count);
     const summary = document.getElementById('admission-op-summary');
-    if (summary) summary.innerHTML = `<div class="stats-grid" style="margin-bottom:12px"><div class="stat-card total"><div class="stat-value">${rows.length}</div><div class="stat-label">项目在场人员</div></div><div class="stat-card success"><div class="stat-value">${eligible}</div><div class="stat-label">可上岗</div></div><div class="stat-card danger"><div class="stat-value">${blocked}</div><div class="stat-label">禁止上岗/未发起</div></div></div>`;
+    if (summary) summary.innerHTML = `<div class="stats-grid" style="margin-bottom:12px"><button type="button" class="stat-card total" style="text-align:left;cursor:pointer" onclick="TrainingAdmissionOperations.setActionFilter('')"><div class="stat-value">${allRows.length}</div><div class="stat-label">项目在场人员</div></button><button type="button" class="stat-card success" style="text-align:left;cursor:pointer" onclick="TrainingAdmissionOperations.setActionFilter('')"><div class="stat-value">${eligible}</div><div class="stat-label">可上岗</div></button><button type="button" class="stat-card danger" style="text-align:left;cursor:pointer" onclick="TrainingAdmissionOperations.setActionFilter('blocked')"><div class="stat-value">${blocked}</div><div class="stat-label">当前禁止上岗</div></button>${actionCounts.map(x => `<button type="button" class="stat-card ${x.action === 'retrain' || x.action === 'blocked' ? 'danger' : 'warning'}" style="text-align:left;cursor:pointer" onclick="TrainingAdmissionOperations.setActionFilter('${x.action}')"><div class="stat-value">${x.count}</div><div class="stat-label">${this.actionLabel(x.action)}</div></button>`).join('')}</div>`;
     const table = document.getElementById('admission-op-table'); if (!table) return;
     const tempRows = this.state.accesses.filter(x => !x.revoked_at && (!this.state.filter || x.project_id === this.state.filter));
-    table.innerHTML = `<div class="card"><div class="card-header"><h2>项目准入状态（${rows.length}）</h2><span class="text-muted">资格由学习、考试、签字、现场确认和项目状态共同决定</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr><th>人员</th><th>项目</th><th>外协/工种</th><th>培训包</th><th>状态</th><th>考试</th><th>有效至</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(r => this.row(r)).join('') : TrainingModule.emptyRow(8, '暂无项目在场人员')}</tbody></table></div></div><div class="card" style="margin-top:14px;border-left:4px solid #dc2626"><div class="card-header"><h2>临时通行台账（${tempRows.length}）</h2><span style="color:#b91c1c">仅限短时例外，禁止替代正常准入</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr><th>人员</th><th>项目</th><th>原因</th><th>通行编号</th><th>截止时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${tempRows.length ? tempRows.map(x => this.tempRow(x)).join('') : TrainingModule.emptyRow(7, '当前没有未撤销的临时通行')}</tbody></table></div></div>`;
+    table.innerHTML = `<div class="card"><div class="card-header"><h2>${this.state.actionFilter ? this.actionLabel(this.state.actionFilter) : '项目准入状态'}（${rows.length}）</h2><span class="text-muted">资格由学习、考试、签字、现场确认和项目状态共同决定</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr><th>人员</th><th>项目</th><th>外协/工种</th><th>培训包</th><th>状态</th><th>考试</th><th>有效至</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map(r => this.row(r)).join('') : TrainingModule.emptyRow(8, this.state.actionFilter ? `暂无${this.actionLabel(this.state.actionFilter)}人员` : '暂无项目在场人员')}</tbody></table></div></div><div class="card" style="margin-top:14px;border-left:4px solid #dc2626"><div class="card-header"><h2>临时通行台账（${tempRows.length}）</h2><span style="color:#b91c1c">仅限短时例外，禁止替代正常准入</span></div><div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr><th>人员</th><th>项目</th><th>原因</th><th>通行编号</th><th>截止时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${tempRows.length ? tempRows.map(x => this.tempRow(x)).join('') : TrainingModule.emptyRow(7, '当前没有未撤销的临时通行')}</tbody></table></div></div>`;
   },
 
   row({ m, e, a }) {
@@ -171,19 +187,21 @@ const TrainingAdmissionOperations = {
     Utils.toast('临时通行已撤销', 'success'); await this.load();
   },
 
-  pendingRows() {
-    return this.state.members.filter(m => m.status === 'active' && (!this.state.filter || m.project_id === this.state.filter)).map(m => ({ m, e: this.employee(m.employee_id), a: this.state.admissions.find(a => a.project_id === m.project_id && a.employee_id === m.employee_id) })).filter(x => !x.a || x.a.status !== 'eligible');
+  pendingRows(action = '') {
+    return this.state.members.filter(m => m.status === 'active' && (!this.state.filter || m.project_id === this.state.filter)).map(m => ({ m, e: this.employee(m.employee_id), a: this.state.admissions.find(a => a.project_id === m.project_id && a.employee_id === m.employee_id) })).filter(x => (!x.a || x.a.status !== 'eligible') && (!action || this.actionFor(x) === action));
   },
 
   openBatchRemind() {
     if (!this.state.filter) { Utils.toast('请先选择一个项目，再进行批量催办', 'info'); return; }
-    const rows = this.pendingRows().filter(x => x.a);
+    const action = this.state.actionFilter === 'start' ? '' : this.state.actionFilter;
+    const rows = this.pendingRows(action).filter(x => x.a);
     if (!rows.length) { Utils.toast('该项目暂无需要催办的已发起准入人员', 'info'); return; }
-    this.modal('批量催办未完成培训', `<p class="hint">将向 ${rows.length} 名人员的系统内“我的培训”写入待办提醒，并保留催办记录。微信订阅消息接入后会复用此名单。</p><div class="form-group"><label>催办内容 <span class="required">*</span></label><textarea id="batch-remind-message" class="form-control" rows="4">请尽快完成项目三级安全教育、考试和电子签字。未完成前禁止入场、禁止上岗。</textarea></div>`, 'TrainingAdmissionOperations.submitBatchRemind()');
+    this.state.batchRemindAction = action;
+    this.modal('批量催办未完成培训', `<p class="hint">将向 ${rows.length} 名${action ? `“${this.actionLabel(action)}”` : ''}人员的系统内“我的培训”写入待办提醒，并保留催办记录。微信订阅消息接入后会复用此名单。</p><div class="form-group"><label>催办内容 <span class="required">*</span></label><textarea id="batch-remind-message" class="form-control" rows="4">请尽快完成项目三级安全教育、考试和电子签字。未完成前禁止入场、禁止上岗。</textarea></div>`, 'TrainingAdmissionOperations.submitBatchRemind()');
   },
 
   async submitBatchRemind() {
-    const rows = this.pendingRows().filter(x => x.a);
+    const rows = this.pendingRows(this.state.batchRemindAction || '').filter(x => x.a);
     const message = document.getElementById('batch-remind-message')?.value.trim() || '';
     const { data, error } = await sb.rpc('training_batch_remind', { p_project_id: this.state.filter, p_admission_ids: rows.map(x => x.a.id), p_message: message });
     if (error) { Utils.toast(error.message, 'error'); return; }
