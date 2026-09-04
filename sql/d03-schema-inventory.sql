@@ -70,7 +70,7 @@ JOIN target_tables t ON t.table_name = pol.tablename
 WHERE pol.schemaname = 'public'
 UNION ALL
 SELECT 'storage_bucket', b.id, jsonb_build_object('public', b.public, 'file_size_limit', b.file_size_limit)
-FROM storage.buckets b WHERE b.id IN ('training-courses', 'training-signatures', 'avatars')
+FROM storage.buckets b WHERE b.id IN ('training-courses', 'certificates', 'avatars')
 UNION ALL
 SELECT 'storage_policy', pol.tablename || '.' || pol.policyname,
   jsonb_build_object('command', pol.cmd, 'roles', pol.roles, 'using', pol.qual, 'check', pol.with_check)

@@ -45,6 +45,8 @@ if (!fs.existsSync(path.join(sqlDir, v1v16.postMigrationHardening))) failures.pu
 if (/DROP\s+TABLE\s+IF\s+EXISTS\s+d03_data_fingerprint/i.test(fs.readFileSync(path.join(sqlDir, 'd03-data-fingerprint.sql'), 'utf8'))) failures.push('D03 fingerprint must not drop a persistent table.');
 if (!fs.existsSync(path.join(root, 'tests', 'compare-d03-fingerprints.js'))) failures.push('D03 historical fingerprint comparator is missing.');
 if (!fs.existsSync(path.join(root, 'tests', 'compare-d03-schema-inventory.js'))) failures.push('D03 schema inventory comparator is missing.');
+if (!fs.existsSync(path.join(sqlDir, 'd03-v0-historical-anonymous-seed.sql'))) failures.push('D03 v0 anonymous historical seed is missing.');
+if (!fs.existsSync(path.join(root, 'tools', 'run-d03-disposable-replay-recovery.ps1'))) failures.push('D03 disposable replay and recovery entrypoint is missing.');
 if (failures.length) {
   console.error('D03 migration file verification failed:');
   failures.forEach((failure) => console.error(`- ${failure}`));

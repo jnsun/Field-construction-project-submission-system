@@ -1,0 +1,41 @@
+{
+  "schema": "d03-storage-application-boundary",
+  "version": 1,
+  "archive_scope": ["public"],
+  "excluded_platform_scopes": ["auth", "storage platform tables", "storage platform constraints", "storage platform indexes", "storage.objects metadata"],
+  "application_buckets": [
+    { "id": "training-courses", "private": true, "source": "sql/security-hardening-v1.sql" },
+    { "id": "certificates", "private": true, "source": "sql/certificate-management.sql" },
+    { "id": "avatars", "private": true, "source": "sql/personnel-center-v1.sql" }
+  ],
+  "application_policies": [
+    { "name": "training_courses_read_authorized", "source": "sql/security-hardening-v1.sql" },
+    { "name": "training_courses_write_admin", "source": "sql/security-hardening-v1.sql" },
+    { "name": "training_courses_update_admin", "source": "sql/security-hardening-v1.sql" },
+    { "name": "training_courses_delete_admin", "source": "sql/security-hardening-v1.sql" },
+    { "name": "training_signatures_write_own", "source": "sql/security-hardening-v1.sql" },
+    { "name": "avatars_read", "source": "sql/personnel-center-v1.sql" },
+    { "name": "avatars_write", "source": "sql/personnel-center-v1.sql" },
+    { "name": "avatars_update", "source": "sql/personnel-center-v1.sql" },
+    { "name": "avatars_delete", "source": "sql/personnel-center-v1.sql" },
+    { "name": "cert_storage_read_own_dept", "source": "sql/certificate-management.sql" },
+    { "name": "cert_storage_read_admin", "source": "sql/certificate-management.sql" },
+    { "name": "cert_storage_write_admin", "source": "sql/certificate-management.sql" },
+    { "name": "cert_storage_update_admin", "source": "sql/certificate-management.sql" },
+    { "name": "cert_storage_delete_admin", "source": "sql/certificate-management.sql" },
+    { "name": "training_admission_join_upload", "source": "sql/training-admission-v36.sql" },
+    { "name": "training_admission_join_read", "source": "sql/training-admission-v36.sql" },
+    { "name": "training_admission_contractor_upload", "source": "sql/training-admission-v42.sql" },
+    { "name": "training_admission_contractor_read", "source": "sql/training-admission-v42.sql" },
+    { "name": "training_admission_signature_upload", "source": "sql/training-admission-v43.sql" },
+    { "name": "training_admission_site_confirmation_upload", "source": "sql/training-admission-v43.sql" },
+    { "name": "training_admission_site_confirmation_read", "source": "sql/training-admission-v43.sql" },
+    { "name": "training_admission_signature_read", "source": "sql/training-admission-v44.sql" }
+  ],
+  "application_storage_indexes": [],
+  "application_storage_grants": [],
+  "controlled_initializer": "sql/d03-storage-application-config.sql",
+  "object_bytes_recovery": "INF02",
+  "object_metadata_recovery": "INF02",
+  "notes": "D03 archives public only. The initializer is a source-faithful, idempotent reconstruction of application bucket privacy and storage.objects policies; it never archives or restores storage.objects rows or file bytes."
+}

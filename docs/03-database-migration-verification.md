@@ -68,7 +68,15 @@ powershell -ExecutionPolicy Bypass -File tools/run-d03-restore-drill.ps1 `
   -TestConfirmation D03_TEST_ONLY
 ```
 
-恢复工具只恢复应用拥有的 `public` 对象；Supabase 托管事件触发器、Storage 内部表、约束和索引不属于应用恢复范围。恢复后会按需从归档 TOC 仅恢复缺失的 `storage.objects` 应用策略，再将清单与 `after-schema.csv` 比对。任何行数、结构、RLS、策略或函数签名差异都属于失败。
+恢复工具只恢复应用拥有的 `public` 对象。随后它运行 `sql/d03-storage-application-config.sql`，以受版本控制、来源可追溯的 SQL 重建应用 Storage 的私有桶和对象策略；不会从归档 TOC 恢复 `storage.objects`。Supabase 托管事件触发器、Storage 内部表、约束和索引不属于应用恢复范围。任何行数、`public` 结构、RLS、策略或函数签名差异都属于失败。
+
+## Storage recovery boundary
+
+D03 的应用归档固定为 `pg_dump --schema=public`，由共享 `tools/d03-archive.ps1` 执行。`config/d03-storage-application-boundary.json` 列出每个应用桶、策略及其原始 SQL 来源；`sql/d03-storage-application-config.sql` 是仅重建 Storage 配置的幂等初始化器。`tests/verify-d03-storage-boundary.js` 同时验证来源、初始化器和归档范围。
+
+- D03 负责：`public` schema 的数据和结构；`training-courses`、`certificates`、`avatars` 三个私有桶配置；来源已核对的 `storage.objects` 应用策略。
+- D03 不负责：`storage.objects` 行、Storage 平台对象/索引/约束、Supabase `auth` schema、以及任何真实文件字节。
+- INF02 负责：文件字节与对象元数据的一致性备份、保留、加密、异地副本和真实恢复演练。D03 不得宣称完整 Storage 灾备已经通过。
 
 ## Security checks
 
@@ -84,7 +92,7 @@ The schema inventory records tables, columns, constraints, indexes, functions, t
 | Hash and static safety checks | 通过 | v1-v49 清单、静态危险 SQL 与 `SECURITY DEFINER` 写法检查 |
 | Empty database migration | Passed on 2026-09-03 in isolated `safety-d03-migration-test` Supabase project; bootstrap bridges, v1-v16 and post-v16 hardening all completed | Dashboard SQL execution log and object-existence query; no production data used |
 | 匿名历史数据副本：v17-v49 | 通过 | `CurrentChain-20260903-213923`：33 条账本记录、17 个历史指纹表迁移前后相同 |
-| 匿名历史数据副本：v1-v16 重放 | 未完成 | 当前仅有空库执行证据；未取得可单独恢复的 v1 前匿名历史副本 |
+| 匿名历史数据副本：v1-v16 重放 | 通过 | 可丢弃短路径 `short-path-20260904150921-822e2340` 从 v0 匿名状态真实执行至 v16，随后衔接 v17-v49 |
 | 备份与恢复演练 | 部分通过 | 应用范围恢复后 527 个对象与 17 个数据指纹相同；Supabase 全量恢复被托管对象权限阻断 |
 | 当前测试数据库结构检查 | 通过 | D03 选择范围共 527 项：22 表、247 列、133 约束、51 索引、12 函数、13 触发器、31 策略、2 桶、16 Storage 策略；测试库的全部 50 个 `public` 表均启用 RLS |
 
@@ -101,6 +109,14 @@ The schema inventory records tables, columns, constraints, indexes, functions, t
 - `CurrentChain-20260903-213923` 保存了迁移前后完整/结构备份、数据指纹与对象清单。17 个历史相关表及 `storage.objects` 的计数/哈希在迁移前后相同。
 - 首次全量 `pg_restore --clean` 被 Supabase 平台事件触发器与 Storage 内部对象权限阻断；应用范围恢复后，最终 527 项结构清单和 17 个数据指纹均与迁移后备份源一致。全托管 Supabase 级恢复仍不能标为通过。
 
+## 2026-09-04 public-only Storage short-path evidence
+
+- `short-path-20260904150921-822e2340` 使用全新 `d03_short_*` 测试数据库，结束后已自动删除。
+- v1-v16 与 v17-v49 一次执行至 v49；迁移账本为 49 条。运行器现在逐条验证账本写入，防止“执行成功但未记账”静默通过。
+- `sql/d03-storage-application-config.sql` 在迁移后重建了 3 个私有桶和 22 条来源已核对的应用 Storage 策略。
+- `pg_dump --schema=public` 归档为 599189 字节，SHA-256 为 `056357FC5A5457530985021C6586CE5D2A391244CCAC62C30167651F4662984A`；`pg_restore --list` 成功，877 条目录项中 862 条为 `public`，`auth` 和 `storage` 均为 0。
+- 诊断 JSON 可以重新解析，日志秘密模式扫描为 0。该短路径未启动恢复演练。
+
 ## D03 结论
 
-D03 为 `PARTIAL`：迁移清单、空库 v1-v16、匿名 v17-v49、幂等账本、对象清单、历史数据指纹和应用范围恢复均已有真实证据；但 v1-v16 在独立匿名历史副本上的重放，以及不涉及 Supabase 托管对象的全自动恢复流程仍未闭环。不得据此宣称 T24 已通过或 G0 已放行。
+D03 为 `PARTIAL`：迁移清单、匿名 v0-v49 重放、49 条账本、历史数据指纹、public-only 应用归档和来源驱动的 Storage 配置重建均已有真实证据；全新恢复目标的无人干预恢复、恢复后结构/数据验证及重复恢复尚未在本轮执行。不得据此宣称 T24 已通过或 G0 已放行。
