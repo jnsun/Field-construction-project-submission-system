@@ -1,5 +1,5 @@
 {
-  "schema": "d03-training-admission-v17-v52",
+  "schema": "d03-training-admission-v17-v57",
   "version": 1,
   "migrations": [
     { "version": 17, "file": "training-admission-v17.sql", "sha256": "B7C611DA14FF2C359A9358F41EE4E45A0248BF7A157A2E2F3B5231E114D07A33" },
@@ -37,6 +37,11 @@
     { "version": 49, "file": "training-admission-v49-security-baseline.sql", "sha256": "7F2B6CDFC3ACE51009CB14D0D66EF3AF88E53F7D63E5FD8448B9DA4D42079264" },
     { "version": 50, "file": "training-admission-v50-notification-settings-rls.sql", "sha256": "B41B2FD199D6D70AFE26D13A1CF5EECD8374579C9DC2D91028CA13984119B440" },
     { "version": 51, "file": "training-admission-v51-authenticated-table-grants.sql", "sha256": "E511786541D680C5C9AEF4AA53FBF76F048CBFDB209B34C23EA41C43EC28D021" },
-    { "version": 52, "file": "training-admission-v52-stats-function-execute-boundary.sql", "sha256": "06E089999726A9CF7605BE1321BD8BE2FAB82FACD854DD28723D1859BDA8ECE7" }
+    { "version": 52, "file": "training-admission-v52-stats-function-execute-boundary.sql", "sha256": "06E089999726A9CF7605BE1321BD8BE2FAB82FACD854DD28723D1859BDA8ECE7" },
+    { "version": 53, "file": "training-admission-v53-project-code-allocation-boundary.sql", "sha256": "B14AE79141D689C66A987D9EFFA0BAFA7C40BBA09974240793D8CAC3CB3E769F" },
+    { "version": 54, "file": "training-admission-v54-project-application-insert-boundary.sql", "sha256": "95DF5870D224B4F9F19E400E37319AC617171B4E61A4DD772989A3A526A9CE28" },
+    { "version": 55, "file": "training-admission-v55-atomic-project-create.sql", "sha256": "DFC31DF18ABDC54757B74CF2E06D6DA6D6B2BB0B351922A0771948A112E758A1" },
+    { "version": 56, "file": "training-admission-v56-project-reopen-state.sql", "sha256": "5AB39F368972395DE9B3EB3B578FD740C236F328596C0A6CC8102AF021AAC087" },
+    { "version": 57, "file": "training-admission-v57-project-audit-readonly.sql", "sha256": "7C1C5680C72248E124E08D7F778370881AA1FF4E90963E22D5E2688F6E1554C0" }
   ]
 }

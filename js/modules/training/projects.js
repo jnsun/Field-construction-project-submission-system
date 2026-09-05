@@ -282,7 +282,7 @@ const TrainingProjects = {
             ${p ? `<div class="form-row"><div class="form-group"><label>实际完工日期</label>
               <input id="site-project-actual-end" type="date" class="form-control" value="${Utils.escapeHtml(p.actual_end_date || '')}"></div>
               <div class="form-group"><label>项目状态</label><select id="site-project-status" class="form-control">
-                ${Object.entries(this.STATUS_LABEL).map(([key, label]) => `<option value="${key}"${status === key ? ' selected' : ''}>${label}</option>`).join('')}
+                ${this.statusOptions(status)}
               </select></div></div>` : '<input type="hidden" id="site-project-status" value="planning">'}
             ${p ? '<p class="alert alert-danger" style="font-size:12px">项目从暂停、待关闭或关闭恢复为在建后，所有人员必须重新完成现场确认；停工前的确认将自动失效。</p>' : ''}
             <div class="form-group"><label>${p ? '变更原因（暂停、待关闭、关闭和重新开启必填）' : '备注'}</label>
@@ -299,11 +299,20 @@ const TrainingProjects = {
     if (host) host.innerHTML = '';
   },
 
+  statusOptions(current) {
+    const entries = current === 'closed'
+      ? [['closed', '已关闭'], ['active', '重新开启为在建']]
+      : Object.entries(this.STATUS_LABEL);
+    return entries.map(([key, label]) => `<option value="${key}"${current === key ? ' selected' : ''}>${label}</option>`).join('');
+  },
+
   async submit(id) {
     const val = key => (document.getElementById(key) || {}).value || '';
     const name = val('site-project-name').trim();
     const entity = val('site-project-entity') || null;
     if (!name || !entity) { Utils.toast('项目名称和主责经营实体不能为空', 'error'); return; }
+    const entityIds = Array.from(document.querySelectorAll('.site-project-entity-cb:checked')).map(cb => cb.value);
+    if (!entityIds.includes(entity)) entityIds.push(entity);
     const btn = document.querySelector('#training-modal-host .modal-footer .btn-primary');
     if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
     try {
@@ -330,17 +339,17 @@ const TrainingProjects = {
           p_expected_end_date: val('site-project-end') || null,
           p_lead_entity_id: entity,
           p_report_notes: val('site-project-reason').trim() || null,
+          p_entity_ids: entityIds,
         });
       }
       if (result.error) throw result.error;
-      const project = Array.isArray(result.data) ? result.data[0] : result.data;
-      const entityIds = Array.from(document.querySelectorAll('.site-project-entity-cb:checked')).map(cb => cb.value);
-      if (!entityIds.includes(entity)) entityIds.push(entity);
-      const links = await sb.rpc('site_project_set_entities', {
-        p_project_id: id || (project && project.id),
-        p_entity_ids: entityIds,
-      });
-      if (links.error) throw links.error;
+      if (id) {
+        const links = await sb.rpc('site_project_set_entities', {
+          p_project_id: id,
+          p_entity_ids: entityIds,
+        });
+        if (links.error) throw links.error;
+      }
       this.closeForm();
       Utils.toast(id ? '正式项目已更新' : '正式项目已建立', 'success');
       await this.load();
@@ -350,23 +359,101 @@ const TrainingProjects = {
     }
   },
 
-  showDetail(id) {
+  async showDetail(id) {
     const p = this.state.list.find(x => x.id === id);
     if (!p) return;
     this.host().innerHTML = `
       <div class="modal-overlay" onclick="TrainingProjects.closeForm()">
-        <div class="modal" onclick="event.stopPropagation()" style="max-width:620px">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:820px">
           <div class="modal-header"><h3>项目详情</h3><button class="modal-close" onclick="TrainingProjects.closeForm()">×</button></div>
-          <div class="modal-body"><div class="detail-grid">
-            ${this.detail('项目编号', p.project_code)}${this.detail('项目名称', p.name)}
-            ${this.detail('项目类型', p.project_type)}${this.detail('主责经营实体', TrainingModule.deptName(p.lead_entity_id))}
-            ${this.detail('施工地点', p.location)}${this.detail('状态', this.STATUS_LABEL[p.status] || p.status)}
-            ${this.detail('开工日期', p.start_date)}${this.detail('预计完工', p.expected_end_date)}
-            ${this.detail('实际完工', p.actual_end_date)}${this.detail('创建时间', p.created_at ? p.created_at.slice(0, 16).replace('T', ' ') : '')}
-          </div></div>
+          <div class="modal-body">
+            <div class="detail-grid">
+              ${this.detail('项目编号', p.project_code)}${this.detail('项目名称', p.name)}
+              ${this.detail('项目类型', p.project_type)}${this.detail('主责经营实体', TrainingModule.deptName(p.lead_entity_id))}
+              ${this.detail('施工地点', p.location)}${this.detail('状态', this.STATUS_LABEL[p.status] || p.status)}
+              ${this.detail('开工日期', p.start_date)}${this.detail('预计完工', p.expected_end_date)}
+              ${this.detail('实际完工', p.actual_end_date)}${this.detail('创建时间', p.created_at ? p.created_at.slice(0, 16).replace('T', ' ') : '')}
+            </div>
+            <div style="margin-top:20px">
+              <h4 style="margin:0 0 10px">状态历史</h4>
+              <div id="site-project-status-history" class="text-muted">正在加载状态历史...</div>
+            </div>
+          </div>
           <div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingProjects.closeForm()">关闭</button></div>
         </div>
       </div>`;
+    await this.loadStatusHistory(id);
+  },
+
+  async loadStatusHistory(projectId) {
+    const history = await sb.from('site_project_audit_logs')
+      .select('id, actor_id, action, detail, created_at')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+    const target = document.getElementById('site-project-status-history');
+    if (!target) return;
+    if (history.error) {
+      target.innerHTML = '<div class="alert alert-danger">状态历史加载失败，请稍后重试</div>';
+      return;
+    }
+
+    const rows = (history.data || []).map(row => this.normalizeStatusHistory(row)).filter(Boolean);
+    const actorIds = [...new Set(rows.map(row => row.actorId).filter(Boolean))];
+    const actorMap = {};
+    if (actorIds.length) {
+      const profiles = await sb.from('profiles').select('id, full_name, email').in('id', actorIds);
+      if (!profiles.error) {
+        (profiles.data || []).forEach(profile => {
+          actorMap[profile.id] = profile.full_name || profile.email || '历史账号';
+        });
+      }
+    }
+    const currentId = Auth.currentUser?.id;
+    if (currentId && actorIds.includes(currentId)) {
+      const current = Auth.currentProfile || TrainingModule.state.profile || {};
+      actorMap[currentId] = current.full_name || current.email || actorMap[currentId] || '当前用户';
+    }
+    target.innerHTML = this.renderStatusHistory(rows, actorMap);
+  },
+
+  normalizeStatusHistory(row) {
+    const detail = row && row.detail && typeof row.detail === 'object' ? row.detail : {};
+    const change = detail.status_change && typeof detail.status_change === 'object'
+      ? detail.status_change : null;
+    const oldRow = detail.old && typeof detail.old === 'object' ? detail.old : {};
+    const newRow = detail.new && typeof detail.new === 'object' ? detail.new : {};
+    const from = change?.from ?? oldRow.status;
+    const to = change?.to ?? newRow.status;
+    if (!from || !to || from === to) return null;
+    const reason = change?.reason
+      ?? newRow.pause_reason
+      ?? newRow.close_reason
+      ?? newRow.report_notes
+      ?? '历史记录未填写原因';
+    return {
+      id: row.id,
+      actorId: row.actor_id || null,
+      createdAt: row.created_at || null,
+      from,
+      to,
+      reason: reason || '历史记录未填写原因',
+    };
+  },
+
+  renderStatusHistory(rows, actorMap = {}) {
+    if (!rows.length) return '<div class="text-muted">暂无状态历史</div>';
+    return `<div style="overflow-x:auto;border:1px solid var(--color-border);border-radius:6px">
+      <table class="data-table" style="min-width:680px">
+        <thead><tr><th>变更时间</th><th>操作者</th><th>前状态</th><th>后状态</th><th>变更原因</th></tr></thead>
+        <tbody>${rows.map(row => `<tr>
+          <td>${Utils.escapeHtml(row.createdAt ? row.createdAt.slice(0, 16).replace('T', ' ') : '时间未知')}</td>
+          <td>${Utils.escapeHtml(row.actorId ? (actorMap[row.actorId] || '历史账号（不可见或已失效）') : '历史账号已失效')}</td>
+          <td>${Utils.escapeHtml(this.STATUS_LABEL[row.from] || row.from || '未知')}</td>
+          <td>${Utils.escapeHtml(this.STATUS_LABEL[row.to] || row.to || '未知')}</td>
+          <td>${Utils.escapeHtml(row.reason || '历史记录未填写原因')}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
   },
 
   detail(label, value) {

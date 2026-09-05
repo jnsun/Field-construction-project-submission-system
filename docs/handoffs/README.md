@@ -19,3 +19,4 @@ Web/后端、小程序和集成线只能创建自己发起的交接文件，不�
 - [D03 数据库验证](D03-database-verification.md)
 - [D04 冒烟与 E2E 基线](D04-e2e-smoke-baseline.md)
 - [D05 安全基线（PASS）](D05-security-baseline.md)
+- [D06 正式项目台账（PASS）](D06-project-ledger.md)

@@ -1,6 +1,6 @@
 # D01：需求追踪矩阵与验收编号
 
-> 更新日期：2026-09-03
+> 更新日期：2026-09-05
 >
 > 原始需求来源：`E:\codex\safety\和sol对话确定后续开发计划.txt`。该文件位于仓库外；本矩阵固化其 T01-T27。代码状态以 [D00 盘点](00-codebase-inventory.md) 为准，计划中的“已开发”一律不直接视为通过。
 
@@ -28,7 +28,7 @@
 
 | 验收编号与原始要求 | 当前状态 | 定位（前端 / 数据库 / 接口） | 角色 | 正常路径 | 异常路径 | 自动化测试 | 人工验收 | 证据 | 试点门 | 执行泳道 | 前置门 | 接口契约版本 | 跨线负责人 | 变更单编号 | 合并状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **T01-AC01** 自动项目编号；**T01-AC02** 主责及多参与实体；**T01-AC03** 关联月报；**T01-AC04** 完工仅提醒；**T01-AC05** 暂停/关闭/重开；**T01-AC06** 暂停禁申请和刷新邀请码 | 待回归验证 | `projects.js` / `site_projects`、`site_project_entities`、`project_reports` / `site_project_create`、`site_project_update`、`site_project_link_reports`、`site_project_refresh_invite` | 公司、实体管理员、项目经理、安全员 | 建项目、关联月报、维护状态 | 越权或暂停状态申请/刷新必须拒绝并留痕 | `audit-handlers.js` 仅 RPC 对照 | 创建、暂停、关闭、重开及月报提示回归 | `training-admission-v1/v6/v16/v21.sql` | 否 | Web/后端 | G0 | 未冻结 | Web/后端 | 未创建 | 未开始 |
+| **T01-AC01** 自动项目编号；**T01-AC02** 主责及多参与实体；**T01-AC03** 关联月报；**T01-AC04** 完工仅提醒；**T01-AC05** 暂停/关闭/重开；**T01-AC06** 暂停禁申请和刷新邀请码 | 已验证通过，D06 PASS | `projects.js` / `site_projects`、`site_project_entities`、`site_project_audit_logs`、`project_reports` / `site_project_create`、`site_project_update`、`site_project_link_reports`、`site_project_refresh_invite`、`site_project_apply` | 公司、实体管理员、项目经理、安全员 | 原子创建项目和实体、关联月报、维护状态、只读查看状态历史 | 越权、跨实体、暂停状态申请/刷新、审计写入必须拒绝并留痕 | D06 FINAL：项目编号 7/7、原子创建 10/10、申请边界 11/11、状态重开 12/12、状态历史 11/11；残留 0 | FINAL PASS；R01 PASS；R03 完成 | [D06 交接](handoffs/D06-project-ledger.md)、v53-v57 迁移、D06 定向测试 | 否 | Web/后端 | G0 | 未冻结 | Web/后端 | 未创建 | D06 PASS；D07 已解锁 |
 | **T02-AC01** 实体任命角色；**T02-AC02** 最多2名经理；**T02-AC03** 安全员不限；**T02-AC04** 手机准入/催办/核验；**T02-AC05** 权限穿透 | 待回归验证 | `projects.js`、`admission-operations.js`、`admission-verify.js` / `site_project_roles` / `site_project_set_roles` | 实体管理员、项目经理、安全员 | 任命合法角色后管理本人项目 | 第3名经理、越项目管理必须拒绝 | 静态 RPC 对照；权限 E2E 未发现 | 多角色、多项目、手机端权限回归 | `training-admission-v1/v2.sql` | 否 | Web/后端 | G0 | 未冻结 | Web/后端 | 未创建 | 未开始 |
 | **T03-AC01** 单位合同资质；**T03-AC02** 邀请申请；**T03-AC03** 项目首次审核；**T03-AC04** 跨项目实体审核；**T03-AC05** 关键信息变更复审；**T03-AC06** 四类高危证照；**T03-AC07** 永久留档及单位历史 | 待回归验证 | `contractors.js`、`admission-mine.js`、`admission-review.js` / `contractor_*`、`project_join_*`、`training_personnel_reapproval_requests` / `site_project_apply`、`site_project_review_application`、`training_review_personnel_reapproval` | 外协、项目经理、安全员、实体管理员 | 申请、审核、入项目、变更复审 | 无邀请码、缺高危证照、跨项目未审必须拒绝 | 静态 RPC 对照；完整 E2E 未发现 | 外协建档、变更、跨项目、历史回归 | `training-admission-v1/v2/v29/v30/v34-v37/v42/v45-v47.sql` | 否 | Web/后端 | G0 | 未冻结 | Web/后端 | 未创建 | 未开始 |
 | **T04-AC01** 三级/专项计划；**T04-AC02** HTML课件；**T04-AC03** 本地生成器；**T04-AC04** 多媒体链接；**T04-AC05** 学时可配；**T04-AC06** 草稿至发布；**T04-AC07** 批量签发；**T04-AC08** 已签发发布禁改 | 部分完成待回归 | `plans.js`、`courses.js`、`admission-packages.js`、`tools/course-generator.html` / `training_plans`、`training_courses`、`training_admission_packages` / `training_request_plan_approval`、`training_approve_plan`、`training_publish_plan` | 安全部、实体、项目经理、安全员、制作者 | 制作、送审、签发、发布、分配 | 无权发布或修改已签发版本必须拒绝 | 课件生成测试、静态 RPC 对照；发布 E2E 未发现 | 各级计划和版本冻结回归 | `training-management.sql`、`training-online-v2.sql`、`training-admission-v7/v13/v19/v20.sql` | 否 | Web/后端 | G0 | 未冻结 | Web/后端 | 未创建 | 未开始 |
@@ -58,7 +58,7 @@
 
 ## 三、试点发布门
 
-D05 R03 已完成，安全基线门 G0=`PASS`，D06 已解锁但尚未开始。该门状态不代表下表其余业务试点条件已满足，四个 P2 仍按对应专项阻塞完整业务试点。
+D06 R03 已完成，D06=`PASS`，D07 已解锁但尚未开始。该状态不代表下表其余业务试点条件已满足，D05 保留的四个 P2 仍按对应专项阻塞完整业务试点。
 
 原计划指定的 T24、T25、T26、T09、T12、T20、T17 是试点前必过门。T24 已通过，其余发布门仍未达到放行条件，因此不得标记为“可试点发布”。
 

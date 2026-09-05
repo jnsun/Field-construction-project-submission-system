@@ -36,7 +36,7 @@ function verifyManifest(file, firstVersion, lastVersion) {
 }
 
 const v1v16 = verifyManifest('training-admission-v1-v16.manifest.json', 1, 16);
-const v17v49 = verifyManifest('training-admission-v17-v49.manifest.json', 17, 52);
+const v17v49 = verifyManifest('training-admission-v17-v49.manifest.json', 17, 57);
 
 for (const file of v1v16.bootstrapFilesForEmptyDatabase) {
   if (!fs.existsSync(path.join(sqlDir, file))) failures.push(`Bootstrap prerequisite missing: ${file}.`);
