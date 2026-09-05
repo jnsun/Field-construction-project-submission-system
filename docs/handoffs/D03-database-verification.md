@@ -1,27 +1,28 @@
 # D03 数据库验证交接
 
-- 任务与泳道：D03，共享基础
-- 需求/验收：T24、D03-AC01 至 D03-AC04
-- Web/后端：`E:\codex\safety-web`，`track/web-backend`
-- 数据库：仅 `SAFETY_ENV=test` 且有 `D02-TEST` 匿名夹具的测试库；未操作生产库。
-- 契约版本：未冻结。
+- 任务与泳道：D03，共享基础；状态：`PASS`，D04 前置已满足。
+- 需求/验收：T24、D03-AC01 至 D03-AC04。
+- Web/后端：`E:\codex\safety-web`，`track/web-backend`。
+- 数据库：仅 `SAFETY_ENV=test`、`D03_TEST_ONLY` 和 D02 匿名夹具标记的 Supabase 测试项目；未操作生产库。
 
-## 已验证
+## FINAL 运行证据
 
-1. v1-v49 已有顺序和 SHA-256 清单；静态验证通过 49 个版本和 18 个 bootstrap 文件。
-2. `short-path-20260904150921-822e2340` 已从可重复 v0 匿名状态真实执行 v1-v16 并衔接 v17-v49，迁移账本为 49 条；临时数据库已自动清理。
-3. 迁移前后 17 个历史相关表及 `storage.objects` 的计数和哈希一致；迁移后对象清单为 527 项。
-4. 应用范围恢复后，527 项对象和 17 个数据指纹均与迁移后备份源一致。
+1. TARGETED：`targeted-20260904231643/short-path-20260904231655-c575b8ed/summary.json` 状态为 `passed`；v1-v50 迁移账本恰好 50 条，源库和恢复库均成功清理。
+2. FINAL：`DisposableReplay-20260904234033-c16fc959/result.json` 状态为 `passed`，总时长 1,987.883 秒；源库和恢复库均成功清理，临时数据库残留为 0。
+3. 可重复 v0 匿名历史状态经 v1-v16 后，继续执行 v17-v50；迁移账本为 50 条，重复迁移已验证，19 个历史业务数据指纹一致。
+4. FINAL 应用范围归档为 597,338 字节，SHA-256 为 `8266AE1D8AA8B60729764098FAAF4BB66E9AF9FAAED8913FEEE911803E6BE5A7`；878 条目录项中 `auth`、`storage` 和其他 Supabase 平台对象均为 0。
+5. 两次无人干预恢复均通过：534 个结构对象、19 个数据指纹、22 个 RLS 表、53 条策略、12 个函数、13 个触发器、51 个索引、133 条约束；3 个私有应用桶和 22 条 Storage 应用策略一致。
+6. 注册触发器 `auth.users.on_auth_user_created` 在首次和重复恢复后均存在、启用且只有一个，指向 `public.handle_new_user()`；匿名用户探针能够自动建立 `profiles` 记录并回滚。
+7. `notification-settings-rpc-20260904231645/result.json` 已验证 `training_admission_notification_settings` 启用 RLS、无 anon/authenticated 直表读写，以及公司级 RPC 的正负权限、范围参数和输入校验。
+8. 最终受限 R01 复查为 `PASS`，未发现阻止 D03 通过的 P0/P1 问题；D03 日志秘密扫描为 0，且未访问生产环境。
 
-## 未通过与跨线限制
+## 边界与限制
 
-- D03 尚未完成新恢复目标的无人干预恢复、恢复后结构/数据比对和重复恢复；D03 仍为 PARTIAL，T24/G0 不放行。
-- Supabase 全量恢复会尝试清理平台事件触发器与 Storage 内部约束，受托管所有权限制失败。D03 已将归档收敛为 `public`，并通过 `config/d03-storage-application-boundary.json` 与 `sql/d03-storage-application-config.sql` 从可追溯 SQL 重建应用 Storage 桶/策略；全平台恢复不应由应用连接执行。
-- 文件字节和 `storage.objects` 元数据的备份、校验与恢复不属于 D03，必须在 INF02 完成后才可作为试点 Storage 灾备证据。
-- 本轮只做结构级权限检查：测试库全部 50 个 `public` 表启用 RLS，137 个 `SECURITY DEFINER` 函数均有固定 `search_path`，且没有 `PUBLIC` 或 `anon` 执行授权。完整角色穿透、导出、二维码和签字安全验收仍属于 D05。
-- 小程序继续仅使用 Mock 和匿名测试数据，不得接入真实接口。
+- D03 负责 `public` 应用数据/结构，以及由版本控制 SQL 重建的 3 个私有桶和 22 条 Storage 应用策略。
+- D03 不覆盖 `auth`、Storage 平台内部对象、`storage.objects` 元数据或真实文件字节；INF02 的 Storage 文件字节灾备仍为独立后续任务，不阻塞 D04。
+- 完整角色穿透、导出、二维码、签字和业务 API 攻击面仍属于 D05。小程序继续仅使用 Mock 和匿名测试数据。
 
-## 回滚与下一步
+## R03 交接结论
 
-- 运行产物在忽略的 `test-results/d03/`，包含迁移前后完整/结构备份及清单；恢复前必须再次确认 `SAFETY_ENV=test` 和夹具标记。
-- 下一步应继续 D03，取得 v1 前匿名历史副本并验证应用恢复工具的无人工超时流程；不得因本交接直接进入 D04。
+- R01 已通过，R03 交接已完成，D03 正式标记为 `PASS`。
+- T24 数据库升级与完整性验证门已通过，D04 前置已满足；本交接不代表 D04 已执行。

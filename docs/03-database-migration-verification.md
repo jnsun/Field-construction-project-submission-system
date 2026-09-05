@@ -2,7 +2,7 @@
 
 ## Scope and current status
 
-本任务盘点并验证 `training-admission-v1.sql` 至 `training-admission-v49-security-baseline.sql`。其中 v1-v16 依赖既有月报、组织、账号、培训、在线学习、考试和人员基础，不能脱离 bootstrap 文件直接重放到字面空库。
+本任务盘点并验证 `training-admission-v1.sql` 至 `training-admission-v50-notification-settings-rls.sql`。其中 v1-v16 依赖既有月报、组织、账号、培训、在线学习、考试和人员基础，不能脱离 bootstrap 文件直接重放到字面空库。
 
 当前指定测试库在本轮开始时是带匿名 `D02-TEST` 夹具的 v17 前副本。它不是生产库；运行器要求 `SAFETY_ENV=test`、`D03_TEST_ONLY` 和夹具登记，缺任一条件即拒绝执行。
 
@@ -14,7 +14,7 @@
 - Versions 1 through 16 in numeric order and their SHA-256 digests.
 - The post-v16 security hardening migration.
 
-[training-admission-v17-v49.manifest.json](../sql/training-admission-v17-v49.manifest.json) 固化后续 33 个迁移的顺序与归一化 LF 换行 SHA-256。`tests/verify-d03-migration-files.js` 现同时验证两份清单，共 49 个版本、18 个 bootstrap 文件、文件存在性、顺序、哈希、破坏性表操作和 `SECURITY DEFINER` 静态写法。
+[training-admission-v17-v49.manifest.json](../sql/training-admission-v17-v49.manifest.json) 保持历史文件名，但其内容已固化 v17-v50 共 34 个迁移的顺序与归一化 LF 换行 SHA-256。`tests/verify-d03-migration-files.js` 现同时验证两份清单，共 50 个版本、18 个 bootstrap 文件、文件存在性、顺序、哈希、破坏性表操作和 `SECURITY DEFINER` 静态写法。
 
 For a fresh test database, run the bootstrap files only through [run-d03-migration-verification.ps1](../tools/run-d03-migration-verification.ps1); do not execute deprecated `department-management.sql`.
 
@@ -53,7 +53,7 @@ powershell -ExecutionPolicy Bypass -File tools/run-d03-current-chain-verificatio
   -TestConfirmation D03_TEST_ONLY
 ```
 
-该工具先创建完整/结构备份与数据指纹，按账本执行或跳过 v17-v49，随后导出对象清单和迁移后备份。账本哈希不匹配会拒绝重放；缺失 D02 匿名夹具或非 `test` 环境会拒绝执行。
+该工具先创建完整/结构备份与数据指纹，按账本执行或跳过 v17-v50，随后导出对象清单和迁移后备份。账本哈希不匹配会拒绝重放；缺失 D02 匿名夹具或非 `test` 环境会拒绝执行。
 
 The runner creates local full and schema backup artifacts, captures exact row-count fingerprints before and after migration, writes a CSV schema inventory, and records each verified migration in `public.safety_schema_migrations`. A digest mismatch fails closed; a matching ledger entry is skipped, making the runner repeat-safe.
 
@@ -88,35 +88,22 @@ The schema inventory records tables, columns, constraints, indexes, functions, t
 
 | Check | Status | Evidence |
 | --- | --- | --- |
-| Manifest covers v1-v49 in order | 通过 | `node tests/verify-d03-migration-files.js`，49 个版本、18 个 bootstrap 文件 |
-| Hash and static safety checks | 通过 | v1-v49 清单、静态危险 SQL 与 `SECURITY DEFINER` 写法检查 |
-| Empty database migration | Passed on 2026-09-03 in isolated `safety-d03-migration-test` Supabase project; bootstrap bridges, v1-v16 and post-v16 hardening all completed | Dashboard SQL execution log and object-existence query; no production data used |
-| 匿名历史数据副本：v17-v49 | 通过 | `CurrentChain-20260903-213923`：33 条账本记录、17 个历史指纹表迁移前后相同 |
-| 匿名历史数据副本：v1-v16 重放 | 通过 | 可丢弃短路径 `short-path-20260904150921-822e2340` 从 v0 匿名状态真实执行至 v16，随后衔接 v17-v49 |
-| 备份与恢复演练 | 部分通过 | 应用范围恢复后 527 个对象与 17 个数据指纹相同；Supabase 全量恢复被托管对象权限阻断 |
-| 当前测试数据库结构检查 | 通过 | D03 选择范围共 527 项：22 表、247 列、133 约束、51 索引、12 函数、13 触发器、31 策略、2 桶、16 Storage 策略；测试库的全部 50 个 `public` 表均启用 RLS |
+| Manifest covers v1-v50 in order | 通过 | `node tests/verify-d03-migration-files.js`，50 个版本、18 个 bootstrap 文件 |
+| Hash and static safety checks | 通过 | v1-v50 清单、静态危险 SQL 与 `SECURITY DEFINER` 写法检查 |
+| v0 至 v16 匿名历史重放 | 通过 | `DisposableReplay-20260904234033-c16fc959/v1-v16`：19 个匿名历史数据指纹 |
+| v17 至 v50 与幂等账本 | 通过 | 同一运行：50 条账本记录，重复运行已验证，不重复写入 |
+| 应用范围归档边界 | 通过 | `after-full.dump` 597,338 字节，SHA-256 `8266AE1D8AA8B60729764098FAAF4BB66E9AF9FAAED8913FEEE911803E6BE5A7`；878 条目录项，`auth`/`storage` 及其他 Supabase 平台对象均为 0 |
+| 无人干预恢复与重复恢复 | 通过 | 同一运行：534 个结构对象、19 个数据指纹、22 个 RLS 表、53 条策略、12 个函数、13 个触发器、51 个索引、133 条约束；两次恢复均一致 |
+| v50 通知设置 RLS/RPC | 通过 | `notification-settings-rpc-20260904185422/result.json`：RLS 启用、无 anon/authenticated 直表读写、公司级 RPC 允许、普通员工拒绝 |
 
-## Current test database read-only findings
+## 2026-09-05 v50 TARGETED 与 FINAL 证据
 
-- D03 清单中的 22 个目标应用表，以及当前测试库中全部 50 个 `public` 表，均启用 RLS；当前 Storage 策略为 16 条，两个测试桶均在清单内。
-- 当前 137 个 `SECURITY DEFINER` 函数均有固定 `search_path`，且 `PUBLIC`/`anon` 执行授权为 0。完整角色穿透、导出、二维码和签字安全验收仍由 D05 负责。
-- 失败的 Supabase 全量恢复尝试会因平台事件触发器及 `storage` 内部对象所有权返回错误；最终应用范围恢复后，函数授权、RLS、策略和 Storage 应用策略均与迁移后源清单一致。
-
-## 2026-09-03 isolated empty-database evidence
-
-- 在隔离 Supabase 测试项目执行 bootstrap、v1-v16 和 v16 hardening 成功；bootstrap bridge 覆盖 `change_own_email()`、部门报送列、在线学习签字循环和 `project_reports.project_status` 依赖。
-- 2026-09-03：在带 18 条 `D02-TEST` 夹具登记的 v17 前匿名副本实际执行 v17-v49，生成 33 条迁移账本记录；第二次运行逐项校验哈希并跳过全部 33 条。
-- `CurrentChain-20260903-213923` 保存了迁移前后完整/结构备份、数据指纹与对象清单。17 个历史相关表及 `storage.objects` 的计数/哈希在迁移前后相同。
-- 首次全量 `pg_restore --clean` 被 Supabase 平台事件触发器与 Storage 内部对象权限阻断；应用范围恢复后，最终 527 项结构清单和 17 个数据指纹均与迁移后备份源一致。全托管 Supabase 级恢复仍不能标为通过。
-
-## 2026-09-04 public-only Storage short-path evidence
-
-- `short-path-20260904150921-822e2340` 使用全新 `d03_short_*` 测试数据库，结束后已自动删除。
-- v1-v16 与 v17-v49 一次执行至 v49；迁移账本为 49 条。运行器现在逐条验证账本写入，防止“执行成功但未记账”静默通过。
-- `sql/d03-storage-application-config.sql` 在迁移后重建了 3 个私有桶和 22 条来源已核对的应用 Storage 策略。
-- `pg_dump --schema=public` 归档为 599189 字节，SHA-256 为 `056357FC5A5457530985021C6586CE5D2A391244CCAC62C30167651F4662984A`；`pg_restore --list` 成功，877 条目录项中 862 条为 `public`，`auth` 和 `storage` 均为 0。
-- 诊断 JSON 可以重新解析，日志秘密模式扫描为 0。该短路径未启动恢复演练。
+- TARGETED：`targeted-20260904231643/short-path-20260904231655-c575b8ed` 在全新可丢弃数据库完成；v1-v50 迁移账本恰好 50 条，归档边界、RLS、通知设置 RPC、注册触发器首次/重复恢复和 Storage 应用配置均通过，临时数据库已删除。
+- FINAL：`DisposableReplay-20260904234033-c16fc959` 在一个新源库和一个新恢复库中一次完成，总时长 1,987.883 秒。源库与恢复库均已自动删除，临时数据库残留为 0。
+- FINAL 的 19 项历史业务数据指纹在迁移和两次恢复后均一致；迁移账本技术表已从业务数据指纹比对中排除。
+- `training_admission_notification_settings` 的 v50 迁移仅启用 RLS，不增加直表策略或直表授权。应用继续经既有 `training_get_notification_settings()` 与 `training_update_notification_settings(...)` 公司级 `SECURITY DEFINER` RPC 访问；两者固定 `search_path=public`，仅 `authenticated` 有 `EXECUTE`，且不接受公司、人员或 UUID 范围参数。
+- D03 日志秘密模式扫描结果为 0；所有命令只访问指定测试项目，未连接生产环境。
 
 ## D03 结论
 
-D03 为 `PARTIAL`：迁移清单、匿名 v0-v49 重放、49 条账本、历史数据指纹、public-only 应用归档和来源驱动的 Storage 配置重建均已有真实证据；全新恢复目标的无人干预恢复、恢复后结构/数据验证及重复恢复尚未在本轮执行。不得据此宣称 T24 已通过或 G0 已放行。
+D03 为 `PASS`：v0-v50 完整链、v50 RLS、应用范围归档、无人干预首次/重复恢复、结构与数据指纹、Storage 应用配置、诊断 JSON 和临时库清理均有真实测试证据；受限 R01 复查已通过，R03 交接已完成。T24 数据库门已通过，D04 前置已满足。INF02 Storage 文件字节灾备仍为独立后续任务，不阻塞 D04。

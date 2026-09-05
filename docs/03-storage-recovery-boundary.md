@@ -23,7 +23,7 @@ The initializer is intentionally limited to bucket privacy and `storage.objects`
 
 ## Short-path acceptance
 
-The disposable short path must: create a fresh test database; run v1-v49; seed anonymous fixtures; run the Storage initializer; verify every manifest bucket is private and every manifest policy exists; create a public-only archive; verify the archive list contains no `auth` or `storage` objects; and remove the database. A successful short path is necessary evidence for later D03 recovery work, but does not mark D03 complete.
+The disposable short path must: create a fresh test database; run v1-v50; seed anonymous fixtures; run the Storage initializer; verify every manifest bucket is private and every manifest policy exists; create a public-only archive; verify the archive list contains no `auth` or `storage` objects; and remove the database. A successful short path is necessary evidence for later D03 recovery work, but does not mark D03 complete.
 
 ## INF02 trial blocker
 

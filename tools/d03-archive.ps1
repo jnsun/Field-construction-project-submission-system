@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'd03-native-diagnostics.ps1')
+. (Join-Path $PSScriptRoot "d03-psql.ps1")
 
 function Invoke-D03ArchiveDump {
   param(
@@ -8,7 +9,7 @@ function Invoke-D03ArchiveDump {
     [Parameter(Mandatory = $true)][string]$ArchiveFile
   )
 
-  $psql = Get-Command psql -ErrorAction Stop
+  $psqlCommand = Get-Command psql -ErrorAction Stop
   $pgDump = Get-Command pg_dump -ErrorAction Stop
   $stdout = Join-Path $RunDirectory "$Label.stdout.log"
   $stderr = Join-Path $RunDirectory "$Label.stderr.log"
@@ -30,7 +31,7 @@ function Invoke-D03ArchiveDump {
       host = (Get-D03DiagnosticText -Value $target.Host).value
       port = $target.Port
       database = (Get-D03DiagnosticText -Value $target.AbsolutePath).value.Trim('/')
-      user = (Get-D03DiagnosticText -Value $target.UserInfo).value
+      user = (Get-D03DiagnosticText -Value ($target.UserInfo -split ':')[0]).value
     }
     command = $command
     started_at = $started.ToString('o')
@@ -49,9 +50,9 @@ function Invoke-D03ArchiveDump {
   $process = $null
   $commandError = $null
   try {
-    $serverVersionOutput = @(& $psql.Source $DatabaseUrl -Atq -v ON_ERROR_STOP=1 -c 'SHOW server_version;')
-    if ($LASTEXITCODE -eq 0) {
-      $metadata.server_version = (Get-D03DiagnosticText -Value ($serverVersionOutput -join [Environment]::NewLine)).value.Trim()
+    $serverVersionResult = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-Atq', '-c', 'SHOW server_version;') -OutputDirectory $RunDirectory -Label "$Label-server-version" -AllowFailure
+    if ($serverVersionResult.exit_code -eq 0) {
+      $metadata.server_version = (Get-D03DiagnosticText -Value $serverVersionResult.stdout).value.Trim()
     }
     $process = Start-Process -FilePath $pgDump.Source -ArgumentList @('--format=custom', '--schema=public', '--file', $ArchiveFile, $DatabaseUrl) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -NoNewWindow -Wait -PassThru
     if ($null -ne $process) { $metadata.exit_code = $process.ExitCode }

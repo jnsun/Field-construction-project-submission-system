@@ -11,23 +11,25 @@ if ($TestConfirmation -ne 'D03_TEST_ONLY') { throw 'Refusing D03 run without Tes
 if ($EnvironmentName -ne 'test') { throw 'D03 current-chain verification requires SAFETY_ENV=test.' }
 if ($DatabaseUrl -match 'YOUR-|PASSWORD|<|>') { throw 'DatabaseUrl still contains a placeholder.' }
 
-$psql = Get-Command psql -ErrorAction SilentlyContinue
+$psqlCommand = Get-Command psql -ErrorAction SilentlyContinue
 $pgDump = Get-Command pg_dump -ErrorAction SilentlyContinue
-if (-not $psql -or -not $pgDump) { throw 'D03 requires PostgreSQL client tools: psql and pg_dump.' }
+if (-not $psqlCommand -or -not $pgDump) { throw 'D03 requires PostgreSQL client tools: psql and pg_dump.' }
+$psqlExecutable = $psqlCommand.Source
 
 $repo = Split-Path -Parent $PSScriptRoot
 $sqlDir = Join-Path $repo 'sql'
 . (Join-Path $PSScriptRoot 'd03-native-diagnostics.ps1')
+. (Join-Path $PSScriptRoot "d03-psql.ps1")
 . (Join-Path $PSScriptRoot 'd03-archive.ps1')
 $manifest = Get-Content -Raw (Join-Path $sqlDir 'training-admission-v17-v49.manifest.json') | ConvertFrom-Json
-$fixtureCount = & $psql.Source $DatabaseUrl -Atq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.safety_test_fixture_registry WHERE run_key = '$FixtureRunKey';"
-if ([int]$fixtureCount.Trim() -lt 1) { throw "Target lacks fixture marker $FixtureRunKey; refusing current-chain verification." }
-
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $runDir = Join-Path $OutputDir "CurrentChain-$stamp"
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 $failureDiagnostic = Join-Path $runDir 'current-chain-failure.diagnostic.json'
+$fixtureCountResult = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-Atq', '-c', "SELECT count(*) FROM public.safety_test_fixture_registry WHERE run_key = '$FixtureRunKey';") -OutputDirectory $runDir -Label 'fixture-marker-check'
+$fixtureCount = [string]$fixtureCountResult.stdout
+if ([int]$fixtureCount.Trim() -lt 1) { throw "Target lacks fixture marker $FixtureRunKey; refusing current-chain verification." }
 
 try {
 function Invoke-D03MigrationFile {
@@ -35,23 +37,19 @@ function Invoke-D03MigrationFile {
 
   $key = "training-admission-v$($Migration.version)"
   $sourceFile = Join-Path $sqlDir $Migration.file
-  $stdoutFile = Join-Path $runDir "$key.stdout.log"
-  $stderrFile = Join-Path $runDir "$key.stderr.log"
   $diagnosticFile = Join-Path $runDir "$key.diagnostic.json"
   $started = Get-Date
-  $process = Start-Process -FilePath $psql.Source -ArgumentList @($DatabaseUrl, '-v', 'ON_ERROR_STOP=1', '-f', $sourceFile) -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -NoNewWindow -Wait -PassThru
+  $result = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-f', $sourceFile) -OutputDirectory $runDir -Label $key -AllowFailure
   $finished = Get-Date
-  $stdout = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { $null }
-  $stderr = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { $null }
-  $diagnostic = New-D03CommandDiagnostic -ExitCode $process.ExitCode -Stdout $stdout -Stderr $stderr -CommandResult $process -OutputFile $sourceFile -StartedAt $started -FinishedAt $finished
+  $diagnostic = New-D03CommandDiagnostic -ExitCode $result.exit_code -Stdout $result.stdout -Stderr $result.stderr -CommandResult $result -OutputFile $sourceFile -StartedAt $started -FinishedAt $finished
   $diagnostic.label = $key
   $diagnostic.executable = 'psql'
-  $diagnostic.executable_path = $psql.Source
+  $diagnostic.executable_path = $psqlExecutable
   $diagnostic.command = @('psql', '-v', 'ON_ERROR_STOP=1', '-f', $Migration.file)
-  $diagnostic.stdout_file = $stdoutFile
-  $diagnostic.stderr_file = $stderrFile
+  $diagnostic.stdout_file = $result.stdout_file
+  $diagnostic.stderr_file = $result.stderr_file
   Write-D03DiagnosticJson -Diagnostic $diagnostic -Path $diagnosticFile
-  if ($process.ExitCode -ne 0) { throw "Migration failed: $key. See $diagnosticFile." }
+  if ($result.exit_code -ne 0) { throw "Migration failed: $key. See $diagnosticFile." }
 }
 
 function Write-PreMigrationFingerprintSql {
@@ -84,7 +82,7 @@ FROM `"$schemaIdentifier`".`"$tableIdentifier`" t;
 }
 
 $columnManifest = Join-Path $runDir 'pre-migration-column-manifest.csv'
-& $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 --csv -c @'
+$columnManifestResult = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('--csv', '-c', @'
 WITH target_tables AS (
   SELECT table_schema, table_name
   FROM information_schema.tables
@@ -98,12 +96,12 @@ FROM information_schema.columns c
 JOIN target_tables t USING (table_schema, table_name)
 GROUP BY c.table_schema, c.table_name
 ORDER BY c.table_schema, c.table_name;
-'@ | Set-Content -Encoding utf8 $columnManifest
-if ($LASTEXITCODE -ne 0) { throw 'Pre-migration column manifest export failed.' }
+'@) -OutputDirectory $runDir -Label 'pre-migration-column-manifest'
+Set-Content -LiteralPath $columnManifest -Encoding utf8 -Value $columnManifestResult.stdout
 $preMigrationFingerprintSql = Join-Path $runDir 'pre-migration-data-fingerprint.sql'
 Write-PreMigrationFingerprintSql -ColumnManifestFile $columnManifest -OutputFile $preMigrationFingerprintSql
-& $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 --csv -f $preMigrationFingerprintSql | Set-Content -Encoding utf8 (Join-Path $runDir 'before-pre-migration-data.csv')
-if ($LASTEXITCODE -ne 0) { throw 'Pre-migration historical fingerprint export failed.' }
+$beforePreMigrationData = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('--csv', '-f', $preMigrationFingerprintSql) -OutputDirectory $runDir -Label 'before-pre-migration-data'
+Set-Content -LiteralPath (Join-Path $runDir 'before-pre-migration-data.csv') -Encoding utf8 -Value $beforePreMigrationData.stdout
 
 # The D03 recovery boundary is application-owned public data. Source-backed
 # Storage configuration is rebuilt separately; platform Storage internals are excluded.
@@ -111,35 +109,39 @@ $beforeBackup = Join-Path $runDir 'before-full.dump'
 Invoke-D03ArchiveDump -DatabaseUrl $DatabaseUrl -RunDirectory $runDir -Label 'before-application-archive' -ArchiveFile $beforeBackup
 & $pgDump.Source --schema-only --format=plain --schema=public --file (Join-Path $runDir 'before-schema.sql') $DatabaseUrl
 if ($LASTEXITCODE -ne 0) { throw 'Failed to create the pre-migration application schema backup.' }
-& $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 --csv -f (Join-Path $sqlDir 'd03-data-fingerprint.sql') | Set-Content -Encoding utf8 (Join-Path $runDir 'before-data.csv')
+$beforeData = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('--csv', '-f', (Join-Path $sqlDir 'd03-data-fingerprint.sql')) -OutputDirectory $runDir -Label 'before-data'
+Set-Content -LiteralPath (Join-Path $runDir 'before-data.csv') -Encoding utf8 -Value $beforeData.stdout
 
-& $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 -c @'
+Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-c', @'
 CREATE TABLE IF NOT EXISTS public.safety_schema_migrations (
   migration_key TEXT PRIMARY KEY,
   sha256 TEXT NOT NULL,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   applied_by TEXT NOT NULL DEFAULT current_user
 );
-'@
+'@) -OutputDirectory $runDir -Label 'create-migration-ledger' | Out-Null
 
 foreach ($migration in $manifest.migrations) {
   $key = "training-admission-v$($migration.version)"
-  $applied = & $psql.Source $DatabaseUrl -Atq -v ON_ERROR_STOP=1 -c "SELECT sha256 FROM public.safety_schema_migrations WHERE migration_key = '$key';"
+  $appliedResult = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-Atq', '-c', "SELECT sha256 FROM public.safety_schema_migrations WHERE migration_key = '$key';") -OutputDirectory $runDir -Label "ledger-read-v$($migration.version)"
+  $applied = [string]$appliedResult.stdout
   if ($applied) {
     if ($applied.Trim().ToUpperInvariant() -ne $migration.sha256) { throw "Checksum mismatch for $key; refusing replay." }
     Write-Output "Skip ${key}: matching ledger entry."
     continue
   }
   Invoke-D03MigrationFile -Migration $migration
-  & $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 -c "INSERT INTO public.safety_schema_migrations(migration_key, sha256) VALUES ('$key', '$($migration.sha256)');"
+  Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-c', "INSERT INTO public.safety_schema_migrations(migration_key, sha256) VALUES ('$key', '$($migration.sha256)');") -OutputDirectory $runDir -Label "ledger-write-v$($migration.version)" | Out-Null
 }
 
-& $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 --csv -f (Join-Path $sqlDir 'd03-data-fingerprint.sql') | Set-Content -Encoding utf8 (Join-Path $runDir 'after-data.csv')
-& $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 --csv -f $preMigrationFingerprintSql | Set-Content -Encoding utf8 (Join-Path $runDir 'after-pre-migration-data.csv')
-if ($LASTEXITCODE -ne 0) { throw 'Post-migration historical fingerprint export failed.' }
+$afterData = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('--csv', '-f', (Join-Path $sqlDir 'd03-data-fingerprint.sql')) -OutputDirectory $runDir -Label 'after-data'
+Set-Content -LiteralPath (Join-Path $runDir 'after-data.csv') -Encoding utf8 -Value $afterData.stdout
+$afterPreMigrationData = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('--csv', '-f', $preMigrationFingerprintSql) -OutputDirectory $runDir -Label 'after-pre-migration-data'
+Set-Content -LiteralPath (Join-Path $runDir 'after-pre-migration-data.csv') -Encoding utf8 -Value $afterPreMigrationData.stdout
 & node (Join-Path $repo 'tests\compare-d03-fingerprints.js') (Join-Path $runDir 'before-pre-migration-data.csv') (Join-Path $runDir 'after-pre-migration-data.csv')
 if ($LASTEXITCODE -ne 0) { throw 'Historical fingerprint verification failed.' }
-& $psql.Source $DatabaseUrl -v ON_ERROR_STOP=1 --csv -f (Join-Path $sqlDir 'd03-schema-inventory.sql') | Set-Content -Encoding utf8 (Join-Path $runDir 'after-schema.csv')
+$afterSchema = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('--csv', '-f', (Join-Path $sqlDir 'd03-schema-inventory.sql')) -OutputDirectory $runDir -Label 'after-schema'
+Set-Content -LiteralPath (Join-Path $runDir 'after-schema.csv') -Encoding utf8 -Value $afterSchema.stdout
 $afterBackup = Join-Path $runDir 'after-full.dump'
 Invoke-D03ArchiveDump -DatabaseUrl $DatabaseUrl -RunDirectory $runDir -Label 'after-application-archive' -ArchiveFile $afterBackup
 & $pgDump.Source --schema-only --format=plain --schema=public --file (Join-Path $runDir 'after-schema.sql') $DatabaseUrl

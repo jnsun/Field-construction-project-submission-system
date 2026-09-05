@@ -1,5 +1,5 @@
 {
-  "schema": "d03-training-admission-v17-v49",
+  "schema": "d03-training-admission-v17-v50",
   "version": 1,
   "migrations": [
     { "version": 17, "file": "training-admission-v17.sql", "sha256": "B7C611DA14FF2C359A9358F41EE4E45A0248BF7A157A2E2F3B5231E114D07A33" },
@@ -34,6 +34,7 @@
     { "version": 46, "file": "training-admission-v46.sql", "sha256": "E6632E5FD5592688EF4B026878B1A6B6613C4ECC21EA8543964D3F85EFFD3CB5" },
     { "version": 47, "file": "training-admission-v47.sql", "sha256": "F2C92E94E31DFBBEF4CA0FBF8B6AC6769D2DAD234721A92AF464B62CD77B0910" },
     { "version": 48, "file": "training-admission-v48-project-audit-delete-fix.sql", "sha256": "A1AC2A4FD2BB3100B53E82AE5918B8852C073940C3FFBC0AE69DBC490B012B7D" },
-    { "version": 49, "file": "training-admission-v49-security-baseline.sql", "sha256": "7F2B6CDFC3ACE51009CB14D0D66EF3AF88E53F7D63E5FD8448B9DA4D42079264" }
+    { "version": 49, "file": "training-admission-v49-security-baseline.sql", "sha256": "7F2B6CDFC3ACE51009CB14D0D66EF3AF88E53F7D63E5FD8448B9DA4D42079264" },
+    { "version": 50, "file": "training-admission-v50-notification-settings-rls.sql", "sha256": "B41B2FD199D6D70AFE26D13A1CF5EECD8374579C9DC2D91028CA13984119B440" }
   ]
 }
