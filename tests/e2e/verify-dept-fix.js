@@ -52,6 +52,11 @@ function rest(token) {
   };
 }
 
+function errorDetail(result) {
+  const body = result.json && typeof result.json === 'object' ? result.json : {};
+  return `status=${result.status}, code=${body.code || 'none'}, message=${body.message || 'none'}`;
+}
+
 async function main() {
   const adminToken = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
   const entityToken = await login(TEST_ENTITY_EMAIL, TEST_ENTITY_PASSWORD);
@@ -93,14 +98,21 @@ async function main() {
         JSON.stringify(del2.json));
     }
   } else {
-    report('4a. 经营实体建本部门项目部', false, '未取到 department_id');
+    report('4a. 经营实体建本部门项目部', false,
+      `未取到 department_id; ${errorDetail(me)}`);
   }
 
   // ---- 5/6. RLS 可见数 ----
   const epAll = await entityApi('GET', 'profiles?select=id,department_id,role');
   const epCount = Array.isArray(epAll.json) ? epAll.json.length : -1;
+  const epRoles = Array.isArray(epAll.json)
+    ? epAll.json.reduce((roles, profile) => {
+      roles[profile.role] = (roles[profile.role] || 0) + 1;
+      return roles;
+    }, {})
+    : {};
   report('5. 经营实体 REST 直连 profiles 可见数（期望个位数，非 370）', epCount > 0 && epCount < 20,
-    `count=${epCount}, roles=${JSON.stringify((epAll.json || []).reduce((a, r) => (a[r.role] = (a[r.role] || 0) + 1, a), {}))}`);
+    `count=${epCount}, roles=${JSON.stringify(epRoles)}, ${errorDetail(epAll)}`);
 
   const apAll = await adminApi('GET', 'profiles?select=id');
   const apCount = Array.isArray(apAll.json) ? apAll.json.length : -1;
@@ -108,8 +120,11 @@ async function main() {
 
   const edAll = await entityApi('GET', 'departments?select=id');
   const adAll = await adminApi('GET', 'departments?select=id');
+  const edCount = Array.isArray(edAll.json) ? edAll.json.length : -1;
+  const adCount = Array.isArray(adAll.json) ? adAll.json.length : -1;
   report('6b. departments 两账号均全读（设计如此，未收紧）',
-    edAll.json.length === adAll.json.length, `entity=${edAll.json.length}, admin=${adAll.json.length}`);
+    edAll.status === 200 && adAll.status === 200 && edCount === adCount,
+    `entity=${edCount}, admin=${adCount}; entity ${errorDetail(edAll)}; admin ${errorDetail(adAll)}`);
 
   const failed = results.filter(r => !r.pass);
   console.log(`\n结果：${results.length - failed.length}/${results.length} 通过`);

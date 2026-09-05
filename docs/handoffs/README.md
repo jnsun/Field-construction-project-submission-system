@@ -17,3 +17,4 @@ Web/后端、小程序和集成线只能创建自己发起的交接文件，不�
 
 - [D02 共享基线](D02-shared-baseline.md)
 - [D03 数据库验证](D03-database-verification.md)
+- [D04 冒烟与 E2E 基线](D04-e2e-smoke-baseline.md)
