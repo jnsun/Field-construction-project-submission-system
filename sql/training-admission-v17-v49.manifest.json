@@ -1,5 +1,5 @@
 {
-  "schema": "d03-training-admission-v17-v57",
+  "schema": "d03-training-admission-v17-v68",
   "version": 1,
   "migrations": [
     { "version": 17, "file": "training-admission-v17.sql", "sha256": "B7C611DA14FF2C359A9358F41EE4E45A0248BF7A157A2E2F3B5231E114D07A33" },
@@ -42,6 +42,17 @@
     { "version": 54, "file": "training-admission-v54-project-application-insert-boundary.sql", "sha256": "95DF5870D224B4F9F19E400E37319AC617171B4E61A4DD772989A3A526A9CE28" },
     { "version": 55, "file": "training-admission-v55-atomic-project-create.sql", "sha256": "DFC31DF18ABDC54757B74CF2E06D6DA6D6B2BB0B351922A0771948A112E758A1" },
     { "version": 56, "file": "training-admission-v56-project-reopen-state.sql", "sha256": "5AB39F368972395DE9B3EB3B578FD740C236F328596C0A6CC8102AF021AAC087" },
-    { "version": 57, "file": "training-admission-v57-project-audit-readonly.sql", "sha256": "7C1C5680C72248E124E08D7F778370881AA1FF4E90963E22D5E2688F6E1554C0" }
+    { "version": 57, "file": "training-admission-v57-project-audit-readonly.sql", "sha256": "7C1C5680C72248E124E08D7F778370881AA1FF4E90963E22D5E2688F6E1554C0" },
+    { "version": 58, "file": "training-admission-v58-project-role-assignee-boundary.sql", "sha256": "ECC8F1B5279A746E4169B37CFE2BFD5F4F54335526A3B1A8970ACE0E18B683A8" },
+    { "version": 59, "file": "training-admission-v59-project-role-assigner-boundary.sql", "sha256": "1D7DBB8868475AFE2E19314F99DDEA32AA304CE9F78D1EB374B24F67F122F74E" },
+    { "version": 60, "file": "training-admission-v60-project-manager-limit.sql", "sha256": "067147538326D26A79242A3660389C6650520BBE5A395EF4F9BB247A618A1589" },
+    { "version": 61, "file": "training-admission-v61-project-role-revocation-audit.sql", "sha256": "D7998A5055C2675FB7E024C4BDB3D444064616BB7BECC49C7D77570FD689DE36" },
+    { "version": 62, "file": "training-admission-v62-project-read-scope.sql", "sha256": "B20CF5573EB57820DAC5386E1A8E2F80D8005F97F5E2AF894740F855F527F1D2" },
+    { "version": 63, "file": "training-admission-v63-role-permission-matrix.sql", "sha256": "643E40819C6F3A94D423076BE385FFB74960C820C01CF8243FC40CB289A0EAE5" },
+    { "version": 64, "file": "training-admission-v64-company-read-management-split.sql", "sha256": "584FC39083D9BD4270EFF3757BB265DC4F3C21EC470AAC13D292C4C06F358B9F" },
+    { "version": 65, "file": "training-admission-v65-r02-permission-split-completion.sql", "sha256": "E8407C43E02605A072B61F1984A0C308F83A68AFFEE18C68CB9BF70FCE293A4A" },
+    { "version": 66, "file": "training-admission-v66-company-read-execute-and-evidence.sql", "sha256": "363402821E6AE0435CDBF7F9DEF96BF579D22F5413D4152D7FAF7C1407DBECD8" },
+    { "version": 67, "file": "training-admission-v67-project-write-boundary.sql", "sha256": "BD4F10E078DB4F02AD116E86B1367585C0BB68C6FB41B30C603C038FAFF497D5" },
+    { "version": 68, "file": "training-admission-v68-recompute-and-join-upload-boundary.sql", "sha256": "061F249D35A842094A18B01548BA84CBC79CC4C987EC64263C3D435AF5C27742" }
   ]
 }

@@ -3,7 +3,7 @@
 // 目前支持扫码枪/小程序扫码后填入凭证编号；二维码图形在小程序接入时复用该接口。
 // ============================================================================
 const TrainingAdmissionVerify = {
-  state: { stream: null, scanning: false, logs: [] },
+  state: { stream: null, scanning: false, logs: [], projects: [] },
   STATUS: {
     eligible: ['可上岗', 'badge-success'], blocked: ['禁止上岗', 'badge-danger'],
     expired: ['凭证已过期', 'badge-danger'], project_closed: ['项目已关闭', 'badge-muted'],
@@ -15,13 +15,16 @@ const TrainingAdmissionVerify = {
   },
 
   async render(box) {
+    const projects = await sb.from('site_projects').select('id, lead_entity_id, status');
+    this.state.projects = projects.error ? [] : (projects.data || []);
     await this.loadLogs();
+    const canManage = TrainingModule.canManageAnyProject(this.state.projects);
     box.innerHTML = `<div class="card"><div class="card-header"><h2>二维码核验</h2><span class="text-muted">仅显示现场核验所需信息</span></div>
-      <div class="card-body"><div style="display:flex;gap:8px;max-width:560px;flex-wrap:wrap">
+      ${canManage ? `<div class="card-body"><div style="display:flex;gap:8px;max-width:560px;flex-wrap:wrap">
         <input id="admission-verify-code" class="form-control" style="flex:1;min-width:220px" placeholder="扫描或输入电子凭证/临时通行编号">
         <button class="btn btn-secondary" onclick="TrainingAdmissionVerify.openScanner()">扫码</button><button class="btn btn-primary" onclick="TrainingAdmissionVerify.verify()">核验</button>
       </div><p class="text-muted" style="font-size:12px;margin-top:8px">核验结果实时判断项目状态、培训有效期和特种作业证状态。临时通行仅为短时例外，不以截图为准。</p>
-      <div id="admission-verify-result" style="margin-top:16px"></div></div></div><div id="admission-verify-logs">${this.renderLogs()}</div>`;
+      <div id="admission-verify-result" style="margin-top:16px"></div></div>` : '<div class="card-body"><span class="text-muted">当前账号仅可查看已授权的核验记录，不能执行现场核验。</span></div>'}</div><div id="admission-verify-logs">${this.renderLogs()}</div>`;
     const input = document.getElementById('admission-verify-code');
     input?.addEventListener('keydown', e => { if (e.key === 'Enter') this.verify(); });
     input?.focus();

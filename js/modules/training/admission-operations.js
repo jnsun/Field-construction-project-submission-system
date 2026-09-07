@@ -13,22 +13,27 @@ const TrainingAdmissionOperations = {
   },
 
   async render(box) {
-    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">项目准入执行与资格核验</span></div>
-      <div class="toolbar-right"><select id="admission-op-project" onchange="TrainingAdmissionOperations.onFilter()"><option value="">全部项目</option></select><select id="admission-op-action" onchange="TrainingAdmissionOperations.onActionFilter()"><option value=""${!this.state.actionFilter ? ' selected' : ''}>全部人员</option><option value="start"${this.state.actionFilter === 'start' ? ' selected' : ''}>待下发培训</option><option value="learn"${this.state.actionFilter === 'learn' ? ' selected' : ''}>待完成学习</option><option value="exam"${this.state.actionFilter === 'exam' ? ' selected' : ''}>待考试/补考</option><option value="sign"${this.state.actionFilter === 'sign' ? ' selected' : ''}>待电子签字</option><option value="confirm"${this.state.actionFilter === 'confirm' ? ' selected' : ''}>待现场确认</option><option value="retrain"${this.state.actionFilter === 'retrain' ? ' selected' : ''}>待年度/停工复训</option><option value="blocked"${this.state.actionFilter === 'blocked' ? ' selected' : ''}>禁止上岗/资格异常</option></select>
-        <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.printBlocked()">打印禁止上岗名单</button>
-        <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.generateDueReminders()">按规则提醒</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchRemind()">批量催办</button>
-        ${TrainingModule.isCompanyAdmin() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.generateAllReminders()">全部项目提醒</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openReminderSettings()">提醒设置</button>' : ''}
-        <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.load()">刷新</button>
-        ${TrainingModule.canManageAdmission() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchStart()">批量发起准入</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionOperations.openStartForm()">+ 发起准入</button>' : ''}</div></div>
-      <div id="admission-op-summary"></div><div id="admission-op-table"></div>`;
+    box.innerHTML = `<div id="admission-op-toolbar"></div><div id="admission-op-summary"></div><div id="admission-op-table"></div>`;
     await this.load();
   },
 
+  renderToolbar() {
+    const box = document.getElementById('admission-op-toolbar'); if (!box) return;
+    const selectedProject = this.state.filter ? this.project(this.state.filter) : null;
+    const canManage = selectedProject
+      ? TrainingModule.canManageProject(selectedProject)
+      : TrainingModule.canManageAnyProject(this.state.projects);
+    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">项目准入执行与资格核验</span></div>
+      <div class="toolbar-right"><select id="admission-op-project" onchange="TrainingAdmissionOperations.onFilter()"><option value="">全部项目</option></select><select id="admission-op-action" onchange="TrainingAdmissionOperations.onActionFilter()"><option value=""${!this.state.actionFilter ? ' selected' : ''}>全部人员</option><option value="start"${this.state.actionFilter === 'start' ? ' selected' : ''}>待下发培训</option><option value="learn"${this.state.actionFilter === 'learn' ? ' selected' : ''}>待完成学习</option><option value="exam"${this.state.actionFilter === 'exam' ? ' selected' : ''}>待考试/补考</option><option value="sign"${this.state.actionFilter === 'sign' ? ' selected' : ''}>待电子签字</option><option value="confirm"${this.state.actionFilter === 'confirm' ? ' selected' : ''}>待现场确认</option><option value="retrain"${this.state.actionFilter === 'retrain' ? ' selected' : ''}>待年度/停工复训</option><option value="blocked"${this.state.actionFilter === 'blocked' ? ' selected' : ''}>禁止上岗/资格异常</option></select>
+        <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.printBlocked()">打印禁止上岗名单</button>
+        ${canManage ? '<button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.generateDueReminders()">按规则提醒</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchRemind()">批量催办</button><button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openBatchStart()">批量发起准入</button><button class="btn btn-primary btn-sm" onclick="TrainingAdmissionOperations.openStartForm()">+ 发起准入</button>' : ''}
+        ${TrainingModule.isCompanyAdmin() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.openReminderSettings()">提醒设置</button>' : ''}
+        <button class="btn btn-secondary btn-sm" onclick="TrainingAdmissionOperations.load()">刷新</button></div></div>`;
+  },
+
   async load() {
-    // 到期状态不能只依赖扫码时判断；进入执行台先刷新当前账号可管理范围。
-    await sb.rpc('training_refresh_expired_admissions');
     const results = await Promise.all([
-      sb.from('site_projects').select('id, project_code, name, status').order('created_at', { ascending: false }),
+      sb.from('site_projects').select('id, project_code, name, status, lead_entity_id').order('created_at', { ascending: false }),
       sb.from('site_project_members').select('id, project_id, employee_id, contractor_id, membership_type, status, joined_at').order('joined_at', { ascending: false }),
       sb.from('training_employees').select('id, name, phone, position, photo_path').order('name'),
       sb.from('training_admission_packages').select('id, project_id, title, version_no, status, validity_years, supersedes_package_id').eq('status', 'published').order('title'),
@@ -40,15 +45,21 @@ const TrainingAdmissionOperations = {
     const error = results.find(r => r.error);
     if (error) throw error.error;
     [this.state.projects, this.state.members, this.state.employees, this.state.packages, this.state.admissions, this.state.signatures, this.state.roles, this.state.accesses] = results.map(r => r.data || []);
-    const refreshes = await Promise.all(this.state.projects.filter(p => p.status !== 'closed').map(p => sb.rpc('training_refresh_external_admissions', { p_project_id: p.id, p_contractor_id: null })));
+    const refreshes = await Promise.all(this.state.projects
+      .filter(p => p.status !== 'closed' && TrainingModule.canManageProject(p))
+      .flatMap(p => [
+        sb.rpc('training_refresh_expired_admissions', { p_project_id: p.id }),
+        sb.rpc('training_refresh_external_admissions', { p_project_id: p.id, p_contractor_id: null }),
+      ]));
     if (refreshes.some(r => !r.error && r.data > 0)) {
       const latest = await sb.from('training_admissions').select('id, project_id, employee_id, package_id, status, exam_score, exam_attempts, final_signed_at, site_confirmed_at, valid_until, due_at, urgent, blocked_reason, retrain_required, retrain_reason, training_cycle_no, created_at').order('created_at', { ascending: false });
       if (!latest.error) this.state.admissions = latest.data || [];
     }
+    this.renderToolbar();
     this.renderTable();
   },
 
-  onFilter() { this.state.filter = document.getElementById('admission-op-project')?.value || ''; this.renderTable(); },
+  onFilter() { this.state.filter = document.getElementById('admission-op-project')?.value || ''; this.renderToolbar(); this.renderTable(); },
   onActionFilter() { this.state.actionFilter = document.getElementById('admission-op-action')?.value || ''; this.renderTable(); },
   setActionFilter(action) { this.state.actionFilter = action; const el = document.getElementById('admission-op-action'); if (el) el.value = action; this.renderTable(); },
   project(id) { return this.state.projects.find(x => x.id === id) || {}; },
@@ -93,21 +104,24 @@ const TrainingAdmissionOperations = {
   },
 
   row({ m, e, a }) {
+    const canManage = TrainingModule.canManageProject(this.project(m.project_id));
+    const canRead = TrainingModule.canReadProjectManagementData(this.project(m.project_id));
     const p = this.package(a?.package_id);
     const role = a ? this.myProjectRole(m.project_id) : '';
     const managerSign = a?.final_signed_at && role && !this.hasOwnManagerSign(a.id, role, a.training_cycle_no)
       ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openManagerSign('${a.id}','${role}')">项目签署</button>` : '';
     const temp = a && this.activeAccess(a.id);
     const history = `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openTimeline('${m.project_id}','${m.employee_id}')">流转档案</button>`;
-    const checklist = `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openReadiness('${m.project_id}','${m.employee_id}')">准入清单</button>${history}`;
-    const actions = !a ? `${checklist}<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openStartForm('${m.project_id}','${m.employee_id}')">发起准入</button>` : `${checklist}<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.recompute('${a.id}')">刷新资格</button>${a.retrain_required ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openRetrainForm('${a.id}', ${a.status === 'expired'})">${a.status === 'expired' ? '年度复训' : '发起复训'}</button>` : ''}${['pending_site_confirm', 'blocked'].includes(a.status) && !a.retrain_required ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openConfirm('${a.id}')">现场确认</button>` : ''}${a.status !== 'eligible' && !temp ? `<button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.openTemporary('${a.id}')">临时通行</button>` : ''}${managerSign}${a.status === 'eligible' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.issue('${a.id}')">签发凭证</button>` : ''}`;
+    const readActions = canRead ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openReadiness('${m.project_id}','${m.employee_id}')">准入清单</button>${history}` : '';
+    const manageActions = !a ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openStartForm('${m.project_id}','${m.employee_id}')">发起准入</button>` : `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.recompute('${a.id}')">刷新资格</button>${a.retrain_required ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openRetrainForm('${a.id}', ${a.status === 'expired'})">${a.status === 'expired' ? '年度复训' : '发起复训'}</button>` : ''}${['pending_site_confirm', 'blocked'].includes(a.status) && !a.retrain_required ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openConfirm('${a.id}')">现场确认</button>` : ''}${a.status !== 'eligible' && !temp ? `<button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.openTemporary('${a.id}')">临时通行</button>` : ''}${managerSign}${a.status === 'eligible' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.issue('${a.id}')">签发凭证</button>` : ''}`;
+    const actions = `${readActions}${canManage ? manageActions : ''}` || '<span class="text-muted">无可用操作</span>';
     const due = a?.due_at ? new Date(a.due_at) : null;
     const overdue = due && due < new Date() && a.status !== 'eligible';
     const dueText = due ? due.toLocaleString().replace(/:\d{2}$/, '') : '—';
-    return `<tr><td><b>${this.esc(e.name)}</b><br><span class="text-muted">${this.esc(e.phone || '—')}</span></td><td>${this.esc(this.projectName(m.project_id))}</td><td>${this.esc(e.position || '—')}<br>${m.membership_type === 'external' ? '<span class="badge badge-warning">外协</span>' : '<span class="badge badge-muted">内部</span>'}</td><td>${a ? `${this.esc(p.title)} v${p.version_no || 1}` : '—'}</td><td>${a ? this.status(a.status) : this.status('blocked')}${temp ? '<br><span class="badge badge-danger">临时通行中</span>' : ''}<br><span class="text-muted">${this.esc(a?.blocked_reason || '')}</span></td><td>${a?.exam_score != null ? `${a.exam_score} 分 / ${a.exam_attempts || 0} 次` : '—'}</td><td>${a?.urgent ? '<span class="badge badge-danger">当天加急</span><br>' : ''}<span style="color:${overdue ? '#b91c1c' : 'inherit'}">${this.esc(dueText)}</span>${overdue ? '<br><span style="color:#b91c1c;font-size:12px">已逾期</span>' : ''}</td><td>${this.esc(a?.valid_until || '—')}</td><td>${TrainingModule.canManageAdmission() ? actions : '<span class="text-muted">只读</span>'}</td></tr>`;
+    return `<tr><td><b>${this.esc(e.name)}</b><br><span class="text-muted">${this.esc(e.phone || '—')}</span></td><td>${this.esc(this.projectName(m.project_id))}</td><td>${this.esc(e.position || '—')}<br>${m.membership_type === 'external' ? '<span class="badge badge-warning">外协</span>' : '<span class="badge badge-muted">内部</span>'}</td><td>${a ? `${this.esc(p.title)} v${p.version_no || 1}` : '—'}</td><td>${a ? this.status(a.status) : this.status('blocked')}${temp ? '<br><span class="badge badge-danger">临时通行中</span>' : ''}<br><span class="text-muted">${this.esc(a?.blocked_reason || '')}</span></td><td>${a?.exam_score != null ? `${a.exam_score} 分 / ${a.exam_attempts || 0} 次` : '—'}</td><td>${a?.urgent ? '<span class="badge badge-danger">当天加急</span><br>' : ''}<span style="color:${overdue ? '#b91c1c' : 'inherit'}">${this.esc(dueText)}</span>${overdue ? '<br><span style="color:#b91c1c;font-size:12px">已逾期</span>' : ''}</td><td>${this.esc(a?.valid_until || '—')}</td><td>${actions}</td></tr>`;
   },
 
-  tempRow(x) { const expired = new Date(x.expires_at) <= new Date(); const person = x.training_employees || {}; return `<tr style="${expired ? 'color:#9ca3af' : 'background:#fff1f2'}"><td><b>${this.esc(person.name || '—')}</b><br><span class="text-muted">${this.esc(person.position || '')}</span></td><td>${this.esc(this.projectName(x.project_id))}</td><td>${this.esc(x.reason)}</td><td><b>${this.esc(x.pass_code || '—')}</b></td><td>${this.esc((x.expires_at || '').slice(0, 16).replace('T', ' '))}</td><td>${expired ? '<span class="badge badge-muted">已到期</span>' : '<span class="badge badge-danger">临时通行</span>'}</td><td>${!expired ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.showTemporaryQr('${this.esc(x.pass_code || '')}')">二维码</button> <button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.revokeTemporary('${x.id}')">撤销</button>` : '—'}</td></tr>`; },
+  tempRow(x) { const expired = new Date(x.expires_at) <= new Date(); const canManage = TrainingModule.canManageProject(this.project(x.project_id)); const person = x.training_employees || {}; return `<tr style="${expired ? 'color:#9ca3af' : 'background:#fff1f2'}"><td><b>${this.esc(person.name || '—')}</b><br><span class="text-muted">${this.esc(person.position || '')}</span></td><td>${this.esc(this.projectName(x.project_id))}</td><td>${this.esc(x.reason)}</td><td><b>${this.esc(x.pass_code || '—')}</b></td><td>${this.esc((x.expires_at || '').slice(0, 16).replace('T', ' '))}</td><td>${expired ? '<span class="badge badge-muted">已到期</span>' : '<span class="badge badge-danger">临时通行</span>'}</td><td>${!expired && canManage ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.showTemporaryQr('${this.esc(x.pass_code || '')}')">二维码</button> <button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.revokeTemporary('${x.id}')">撤销</button>` : '—'}</td></tr>`; },
 
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
   close() { this.host().innerHTML = ''; },
@@ -136,7 +150,7 @@ const TrainingAdmissionOperations = {
     if (error || !data?.signedUrl) { Utils.toast(error?.message || '电子证据暂时无法打开', 'error'); return; }
     window.open(data.signedUrl, '_blank', 'noopener');
   },
-  projectOptions(selected) { return this.state.projects.filter(p => p.status === 'active').map(p => `<option value="${p.id}"${p.id === selected ? ' selected' : ''}>${this.esc(this.projectName(p.id))}</option>`).join(''); },
+  projectOptions(selected) { return this.state.projects.filter(p => p.status === 'active' && TrainingModule.canManageProject(p)).map(p => `<option value="${p.id}"${p.id === selected ? ' selected' : ''}>${this.esc(this.projectName(p.id))}</option>`).join(''); },
   memberOptions(projectId, employeeId) { return this.state.members.filter(m => m.status === 'active' && (!projectId || m.project_id === projectId)).map(m => { const e = this.employee(m.employee_id); return `<option value="${m.employee_id}" data-project="${m.project_id}"${m.employee_id === employeeId ? ' selected' : ''}>${this.esc(e.name)} · ${this.esc(e.position || '未填工种')} · ${this.esc(this.projectName(m.project_id))}</option>`; }).join(''); },
   packageOptions(projectId) { return this.state.packages.filter(p => !p.project_id || p.project_id === projectId).map(p => `<option value="${p.id}">${this.esc(p.title)} v${p.version_no || 1}${p.project_id ? '（项目包）' : '（通用包）'}</option>`).join(''); },
   defaultAdmissionDue() { const d = new Date(); d.setDate(d.getDate() + 3); d.setHours(18, 0, 0, 0); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); },
@@ -155,7 +169,7 @@ const TrainingAdmissionOperations = {
       .filter(m => !this.state.admissions.some(a => a.project_id === projectId && a.employee_id === m.employee_id));
   },
   openBatchStart() {
-    const projectId = this.state.filter || this.state.projects.find(p => p.status === 'active')?.id || '';
+    const projectId = this.state.filter || this.state.projects.find(p => p.status === 'active' && TrainingModule.canManageProject(p))?.id || '';
     if (!projectId) { Utils.toast('当前没有可下发培训的在建项目', 'info'); return; }
     this.modal('批量发起项目准入培训', `<p class="hint">仅列出本项目已在场、且尚未发起准入的人员。系统会逐人建档、下发培训任务并生成系统内提醒；已有记录不会覆盖。</p><div class="form-group"><label>项目 <span class="required">*</span></label><select id="ad-batch-project" class="form-control" onchange="TrainingAdmissionOperations.renderBatchStartPeople()">${this.projectOptions(projectId)}</select></div><div class="form-group"><label>已发布培训包 <span class="required">*</span></label><select id="ad-batch-package" class="form-control">${this.packageOptions(projectId)}</select></div>${this.admissionScheduleFields('ad-batch')}<div id="ad-batch-people"></div>`, 'TrainingAdmissionOperations.submitBatchStart()');
     this.renderBatchStartPeople();

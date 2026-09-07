@@ -89,12 +89,16 @@ const TrainingAdmissionMine = {
     if (!/^1[3-9]\d{9}$/.test(phone)) { Utils.toast('手机号格式不正确', 'error'); return; }
     if (!/^[1-9]\d{16}[\dX]$/.test(idNumber)) { Utils.toast('请填写 18 位大陆居民身份证号', 'error'); return; }
     if (file.size > 10 * 1024 * 1024 || (file.type && !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) { Utils.toast('现场照片仅支持 JPG、PNG、WEBP，且不能超过 10MB', 'error'); return; }
-    if (!await this.inviteInfo(token)) return;
+    const invite = await this.inviteInfo(token); if (!invite?.project_id) return;
     const highRisk = /(爆破|钻探|电工|焊工)/.test(position);
     const special = document.getElementById('join-special-certificate')?.files?.[0];
     if (highRisk && !special) { Utils.toast('高风险工种必须上传特种作业证附件', 'error'); return; }
+    const userId = Auth.currentUser?.id; if (!userId) { Utils.toast('请先登录后再申请加入项目', 'error'); return; }
+    const inviteDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token.trim()));
+    const inviteProof = Array.from(new Uint8Array(inviteDigest)).map(x => x.toString(16).padStart(2, '0')).join('');
+    const uploadPrefix = `training-admission/join-applications/${invite.project_id}/${userId}/${inviteProof}`;
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'; const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
-    const path = `training-admission/join-applications/${Date.now()}-${random}.${ext}`; const bucket = typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates';
+    const path = `${uploadPrefix}/${Date.now()}-${random}.${ext}`; const bucket = typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates';
     const upload = await sb.storage.from(bucket).upload(path, file, { contentType: file.type, upsert: false });
     if (upload.error) { Utils.toast(`照片上传失败：${upload.error.message}`, 'error'); return; }
     const attachments = [];
@@ -102,7 +106,7 @@ const TrainingAdmissionMine = {
       const attachment = document.getElementById(id)?.files?.[0];
       if (!attachment) continue;
       if (attachment.size > 10 * 1024 * 1024 || (attachment.type && !['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(attachment.type))) { Utils.toast('附件仅支持 PDF、PNG、JPG、WEBP，且不能超过 10MB', 'error'); return; }
-      const aext = (attachment.name.split('.').pop() || 'bin').replace(/[^a-z0-9]/ig, '') || 'bin'; const apath = `training-admission/join-applications/${Date.now()}-${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}.${aext}`;
+      const aext = (attachment.name.split('.').pop() || 'bin').replace(/[^a-z0-9]/ig, '') || 'bin'; const apath = `${uploadPrefix}/${Date.now()}-${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}.${aext}`;
       const up = await sb.storage.from(typeof CERT_STORAGE_BUCKET === 'string' ? CERT_STORAGE_BUCKET : 'certificates').upload(apath, attachment, { contentType: attachment.type || 'application/octet-stream', upsert: false });
       if (up.error) { Utils.toast(`附件上传失败：${up.error.message}`, 'error'); return; }
       attachments.push({ type, path: apath, name: attachment.name.slice(0, 160) });

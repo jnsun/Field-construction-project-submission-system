@@ -10,19 +10,24 @@ const TrainingContractors = {
 
   async render(box) {
     box.innerHTML = `
-      <div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">外协资料人工审核台账</span></div>
-        <div class="toolbar-right">
-          <button class="btn btn-secondary btn-sm" onclick="TrainingContractors.load()">刷新</button>
-          ${TrainingModule.canManageAdmission() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openIdentityImport()">补录身份证档案</button>` : ''}
-          ${TrainingModule.canEdit() ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.downloadMemberTemplate()">导入模板</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openMemberImport()">批量导入人员</button><button class="btn btn-primary btn-sm" onclick="TrainingContractors.openCompanyForm()">+ 新建外协单位</button>` : ''}
-        </div>
-      </div>
+      <div id="contractor-toolbar"></div>
       <div id="contractor-summary"></div>
       <div id="contractor-companies"></div>
       <div id="contractor-contracts" style="margin-top:16px"></div>
       <div id="contractor-members" style="margin-top:16px"></div>
       <div id="contractor-documents" style="margin-top:16px"></div>`;
     await this.load();
+  },
+
+  renderToolbar() {
+    const box = document.getElementById('contractor-toolbar'); if (!box) return;
+    const canManage = TrainingModule.canManageAnyProject(this.state.projects);
+    box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">外协资料人工审核台账</span></div>
+      <div class="toolbar-right">
+        <button class="btn btn-secondary btn-sm" onclick="TrainingContractors.load()">刷新</button>
+        ${canManage ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openIdentityImport()">补录身份证档案</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.downloadMemberTemplate()">导入模板</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openMemberImport()">批量导入人员</button>` : ''}
+        ${TrainingModule.canEdit() ? '<button class="btn btn-primary btn-sm" onclick="TrainingContractors.openCompanyForm()">+ 新建外协单位</button>' : ''}
+      </div></div>`;
   },
 
   async load() {
@@ -42,6 +47,7 @@ const TrainingContractors = {
     this.state.members = members.data || [];
     this.state.employees = employees.data || [];
     this.state.projects = projects.data || [];
+    this.renderToolbar();
     this.renderContent();
   },
 
@@ -88,13 +94,12 @@ const TrainingContractors = {
 
   renderContracts() {
     const box = document.getElementById('contractor-contracts'); if (!box) return;
-    const canEdit = TrainingModule.canManageAdmission();
     box.innerHTML = `<div class="card"><div class="card-header"><h2>项目合同台账（${this.state.contracts.length}）</h2></div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr>
       <th>项目</th><th>外协单位</th><th>合同编号 / 名称</th><th>有效期</th><th>状态</th><th>附件路径</th><th>操作</th></tr></thead><tbody>
-      ${this.state.contracts.length ? this.state.contracts.map(c => `<tr><td>${Utils.escapeHtml(this.projectName(c.project_id))}</td><td>${Utils.escapeHtml(this.companyName(c.contractor_id))}</td>
+      ${this.state.contracts.length ? this.state.contracts.map(c => { const canEdit = TrainingModule.canManageProject(this.project(c.project_id)); return `<tr><td>${Utils.escapeHtml(this.projectName(c.project_id))}</td><td>${Utils.escapeHtml(this.companyName(c.contractor_id))}</td>
         <td>${Utils.escapeHtml(c.contract_no || '—')}<br>${Utils.escapeHtml(c.contract_name || '—')}</td><td>${Utils.escapeHtml([c.start_date, c.end_date].filter(Boolean).join(' ~ ') || '—')}</td>
-        <td>${this.contractStatus(c.status)}</td><td>${c.storage_path ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openAttachment('${encodeURIComponent(c.storage_path)}')">查看附件</button>` : '—'}</td><td>${canEdit && c.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewContract('${c.id}','valid')">通过</button><button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewContract('${c.id}','terminated')">驳回</button>` : ''}</td></tr>`).join('')
+        <td>${this.contractStatus(c.status)}</td><td>${c.storage_path ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openAttachment('${encodeURIComponent(c.storage_path)}')">查看附件</button>` : '—'}</td><td>${canEdit && c.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewContract('${c.id}','valid')">通过</button><button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewContract('${c.id}','terminated')">驳回</button>` : ''}</td></tr>`; }).join('')
         : TrainingModule.emptyRow(7, '暂无合同记录')}</tbody></table></div></div>`;
   },
 
@@ -106,23 +111,22 @@ const TrainingContractors = {
   renderMembers() {
     const box = document.getElementById('contractor-members'); if (!box) return;
     box.innerHTML = `<div class="card"><div class="card-header"><h2>项目外协人员台账（${this.state.members.filter(m => m.membership_type !== 'internal').length}）</h2>
-      ${TrainingModule.canEdit() ? '<button class="btn btn-primary btn-sm" onclick="TrainingContractors.openMemberForm()">+ 建立人员并加入项目</button>' : ''}</div>
+      ${TrainingModule.canManageAnyProject(this.state.projects) ? '<button class="btn btn-primary btn-sm" onclick="TrainingContractors.openMemberForm()">+ 建立人员并加入项目</button>' : ''}</div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr>
       <th>姓名</th><th>手机号</th><th>工种</th><th>项目</th><th>外协单位</th><th>状态</th><th>入场时间</th><th>档案</th></tr></thead><tbody>
       ${this.state.members.filter(m => m.membership_type !== 'internal').length ? this.state.members.filter(m => m.membership_type !== 'internal').map(m => { const e = this.employee(m.employee_id); return `<tr>
         <td>${Utils.escapeHtml(e.name || '—')}</td><td>${Utils.escapeHtml(e.phone || '—')}</td><td>${Utils.escapeHtml(e.position || '—')}</td>
         <td>${Utils.escapeHtml(this.projectName(m.project_id))}</td><td>${Utils.escapeHtml(this.companyName(m.contractor_id))}</td>
-        <td>${m.status === 'active' ? this.status('在场', 'badge-success') : this.status(m.status === 'left' ? '已离场' : '已撤销')}</td><td>${Utils.escapeHtml((m.joined_at || '').slice(0, 10))}</td><td>${TrainingModule.canManageAdmission() && ['active', 'left'].includes(m.status) ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openIdentityBackfill('${m.project_id}','${m.employee_id}')">补录身份证号</button>` : '—'}</td></tr>`; }).join('')
+        <td>${m.status === 'active' ? this.status('在场', 'badge-success') : this.status(m.status === 'left' ? '已离场' : '已撤销')}</td><td>${Utils.escapeHtml((m.joined_at || '').slice(0, 10))}</td><td>${TrainingModule.canManageProject(this.project(m.project_id)) && ['active', 'left'].includes(m.status) ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openIdentityBackfill('${m.project_id}','${m.employee_id}')">补录身份证号</button>` : '—'}</td></tr>`; }).join('')
         : TrainingModule.emptyRow(8, '暂无项目外协人员')}</tbody></table></div></div>`;
   },
 
   renderDocuments() {
     const box = document.getElementById('contractor-documents'); if (!box) return;
-    const canEdit = TrainingModule.canManageAdmission();
     box.innerHTML = `<div class="card"><div class="card-header"><h2>资质与特种作业证（${this.state.documents.length}）</h2></div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr>
       <th>资料类型</th><th>单位 / 人员</th><th>项目</th><th>证书编号</th><th>有效期</th><th>审核</th><th>附件</th><th>操作</th></tr></thead><tbody>
-      ${this.state.documents.length ? this.state.documents.map(d => { const e = this.employee(d.employee_id); return `<tr>
+      ${this.state.documents.length ? this.state.documents.map(d => { const e = this.employee(d.employee_id); const canEdit = TrainingModule.canManageProject(this.project(d.project_id)); return `<tr>
         <td>${Utils.escapeHtml(this.DOC_LABEL[d.document_type] || d.document_type)}${d.certificate_type ? `<br><span class="text-muted">${Utils.escapeHtml(d.certificate_type)}</span>` : ''}</td>
         <td>${Utils.escapeHtml(this.companyName(d.contractor_id))}${e.name ? `<br>${Utils.escapeHtml(e.name)}` : ''}</td><td>${Utils.escapeHtml(this.projectName(d.project_id))}</td>
         <td>${Utils.escapeHtml(d.certificate_no || '—')}</td><td>${Utils.escapeHtml([d.valid_from, d.valid_until].filter(Boolean).join(' ~ ') || '长期/未填')}</td>
@@ -134,7 +138,7 @@ const TrainingContractors = {
 
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
   close() { const h = document.getElementById('training-modal-host'); if (h) h.innerHTML = ''; },
-  projectOptions(selected = '') { return this.state.projects.filter(p => p.status !== 'closed').map(p => `<option value="${p.id}"${p.id === selected ? ' selected' : ''}>${Utils.escapeHtml(this.projectName(p.id))}</option>`).join(''); },
+  projectOptions(selected = '') { return this.state.projects.filter(p => p.status !== 'closed' && TrainingModule.canManageProject(p)).map(p => `<option value="${p.id}"${p.id === selected ? ' selected' : ''}>${Utils.escapeHtml(this.projectName(p.id))}</option>`).join(''); },
   companyOptions(selected = '') { return this.state.companies.filter(c => ['pending', 'active'].includes(c.status)).map(c => `<option value="${c.id}"${c.id === selected ? ' selected' : ''}>${Utils.escapeHtml(c.name)}</option>`).join(''); },
   employeeOptions() { return this.state.employees.filter(e => e.status !== 'left').map(e => `<option value="${e.id}">${Utils.escapeHtml(e.name)} · ${Utils.escapeHtml(e.position || '未填工种')}</option>`).join(''); },
   modal(title, body, submit) { this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingContractors.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:650px"><div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="TrainingContractors.close()">×</button></div><div class="modal-body">${body}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingContractors.close()">取消</button><button class="btn btn-primary" onclick="${submit}">保存</button></div></div></div>`; },
@@ -361,7 +365,6 @@ const TrainingContractors = {
     if (status === 'rejected' && !note) return;
     const result = await sb.from('contractor_companies').update({ status, reviewed_by: (Auth.currentUser || {}).id, reviewed_at: new Date().toISOString(), review_note: note || null }).eq('id', id);
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
-    await sb.rpc('training_refresh_external_admissions', { p_project_id: null, p_contractor_id: id });
     Utils.toast(status === 'active' ? '外协单位已审核通过' : '外协单位已驳回', 'success'); await this.load();
   },
 

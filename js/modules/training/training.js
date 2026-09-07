@@ -17,7 +17,7 @@ const TrainingModule = {
     depts: [],             // 全部部门（id/name/code/dept_type/parent_id）
     deptMap: {},           // id -> 部门对象
     profile: null,
-    fieldRoles: [],        // 普通员工被任命为项目经理/安全员时的受限现场管理权限
+    fieldRoles: [],        // 当前账号被任命为项目经理/安全员的项目级权限
   },
 
   TABS: [
@@ -85,7 +85,7 @@ const TrainingModule = {
 
   async loadFieldRoles() {
     this.state.fieldRoles = [];
-    if (!this.isStaff() || !Auth.currentUser?.id) return;
+    if (!Auth.currentUser?.id) return;
     try {
       const { data, error } = await sb.from('site_project_roles')
         .select('project_id, role, active')
@@ -282,9 +282,39 @@ const TrainingModule = {
     return this.isAdmin();
   },
 
-  /** 供项目准入执行页使用：管理员或被任命的现场管理人员。 */
-  canManageAdmission() {
-    return this.isAdmin() || this.isFieldManager();
+  /** 只有项目主责经营实体管理员可以任命或撤销项目角色。 */
+  canAssignProjectRoles(project) {
+    if (!this.isAdmin() || this.isCompanyAdmin() || !project) return false;
+    const profile = this.state.profile || {};
+    const department = (this.state.depts || []).find(d => d.id === profile.department_id);
+    return department?.dept_type === 'entity' && project.lead_entity_id === profile.department_id;
+  },
+
+  /** 项目日常管理必须按 project_id 判断；公司级身份本身不授予该权限。 */
+  canManageProject(project) {
+    if (!project || !project.id || this.isCompanyAdmin()) return false;
+    const profile = this.state.profile || {};
+    const department = (this.state.depts || []).find(d => d.id === profile.department_id);
+    const leadEntityManager = this.isAdmin()
+      && department?.dept_type === 'entity'
+      && project.lead_entity_id === profile.department_id;
+    const assigned = (this.state.fieldRoles || []).some(r =>
+      r.project_id === project.id
+      && r.active !== false
+      && ['project_manager', 'safety_officer'].includes(r.role));
+    return leadEntityManager || assigned;
+  },
+
+  /** 项目管理数据只读权限：公司级可读，其他角色仍按具体项目管理范围读取。 */
+  canReadProjectManagementData(project) {
+    if (!project || !project.id) return false;
+    return this.isCompanyAdmin() || this.canManageProject(project);
+  },
+
+  /** 无具体项目行的入口，仅在当前已读取项目中至少有一个可管理项目时显示。 */
+  canManageAnyProject(projects = []) {
+    if (this.isCompanyAdmin()) return false;
+    return projects.some(project => this.canManageProject(project));
   },
 
   /**

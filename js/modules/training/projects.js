@@ -162,7 +162,7 @@ const TrainingProjects = {
                     ? `<div class="text-muted" style="font-size:12px;margin-top:4px">${Utils.escapeHtml(p.pause_reason)}</div>` : ''}</td>
                   <td>${canEdit
                     ? `<button class="btn btn-sm btn-secondary" onclick="TrainingProjects.openForm('${p.id}')">编辑</button>
-                       ${p.status === 'active' ? `<button class="btn btn-sm btn-primary" onclick="TrainingProjects.createInvite('${p.id}')">邀请码</button>` : ''}
+                       ${p.status === 'active' && TrainingModule.canManageProject(p) ? `<button class="btn btn-sm btn-primary" onclick="TrainingProjects.createInvite('${p.id}')">邀请码</button>` : ''}
                        ${p.status === 'active' && this.reportHints[p.id]?.latest_status === 'completed' ? `<button class="btn btn-sm btn-danger" onclick="TrainingProjects.openForm('${p.id}')">确认关闭</button>` : ''}` : ''}
                     <button class="btn btn-sm btn-secondary" onclick="TrainingProjects.showDetail('${p.id}')">详情</button>
                   </td>
