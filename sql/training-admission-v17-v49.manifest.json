@@ -1,5 +1,5 @@
 {
-  "schema": "d03-training-admission-v17-v72",
+  "schema": "d03-training-admission-v17-v74",
   "version": 1,
   "migrations": [
     { "version": 17, "file": "training-admission-v17.sql", "sha256": "B7C611DA14FF2C359A9358F41EE4E45A0248BF7A157A2E2F3B5231E114D07A33" },
@@ -58,6 +58,7 @@
     { "version": 70, "file": "training-admission-v70-personnel-identity-history.sql", "sha256": "79736D5E7EF45AA5EC41F343949ADF46C389266BBE978D12D9F67DFF8B3C7D7B" },
     { "version": 71, "file": "training-admission-v71-project-join-state-machine.sql", "sha256": "7ABA119B539A0343A981D10A545FB3D675D722B2A5E3AEE8329F88A37A5D2A90" },
     { "version": 72, "file": "training-admission-v72-contractor-archive-and-certificate-compliance.sql", "sha256": "67FD82630E0B9823B77940135BACADB6DB56B18029B3EC9E04F113B1839AD0BF" },
-    { "version": 73, "file": "training-admission-v73-project-member-insert-boundary.sql", "sha256": "84B026BDB793B9F30B989DC79D0DDD7B8991DF956AE7ADEA80DC7572D0068622" }
+    { "version": 73, "file": "training-admission-v73-project-member-insert-boundary.sql", "sha256": "84B026BDB793B9F30B989DC79D0DDD7B8991DF956AE7ADEA80DC7572D0068622" },
+    { "version": 74, "file": "training-admission-v74-project-reports-select-grant.sql", "sha256": "092593479EC467C757B46CE51809DA2ABE2603B809A412F1DDA19A3F8A4EB7EE" }
   ]
 }
