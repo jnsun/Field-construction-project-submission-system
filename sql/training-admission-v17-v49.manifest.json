@@ -1,5 +1,5 @@
 {
-  "schema": "d03-training-admission-v17-v74",
+  "schema": "d03-training-admission-v17-v80",
   "version": 1,
   "migrations": [
     { "version": 17, "file": "training-admission-v17.sql", "sha256": "B7C611DA14FF2C359A9358F41EE4E45A0248BF7A157A2E2F3B5231E114D07A33" },
@@ -59,6 +59,12 @@
     { "version": 71, "file": "training-admission-v71-project-join-state-machine.sql", "sha256": "7ABA119B539A0343A981D10A545FB3D675D722B2A5E3AEE8329F88A37A5D2A90" },
     { "version": 72, "file": "training-admission-v72-contractor-archive-and-certificate-compliance.sql", "sha256": "67FD82630E0B9823B77940135BACADB6DB56B18029B3EC9E04F113B1839AD0BF" },
     { "version": 73, "file": "training-admission-v73-project-member-insert-boundary.sql", "sha256": "84B026BDB793B9F30B989DC79D0DDD7B8991DF956AE7ADEA80DC7572D0068622" },
-    { "version": 74, "file": "training-admission-v74-project-reports-select-grant.sql", "sha256": "092593479EC467C757B46CE51809DA2ABE2603B809A412F1DDA19A3F8A4EB7EE" }
+    { "version": 74, "file": "training-admission-v74-project-reports-select-grant.sql", "sha256": "092593479EC467C757B46CE51809DA2ABE2603B809A412F1DDA19A3F8A4EB7EE" },
+    { "version": 75, "file": "training-admission-v75-history-content-boundary.sql", "sha256": "228D4033E6CD61370880B4C6082C49A56D169DCDF0B0A71BFDF86EA855417D2B" },
+    { "version": 76, "file": "training-admission-v76-d09-p1-permission-boundaries.sql", "sha256": "C5BC7AC0FFECE0BE4ADF0F91E4E2C33FCD267D966BE42D2EEC5942FA39A3EB3B" },
+    { "version": 77, "file": "training-admission-v77-storage-binding-boundary.sql", "sha256": "CBD424B9113812F839FBE19477F5037B44289950613AF27520E8C8AC9D8B8AB8" },
+    { "version": 78, "file": "training-admission-v78-plan-scope-hours-targets.sql", "sha256": "339578CC0895DD26D4E419C647B6FDAF44AC719A46E6C4DD99214AE06D649625" },
+    { "version": 79, "file": "training-admission-v79-plan-lifecycle-audit.sql", "sha256": "03182FD5CCA52477D9110E82F494A056A04EB0BE87910C01B1B0D780824CEC77" },
+    { "version": 80, "file": "training-admission-v80-d09-r02-p1-closure.sql", "sha256": "34775BC597D918A3BF87B9B30516D7FDFCB88E87F851532986690C330B7C9E3F" }
   ]
 }

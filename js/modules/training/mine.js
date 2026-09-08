@@ -35,6 +35,7 @@ const TrainingMine = {
     queueUserId: '',
     syncFlushing: false,
     networkBound: false,
+    standardHeartbeat: null,
   },
 
   TYPE_LABEL: {
@@ -270,6 +271,8 @@ const TrainingMine = {
   },
 
   close() {
+    if (this.state.standardHeartbeat) clearInterval(this.state.standardHeartbeat);
+    this.state.standardHeartbeat = null;
     const d = document.getElementById('training-modal-host');
     if (d) d.innerHTML = '';
     this.state.htmlCourse = null;   // 停止接收 HTML 课件 postMessage
@@ -506,6 +509,8 @@ const TrainingMine = {
   },
 
   async openCourse(courseId) {
+    if (this.state.standardHeartbeat) clearInterval(this.state.standardHeartbeat);
+    this.state.standardHeartbeat = null;
     this.state.activeId = courseId;
     this.renderNav();
 
@@ -519,6 +524,24 @@ const TrainingMine = {
         : '这是选修课件，不影响完成判定。';
     }
     if (!stage || !c) return;
+
+    if (c.course_type !== 'html') {
+      const beat = () => {
+        if (this.state.activeId !== courseId || document.hidden) return;
+        const current = this.state.progress[courseId] || {};
+        sb.rpc('training_course_heartbeat', {
+          p_session_id: this.state.hbSessions[courseId] || null,
+          p_course_id: courseId,
+          p_delta_sec: 20,
+          p_position: Number(current.max_position || 0),
+          p_progress: Number(current.progress || 0),
+        }).then(({ data, error }) => {
+          if (!error && data?.session_id) this.state.hbSessions[courseId] = data.session_id;
+        }).catch(() => {});
+      };
+      beat();
+      this.state.standardHeartbeat = setInterval(beat, 20000);
+    }
 
     stage.innerHTML = '<div class="text-muted" style="padding:24px">正在加载课件...</div>';
     try {
@@ -725,13 +748,12 @@ const TrainingMine = {
   renderText(stage, c, p) {
     stage.innerHTML = `
       <div style="font-size:14px;font-weight:500;margin-bottom:8px">${Utils.escapeHtml(c.title)}</div>
-      <div id="text-body" style="max-height:52vh;overflow:auto;padding:12px;border:1px solid #e5e7eb;border-radius:6px;line-height:1.8">
-        ${(c.content || '').replace(/\n/g, '<br>')}
-      </div>
+      <div id="text-body" style="max-height:52vh;overflow:auto;padding:12px;border:1px solid #e5e7eb;border-radius:6px;line-height:1.8;white-space:pre-wrap"></div>
       <p class="text-muted" style="font-size:12px;margin-top:6px">把内容滚动到底部即视为学完。</p>
     `;
     const body = document.getElementById('text-body');
     if (!body) return;
+    body.textContent = c.content || '';
     body.addEventListener('scroll', () => {
       const remain = body.scrollHeight - body.scrollTop - body.clientHeight;
       const pct = body.scrollHeight ? ((body.scrollTop + body.clientHeight) / body.scrollHeight) * 100 : 100;

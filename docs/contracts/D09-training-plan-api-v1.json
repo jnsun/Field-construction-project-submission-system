@@ -1,0 +1,116 @@
+{
+  "contract_id": "D09-training-plan-api-v1",
+  "contract_version": "1.0.0",
+  "status": "candidate",
+  "authority": "Web/backend database RPC, RLS and private Storage policies",
+  "transport": "Supabase PostgREST REST/RPC with authenticated Bearer JWT",
+  "enums": {
+    "plan_scope": ["company", "entity", "project", "special"],
+    "approval_status": ["draft", "pending_review", "approved", "rejected"],
+    "publish_status": ["draft", "published", "withdrawn", "closed"],
+    "course_type": ["html", "pdf", "video", "image", "text", "link", "ppt"],
+    "event_type": ["submitted", "signed", "rejected", "published", "withdrawn", "version_cloned"]
+  },
+  "resources": {
+    "training_plans": {
+      "read": "RLS-scoped REST SELECT",
+      "write": "draft mutation through training_save_plan_draft; lifecycle through dedicated RPCs",
+      "scope_fields": {
+        "level": { "type": "string", "required": true, "nullable": false },
+        "department_id": { "type": "uuid", "required": false, "nullable": true, "scope": "entity or department-anchored special" },
+        "site_project_id": { "type": "uuid", "required": false, "nullable": true, "scope": "project or project-anchored special" },
+        "special_type": { "type": "string", "required": false, "nullable": true, "scope": "required only for special" }
+      },
+      "hours_fields": {
+        "hours": { "type": "number", "required_before_review": true, "minimum_exclusive": 0 },
+        "required_hours": { "type": "number", "required_before_review": true, "minimum_exclusive": 0, "maximum_field": "hours" }
+      }
+    },
+    "training_courses": {
+      "read": "published plus own assignment, or authorized administrator",
+      "write": "authorized draft only; signed, published, or historical content is immutable",
+      "file_path": { "type": "string", "nullable": true, "binding": "real Storage owner first bind or pre-existing readable business relation" },
+      "file_url": { "type": "string", "nullable": true, "format": "https URL" },
+      "content": { "type": "string", "nullable": true },
+      "page_count": { "type": "integer", "nullable": true, "minimum_exclusive": 0 },
+      "duration_sec": { "type": "integer", "nullable": true, "minimum_exclusive": 0 }
+    },
+    "training_plan_events": {
+      "read": "RLS-scoped REST SELECT",
+      "write": "lifecycle RPC only",
+      "fields": ["plan_id", "event_type", "actor_id", "occurred_at", "note", "version_no", "version_summary", "batch_id"]
+    }
+  },
+  "rpcs": [
+    {
+      "name": "training_save_plan_draft",
+      "request": {
+        "p_plan_id": { "type": "uuid", "required": true, "nullable": true },
+        "p_plan": { "type": "object", "required": true, "nullable": false },
+        "p_target_department_ids": { "type": "uuid[]", "required": false, "nullable": false, "default": [] }
+      },
+      "response": { "type": "object", "required": ["plan_id", "target_count"], "properties": { "plan_id": "uuid", "target_count": "integer" } },
+      "errors": [
+        { "reason": "scope_forbidden", "postgres_code": "P0001" },
+        { "reason": "invalid_hours", "postgres_code": "23514", "constraint": "training_plans_required_hours_check" },
+        { "reason": "immutable_history", "postgres_code": "P0001" }
+      ]
+    },
+    {
+      "name": "training_request_plan_approval",
+      "request": { "p_plan_id": { "type": "uuid", "required": true, "nullable": false } },
+      "response": { "type": "null" },
+      "errors": [{ "reason": "review_prerequisite_missing", "postgres_code": "P0001" }]
+    },
+    {
+      "name": "training_approve_plan",
+      "request": { "p_plan_id": "uuid", "p_approved": "boolean", "p_note": "non-empty string" },
+      "response": { "type": "null" },
+      "errors": [{ "reason": "note_required_or_state_invalid", "postgres_code": "P0001" }]
+    },
+    {
+      "name": "training_batch_approve_plans",
+      "request": { "p_items": { "type": "array", "items": { "plan_id": "uuid", "note": "non-empty string" } } },
+      "response": { "type": "object", "required": ["batch_id", "results"], "properties": { "batch_id": "uuid", "results": "array<{plan_id,status,note}>" } },
+      "errors": [{ "reason": "empty_batch_or_note_required", "postgres_code": "P0001" }]
+    },
+    {
+      "name": "training_publish_plan",
+      "request": { "p_plan_id": "uuid", "p_note": "non-empty string" },
+      "response": { "type": "object", "required": ["success", "assigned", "record_id", "version_summary"] },
+      "errors": [{ "reason": "not_signed_or_note_required", "postgres_code": "P0001" }]
+    },
+    {
+      "name": "training_withdraw_plan",
+      "request": { "p_plan_id": "uuid", "p_reason": "non-empty string" },
+      "response": { "type": "object", "required": ["plan_id", "previous_approval_status", "previous_publish_status", "status"] },
+      "errors": [{ "reason": "withdraw_forbidden_or_reason_required", "postgres_code": "P0001" }]
+    },
+    {
+      "name": "training_clone_plan_version",
+      "request": { "p_plan_id": "uuid" },
+      "response": { "type": "uuid", "meaning": "new draft plan id" },
+      "errors": [{ "reason": "source_missing_or_scope_forbidden", "postgres_code": "P0001" }]
+    }
+  ],
+  "effective_hours": {
+    "source": "server-counted training_study_logs.effective_sec",
+    "completion_rule": "assignment cannot remain completed until accumulated effective seconds reach required_hours",
+    "client_progress_is_not_hours": true,
+    "heartbeat": {
+      "rpc": "training_course_heartbeat",
+      "request_compatibility": "p_session_id, p_course_id, p_delta_sec, p_position, p_progress unchanged",
+      "first_heartbeat_credited_seconds": 0,
+      "credited_seconds": "min(client hint, elapsed server seconds, 60)",
+      "requires_publish_status": "published",
+      "response_addition": { "credited_seconds": "integer" }
+    }
+  },
+  "versioning": {
+    "signed_or_published_mutation": "forbidden",
+    "change_method": "training_clone_plan_version",
+    "lineage_field": "version_root_id",
+    "lineage_unique": ["version_root_id", "version_no"],
+    "historical_references": "assignments, progress, records and admission data remain on the original plan version"
+  }
+}

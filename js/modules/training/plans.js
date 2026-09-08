@@ -1,6 +1,6 @@
 // =============================================================
 // js/modules/training/plans.js —— 培训计划
-// 三级各自创建：company 公司级 / dept 部门级 / project 项目级
+// 四类权威范围：company 公司 / entity 经营实体 / project 项目 / special 专项
 // 适用范围通过 training_plan_targets 下发到具体部门
 // =============================================================
 const TrainingPlans = {
@@ -9,10 +9,11 @@ const TrainingPlans = {
     list: [],
     targets: {},          // plan_id -> [部门id]
     targetRows: [],       // 下发记录原始行（含 status / record_id / participant_count）
+    projects: [],
     filters: { year: String(new Date().getFullYear()), level: '', status: '' },
   },
 
-  LEVEL_LABEL: { company: '公司级', dept: '部门级', project: '项目级' },
+  LEVEL_LABEL: { company: '公司级', entity: '经营实体级', project: '项目级', special: '专项培训' },
   STATUS_LABEL: { planned: '计划中', ongoing: '进行中', done: '已完成', cancelled: '已取消' },
 
   async render(box) {
@@ -29,8 +30,9 @@ const TrainingPlans = {
           <select id="plan-filter-level" onchange="TrainingPlans.onFilterChange()">
             <option value="">全部</option>
             <option value="company"${this.state.filters.level === 'company' ? ' selected' : ''}>公司级</option>
-            <option value="dept"${this.state.filters.level === 'dept' ? ' selected' : ''}>部门级</option>
+            <option value="entity"${this.state.filters.level === 'entity' ? ' selected' : ''}>经营实体级</option>
             <option value="project"${this.state.filters.level === 'project' ? ' selected' : ''}>项目级</option>
+            <option value="special"${this.state.filters.level === 'special' ? ' selected' : ''}>专项培训</option>
           </select>
           <label>状态：</label>
           <select id="plan-filter-status" onchange="TrainingPlans.onFilterChange()">
@@ -39,7 +41,7 @@ const TrainingPlans = {
           </select>
         </div>
         <div class="toolbar-right">
-          ${TrainingModule.canEdit() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingPlans.batchApprove()">批量签发待审</button><button class="btn btn-primary btn-sm" onclick="TrainingPlans.openForm()">+ 新建计划</button>' : ''}
+          ${TrainingModule.canManagePlans() ? '<button class="btn btn-secondary btn-sm" onclick="TrainingPlans.batchApprove()">批量签发待审</button><button class="btn btn-primary btn-sm" onclick="TrainingPlans.openForm()">+ 新建计划</button>' : ''}
         </div>
       </div>
       <div id="plan-table"></div>
@@ -55,15 +57,17 @@ const TrainingPlans = {
   },
 
   async load() {
-    const [{ data, error }, tg] = await Promise.all([
+    const [{ data, error }, tg, projects] = await Promise.all([
       sb.from('training_plans')
-        .select('id, title, category, level, department_id, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, exam_mode, approval_status, approval_note, submitted_at, approved_at, version_no, supersedes_plan_id')
+        .select('id, title, category, level, department_id, site_project_id, special_type, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, publication_note, exam_mode, approval_status, approval_note, submitted_at, approved_at, withdrawn_at, withdraw_reason, version_no, supersedes_plan_id')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_plan_targets')
         .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
+      sb.from('site_projects').select('id,name,project_code,status').order('name'),
     ]);
     if (error) throw error;
     this.state.list = data || [];
+    this.state.projects = projects.data || [];
     this.state.targets = {};
     this.state.targetRows = tg.data || [];
     (tg.data || []).forEach(t => {
@@ -103,6 +107,7 @@ const TrainingPlans = {
 
   publishBadge(s) {
     if (s === 'published') return '<span class="badge badge-success">已发布</span>';
+    if (s === 'withdrawn') return '<span class="badge badge-danger">已撤回</span>';
     if (s === 'closed') return '<span class="badge badge-muted">已结束</span>';
     return '<span class="badge badge-warning">草稿</span>';
   },
@@ -118,7 +123,9 @@ const TrainingPlans = {
     const p = this.state.list.find(x => x.id === id);
     if (!p) return;
     if (!confirm(`发布后系统会按层级自动把「${p.title}」推送给覆盖范围内的在职员工，员工登录即可看到并开始学习。\n\n确定发布？`)) return;
-    const { data, error } = await sb.rpc('training_publish_plan', { p_plan_id: id });
+    const note = prompt('请填写发布说明：');
+    if (!note || !note.trim()) return;
+    const { data, error } = await sb.rpc('training_publish_plan', { p_plan_id: id, p_note: note.trim() });
     if (error) { alert('发布失败：' + (error.message || '')); return; }
     await this.load();
     alert(`已发布，自动推送给 ${data.assigned} 名员工。`);
@@ -132,8 +139,8 @@ const TrainingPlans = {
   },
 
   async approve(id, approved) {
-    const note = approved ? '' : prompt('请填写驳回原因：');
-    if (!approved && !note) return;
+    const note = prompt(approved ? '请填写签发意见：' : '请填写驳回原因：');
+    if (!note || !note.trim()) return;
     const { error } = await sb.rpc('training_approve_plan', { p_plan_id: id, p_approved: approved, p_note: note || null });
     if (error) { Utils.toast(error.message, 'error'); return; }
     Utils.toast(approved ? '培训计划已签发' : '培训计划已驳回', 'success'); await this.load();
@@ -142,10 +149,25 @@ const TrainingPlans = {
   async batchApprove() {
     const ids = this.state.list.filter(p => p.approval_status === 'pending_review').map(p => p.id);
     if (!ids.length) { Utils.toast('当前没有待签发培训计划', 'info'); return; }
-    if (!confirm(`确认批量签发当前可见的 ${ids.length} 个待审培训计划？无权限的计划会被系统拒绝。`)) return;
-    const { data, error } = await sb.rpc('training_batch_approve_plans', { p_plan_ids: ids });
+    const note = prompt(`请填写本批次 ${ids.length} 个计划的签发意见：`);
+    if (!note || !note.trim()) return;
+    const { data, error } = await sb.rpc('training_batch_approve_plans', { p_items: ids.map(planId => ({ plan_id: planId, note: note.trim() })) });
     if (error) { Utils.toast(error.message, 'error'); return; }
-    Utils.toast(`已签发 ${data || 0} 个培训计划`, 'success'); await this.load();
+    Utils.toast(`已签发 ${(data?.results || []).length} 个培训计划`, 'success'); await this.load();
+  },
+
+  async withdraw(id) {
+    const reason = prompt('请填写撤回原因（历史记录不会删除）：');
+    if (!reason || !reason.trim()) return;
+    const { error } = await sb.rpc('training_withdraw_plan', { p_plan_id: id, p_reason: reason.trim() });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    Utils.toast('计划已撤回，历史记录已保留', 'success'); await this.load();
+  },
+
+  async showHistory(id) {
+    const { data, error } = await sb.from('training_plan_events').select('event_type,occurred_at,note,version_no,version_summary,batch_id').eq('plan_id', id).order('occurred_at');
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    alert((data || []).map(x => `${new Date(x.occurred_at).toLocaleString()}  v${x.version_no}  ${x.event_type}${x.note ? `：${x.note}` : ''}`).join('\n') || '暂无历史事件');
   },
 
   filtered() {
@@ -162,7 +184,7 @@ const TrainingPlans = {
     const box = document.getElementById('plan-table');
     if (!box) return;
     const rows = this.filtered();
-    const canEdit = TrainingModule.canEdit();
+    const canEdit = TrainingModule.canManagePlans();
 
     box.innerHTML = `
       <div class="card">
@@ -214,6 +236,8 @@ const TrainingPlans = {
                               : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
                         <button class="btn btn-sm btn-secondary" onclick="TrainingCourses.open('${p.id}')">课件</button>
                         ${p.publish_status === 'published' ? `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.cloneVersion('${p.id}')">新版本</button>` : ''}
+                        ${(p.approval_status === 'pending_review' || p.approval_status === 'approved' || p.publish_status === 'published') ? `<button class="btn btn-sm btn-danger" onclick="TrainingPlans.withdraw('${p.id}')">撤回</button>` : ''}
+                        <button class="btn btn-sm btn-secondary" onclick="TrainingPlans.showHistory('${p.id}')">历史</button>
                         <button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openForm('${p.id}')">编辑</button>
                         <button class="btn btn-sm btn-danger" onclick="TrainingPlans.remove('${p.id}')">删除</button>`
                         : `<button class="btn btn-sm btn-secondary" onclick="TrainingPlans.openExecution('${p.id}')">执行</button>`}
@@ -253,8 +277,18 @@ const TrainingPlans = {
   },
 
   targetText(p) {
+    if (p.level === 'project') {
+      const project = this.state.projects.find(x => x.id === p.site_project_id);
+      return Utils.escapeHtml(project ? `${project.project_code} ${project.name}` : '正式项目');
+    }
+    if (p.level === 'special') {
+      const project = this.state.projects.find(x => x.id === p.site_project_id);
+      const scope = project ? `${project.project_code} ${project.name}` : TrainingModule.deptName(p.department_id);
+      return Utils.escapeHtml(`${p.special_type || '专项'} · ${scope || '—'}`);
+    }
+    if (p.level === 'company' && !(this.state.targets[p.id] || []).length) return '公司全员';
     const ids = this.state.targets[p.id] || [];
-    if (!ids.length) return Utils.escapeHtml(p.target_desc || '—');
+    if (!ids.length) return Utils.escapeHtml(TrainingModule.deptName(p.department_id) || p.target_desc || '—');
     const names = ids.map(id => TrainingModule.deptName(id)).slice(0, 2).join('、');
     return Utils.escapeHtml(ids.length > 2 ? `${names} 等${ids.length}个部门` : names);
   },
@@ -276,7 +310,7 @@ const TrainingPlans = {
     const p = this.state.list.find(x => x.id === planId);
     if (!p) return;
     const rows = (this.state.targetRows || []).filter(t => t.plan_id === planId);
-    const canEdit = TrainingModule.canEdit();
+    const canEdit = TrainingModule.canManagePlans();
 
     this.host().innerHTML = `
       <div class="modal-overlay" onclick="TrainingPlans.closeForm()">
@@ -453,16 +487,30 @@ const TrainingPlans = {
                 <label>计划层级</label>
                 <select id="plan-level" class="form-control">
                   <option value="company"${p && p.level === 'company' ? ' selected' : ''}>公司级</option>
-                  <option value="dept"${(!p || p.level === 'dept') ? ' selected' : ''}>部门级</option>
+                  <option value="entity"${(!p || p.level === 'entity') ? ' selected' : ''}>经营实体级</option>
                   <option value="project"${p && p.level === 'project' ? ' selected' : ''}>项目级</option>
+                  <option value="special"${p && p.level === 'special' ? ' selected' : ''}>专项培训</option>
                 </select>
               </div>
               <div class="form-group">
                 <label>组织部门</label>
                 <select id="plan-dept" class="form-control">
-                  <option value="">未指定</option>
+                  <option value="">不适用</option>
                   ${TrainingModule.deptOptions(p ? p.department_id : myDept, false)}
                 </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>正式项目</label>
+                <select id="plan-project" class="form-control">
+                  <option value="">不适用</option>
+                  ${this.state.projects.map(x => `<option value="${x.id}"${p && p.site_project_id === x.id ? ' selected' : ''}>${Utils.escapeHtml(x.project_code + ' ' + x.name)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label>专项类型</label>
+                <input id="plan-special-type" class="form-control" placeholder="仅专项培训填写" value="${Utils.escapeHtml(p ? (p.special_type || '') : '')}">
               </div>
             </div>
             <div class="form-row">
@@ -507,7 +555,7 @@ const TrainingPlans = {
               </div>
             </div>
             <p class="text-muted" style="font-size:12px;margin-top:-4px">
-              覆盖范围规则：公司级 → 全体在职员工；部门级 / 项目级 → 下面勾选的部门（含其下级部门），不勾选则为计划所属部门。
+              范围规则：公司级不绑定部门/项目；经营实体级绑定经营实体；项目级绑定正式项目；专项培训填写专项类型并绑定一个经营实体或正式项目。项目/专项人员由权威项目业务后续选择，不按持证情况自动纳入。
             </p>
             <div class="form-row">
               <div class="form-group">
@@ -576,6 +624,8 @@ const TrainingPlans = {
       title: document.getElementById('plan-title').value.trim(),
       level: document.getElementById('plan-level').value,
       department_id: document.getElementById('plan-dept').value || null,
+      site_project_id: document.getElementById('plan-project').value || null,
+      special_type: document.getElementById('plan-special-type').value.trim() || null,
       category: document.getElementById('plan-category').value.trim() || null,
       plan_year: parseInt(document.getElementById('plan-year').value, 10) || new Date().getFullYear(),
       start_date: document.getElementById('plan-start').value || null,
@@ -594,25 +644,17 @@ const TrainingPlans = {
     };
     if (!payload.title) { alert('请填写培训名称'); return; }
 
-    const targets = Array.from(document.querySelectorAll('.plan-target-cb:checked')).map(cb => cb.value);
+    if (payload.level === 'company') { payload.department_id = null; payload.site_project_id = null; payload.special_type = null; }
+    if (payload.level === 'entity') { payload.site_project_id = null; payload.special_type = null; }
+    if (payload.level === 'project') { payload.department_id = null; payload.special_type = null; }
+    if (payload.level !== 'special') payload.special_type = null;
 
-    let planId = id, error;
-    if (id) {
-      ({ error } = await sb.from('training_plans').update(payload).eq('id', id));
-    } else {
-      payload.created_by = Auth.currentUser ? Auth.currentUser.id : null;
-      const res = await sb.from('training_plans').insert(payload).select('id').single();
-      error = res.error;
-      planId = res.data ? res.data.id : null;
-    }
+    const targets = ['company', 'entity'].includes(payload.level)
+      ? Array.from(document.querySelectorAll('.plan-target-cb:checked')).map(cb => cb.value) : [];
+    const { error } = await sb.rpc('training_save_plan_draft', {
+      p_plan_id: id || null, p_plan: payload, p_target_department_ids: targets,
+    });
     if (error) { alert('保存失败：' + error.message); return; }
-
-    await sb.from('training_plan_targets').delete().eq('plan_id', planId);
-    if (targets.length) {
-      const rows = targets.map(depId => ({ plan_id: planId, department_id: depId }));
-      const tErr = (await sb.from('training_plan_targets').insert(rows)).error;
-      if (tErr) alert('计划已保存，但下发部门保存失败：' + tErr.message);
-    }
 
     this.closeForm();
     await this.load();

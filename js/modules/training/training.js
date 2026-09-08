@@ -46,7 +46,7 @@ const TrainingModule = {
     const staff = this.isStaff();
     const fieldManager = this.isFieldManager();
 
-    if (fieldManager && !['contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(this.state.view)) {
+    if (fieldManager && !['plans', 'contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(this.state.view)) {
       this.state.view = 'admission-operations';
     }
 
@@ -78,7 +78,7 @@ const TrainingModule = {
     return (this.state.profile || {}).role === 'employee';
   },
 
-  /** 普通员工账号被经营实体指定为项目经理/安全员时，仅开放现场管理页。 */
+  /** 普通员工账号被经营实体指定为项目经理/安全员时，开放项目现场和项目培训管理页。 */
   isFieldManager() {
     return this.isStaff() && (this.state.fieldRoles || []).length > 0;
   },
@@ -133,7 +133,7 @@ const TrainingModule = {
 
   buildTabs() {
     const tabs = this.isFieldManager()
-      ? this.TABS.filter(t => ['contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
+      ? this.TABS.filter(t => ['plans', 'contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
       : this.TABS;
     return `
       <div class="cat-tabs" id="training-tabs">
@@ -280,6 +280,10 @@ const TrainingModule = {
 
   canEdit() {
     return this.isAdmin();
+  },
+
+  canManagePlans() {
+    return this.isAdmin() || this.isFieldManager();
   },
 
   /** 只有项目主责经营实体管理员可以任命或撤销项目角色。 */
