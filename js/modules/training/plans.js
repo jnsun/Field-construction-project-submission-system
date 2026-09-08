@@ -59,7 +59,7 @@ const TrainingPlans = {
   async load() {
     const [{ data, error }, tg, projects] = await Promise.all([
       sb.from('training_plans')
-        .select('id, title, category, level, department_id, site_project_id, special_type, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, publication_note, exam_mode, approval_status, approval_note, submitted_at, approved_at, withdrawn_at, withdraw_reason, version_no, supersedes_plan_id')
+        .select('id, title, category, level, department_id, site_project_id, third_level_mode, special_type, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, publication_note, exam_mode, approval_status, approval_note, submitted_at, approved_at, withdrawn_at, withdraw_reason, version_no, supersedes_plan_id')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_plan_targets')
         .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
@@ -502,6 +502,13 @@ const TrainingPlans = {
             </div>
             <div class="form-row">
               <div class="form-group">
+                <label>第三级模式</label>
+                <select id="plan-third-level-mode" class="form-control">
+                  <option value="basic_project"${p && p.third_level_mode === 'basic_project' ? ' selected' : ''}>基本项目级（绑定经营实体）</option>
+                  <option value="actual_project"${(!p || p.third_level_mode !== 'basic_project') ? ' selected' : ''}>具体项目级（绑定正式项目）</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label>正式项目</label>
                 <select id="plan-project" class="form-control">
                   <option value="">不适用</option>
@@ -555,7 +562,7 @@ const TrainingPlans = {
               </div>
             </div>
             <p class="text-muted" style="font-size:12px;margin-top:-4px">
-              范围规则：公司级不绑定部门/项目；经营实体级绑定经营实体；项目级绑定正式项目；专项培训填写专项类型并绑定一个经营实体或正式项目。项目/专项人员由权威项目业务后续选择，不按持证情况自动纳入。
+              范围规则：公司级不绑定部门/项目；经营实体级绑定经营实体；基本项目级绑定经营实体但不绑定项目；具体项目级绑定正式项目；专项培训绑定一个经营实体或正式项目。
             </p>
             <div class="form-row">
               <div class="form-group">
@@ -625,6 +632,7 @@ const TrainingPlans = {
       level: document.getElementById('plan-level').value,
       department_id: document.getElementById('plan-dept').value || null,
       site_project_id: document.getElementById('plan-project').value || null,
+      third_level_mode: document.getElementById('plan-third-level-mode').value || null,
       special_type: document.getElementById('plan-special-type').value.trim() || null,
       category: document.getElementById('plan-category').value.trim() || null,
       plan_year: parseInt(document.getElementById('plan-year').value, 10) || new Date().getFullYear(),
@@ -644,9 +652,11 @@ const TrainingPlans = {
     };
     if (!payload.title) { alert('请填写培训名称'); return; }
 
-    if (payload.level === 'company') { payload.department_id = null; payload.site_project_id = null; payload.special_type = null; }
-    if (payload.level === 'entity') { payload.site_project_id = null; payload.special_type = null; }
-    if (payload.level === 'project') { payload.department_id = null; payload.special_type = null; }
+    if (payload.level === 'company') { payload.department_id = null; payload.site_project_id = null; payload.third_level_mode = null; payload.special_type = null; }
+    if (payload.level === 'entity') { payload.site_project_id = null; payload.third_level_mode = null; payload.special_type = null; }
+    if (payload.level === 'project' && payload.third_level_mode === 'basic_project') payload.site_project_id = null;
+    if (payload.level === 'project' && payload.third_level_mode === 'actual_project') payload.department_id = null;
+    if (payload.level === 'special') payload.third_level_mode = null;
     if (payload.level !== 'special') payload.special_type = null;
 
     const targets = ['company', 'entity'].includes(payload.level)

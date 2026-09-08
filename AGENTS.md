@@ -50,3 +50,13 @@
 6. 安全条件满足后执行 `git push origin HEAD:training-module`。
 7. push 后必须核对本地 `HEAD`、远端 `training-module` HEAD 和未推送 commit 数量。
 8. 本规则只适用于 Web/后端主线；小程序线不得擅自 push 到 `training-module`。
+
+## D11 已确认业务规则
+
+1. 三级安全教育只适用于新建立正式劳动/用工关系、具有服务端权威 `employment_relation_id` 且尚未完成基础三级教育的内部员工；不得用 `created_at`、加入项目时间或前端布尔值判断。离职后重新建立正式用工关系按重新入职处理。
+2. 老员工有可信完整历史时记为 `legacy_verified`；无可信历史时先进入 `legacy_evidence_review`，必要时进入 `legacy_supplement`，真实补训完成后记为 `legacy_supplement_completed`，不得伪造原入职培训时间。
+3. 一段正式用工关系内三级教育只完成一次。完成或补齐后，换项目、跨经营实体内部调动、跨年度或项目关闭均不重做。
+4. 第三级支持 `basic_project`（无需实际项目 ID）和 `actual_project`（必须绑定合法正式项目）；任一种完成均满足基础第三级。
+5. 外协、`temporary_individual` 和访客不适用本公司员工三级教育。外协和临时个人走项目准入路径；临时个人不得伪造单位、合同或统一社会信用代码，后续须绑定责任经营实体、当前项目、接收/审核责任人和可审计进场依据；访客走安全告知路径。
+6. 后续持续培训按法规/制度适用、变化内容和事件触发，由 D17 配置。默认只学习新增或变化内容，并记录来源、版本、生效时间、变化摘要、适用人群和必学内容；除正式规则明确要求外，不得按年度重做整套三级教育。
+7. 爆破、电工、焊工专项只在“项目 + 人员实际从事该专项作业”时触发，持证本身不自动触发。钻探不存在个人“钻探证”；`site_projects.includes_drilling=true` 时，该项目全部 active personnel 纳入钻探专项安全培训。

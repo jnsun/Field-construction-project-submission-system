@@ -1,0 +1,153 @@
+{
+  "contract": "D11-three-level-training",
+  "version": 1,
+  "authority": "database",
+  "scope_levels": ["company", "entity", "third"],
+  "rpc": {
+    "training_three_level_status": {
+      "request": {
+        "p_project_id": { "type": "uuid", "required": true },
+        "p_employee_id": { "type": "uuid", "required": false, "nullable": true, "default": "current_employee" }
+      },
+      "response": {
+        "type": "object",
+        "required": ["project_id", "employee_id", "path", "three_level_applicable", "person_category", "onboarding_category", "overall_satisfied", "exam_allowed", "reason_code", "levels"],
+        "fields": {
+          "project_id": "uuid",
+          "employee_id": "uuid",
+          "employment_relation_id": "uuid|null",
+          "path": "training|visitor|project_admission",
+          "three_level_applicable": "boolean",
+          "person_category": "formal_internal|contractor|temporary_individual|visitor|ambiguous_internal",
+          "onboarding_category": "new_hire|legacy_evidence_review|legacy_supplement|legacy_verified|completed|legacy_supplement_completed|not_applicable",
+          "supplement_required": "boolean",
+          "overall_satisfied": "boolean",
+          "exam_allowed": "boolean",
+          "reason_code": "reason_code",
+          "levels": "level_status[]"
+        }
+      },
+      "roles": ["self", "project_reader"],
+      "server_authoritative": true
+    },
+    "training_set_three_level_classification": {
+      "change": "authorized, audited employment/onboarding classification; client timestamps and created_at are not classification authority",
+      "roles": ["authorized_admin"]
+    },
+    "training_confirm_legacy_three_level": {
+      "change": "records immutable evidence source/date/reference, reviewer and reviewed_at before legacy_verified",
+      "roles": ["authorized_admin"]
+    },
+    "training_assign_three_level_program": {
+      "change": "assigns one company, entity and explicit basic_project or actual_project third-level record for the current employment relation",
+      "roles": ["authorized_admin"]
+    },
+    "training_sync_three_level_tasks": {
+      "request": { "p_admission_id": { "type": "uuid", "required": true } },
+      "response": { "type": "void" },
+      "roles": ["project_manager", "safety_officer", "authorized_admin"],
+      "change": "compatibility no-op for employee three-level generation; project admission only references the employee foundation status"
+    },
+    "training_three_level_exam_gate": {
+      "request": { "p_admission_id": { "type": "uuid", "required": true } },
+      "response": {
+        "type": "object",
+        "required": ["allowed", "reason_code", "status"],
+        "fields": { "allowed": "boolean", "reason_code": "reason_code", "status": "three_level_status" }
+      },
+      "roles": ["self", "project_reader"],
+      "enforced_by": ["training_prepare_admission_exam", "exam_attempts.before_insert"],
+      "binding": "a published comprehensive exam plan requires exactly one explicit training_admissions.exam_assignment_id binding"
+    },
+    "training_start_admission": {
+      "change": "creates project admission without generating another employee three-level program",
+      "leader_result": "visitor_safety_briefing_required"
+    }
+  },
+  "types": {
+    "level_status": {
+      "required": ["level", "state", "reason_code", "items"],
+      "fields": {
+        "level": "company|entity|third",
+        "state": "pending|learning|completed",
+        "reason_code": "reason_code",
+        "items": "task_status[]"
+      }
+    },
+    "task_status": {
+      "required": ["record_id", "plan_id", "plan_title", "status", "effective_hours", "courses"],
+      "fields": {
+        "record_id": "uuid",
+        "plan_id": "uuid",
+        "plan_title": "string",
+        "version_root_id": "uuid",
+        "version_no": "integer",
+        "status": "pending|learning|completed",
+        "third_level_mode": "basic_project|actual_project|null",
+        "source_entity_id": "uuid|null",
+        "source_project_id": "uuid|null",
+        "planned_hours": "number|null",
+        "required_hours": "number|null",
+        "effective_hours": "number",
+        "started_at": "timestamp|null",
+        "completed_at": "timestamp|null",
+        "courses": "course_snapshot[]"
+      }
+    }
+  },
+  "reason_codes": [
+    "ready",
+    "missing_assignment",
+    "missing_training_plan",
+    "missing_effective_entity",
+    "missing_company_training",
+    "missing_entity_training",
+    "missing_third_level_training",
+    "incomplete_effective_hours",
+    "visitor_safety_briefing_required",
+    "plan_scope_mismatch",
+    "missing_training_package",
+    "admission_history_locked",
+    "missing_exam_plan",
+    "missing_exam_paper",
+    "admission_exam_not_prepared",
+    "ambiguous_admission_exam_binding",
+    "reused_source_invalid",
+    "reused_source_expired",
+    "entity_training_reuse_invalid",
+    "retraining_required",
+    "new_employee_three_level_required",
+    "legacy_three_level_evidence_review_required",
+    "legacy_three_level_supplement_required",
+    "legacy_three_level_verified",
+    "legacy_three_level_supplement_completed",
+    "three_level_training_completed",
+    "three_level_not_applicable",
+    "three_level_not_applicable_use_project_admission_path",
+    "invalid_third_level_mode",
+    "third_level_project_scope_mismatch",
+    "third_level_project_forbidden",
+    "forbidden"
+  ],
+  "foundation_rules": {
+    "formal_internal": "one auditable three-level foundation per employment relation; rehire creates a new relation",
+    "permanence": "completed or verified foundation does not expire by project, entity, position or calendar year change",
+    "legacy": "unverified existing employees fail closed to evidence review or one supplement; no migration fabricates completion",
+    "third_level": {
+      "basic_project": "source_project_id is null and responsible entity is explicit; does not represent project-entry training",
+      "actual_project": "source_project_id is required and remains historical evidence after later project changes"
+    },
+    "not_applicable": ["contractor", "temporary_individual", "visitor"]
+  },
+  "completion_authority": {
+    "source": "D09 assignment/progress/effective-hours services",
+    "client_direct_completion": "denied",
+    "history": "original plan/course/version snapshots remain unchanged"
+  },
+  "future_special_training": {
+    "owner": "D12",
+    "interface": "existing package item level=special remains supported",
+    "certificate_does_not_imply_work": true,
+    "drilling_rule_not_implemented_in_D11": true
+  }
+}
