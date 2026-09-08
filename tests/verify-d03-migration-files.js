@@ -28,7 +28,7 @@ function verifyManifest(file, firstVersion, lastVersion) {
   if (/\bDROP\s+TABLE\b/i.test(source) || /\bTRUNCATE\b/i.test(source)) failures.push(`${migration.file} contains destructive table SQL.`);
   const executable = source.split(/\r?\n/).filter((line) => !line.trimStart().startsWith('--')).join('\n');
   const definers = (executable.match(/SECURITY\s+DEFINER/gi) || []).length;
-  const fixedPaths = (executable.match(/SECURITY\s+DEFINER\s+SET\s+search_path\s*=\s*public(?:\s*,\s*(?:extensions|vault))?/gi) || []).length;
+  const fixedPaths = (executable.match(/SECURITY\s+DEFINER\s+SET\s+search_path\s*=\s*public(?:\s*,\s*(?:extensions|vault|storage))*/gi) || []).length;
   if (definers !== fixedPaths) failures.push(`${migration.file} has SECURITY DEFINER without fixed public search_path.`);
   if (/GRANT\s+EXECUTE[\s\S]*?\bTO\s+(?:PUBLIC|anon)\b/i.test(source)) failures.push(`${migration.file} grants RPC execution to PUBLIC or anon.`);
   }
@@ -36,7 +36,7 @@ function verifyManifest(file, firstVersion, lastVersion) {
 }
 
 const v1v16 = verifyManifest('training-admission-v1-v16.manifest.json', 1, 16);
-const v17v49 = verifyManifest('training-admission-v17-v49.manifest.json', 17, 68);
+const v17v49 = verifyManifest('training-admission-v17-v49.manifest.json', 17, 73);
 
 for (const file of v1v16.bootstrapFilesForEmptyDatabase) {
   if (!fs.existsSync(path.join(sqlDir, file))) failures.push(`Bootstrap prerequisite missing: ${file}.`);

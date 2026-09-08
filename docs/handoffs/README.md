@@ -20,3 +20,6 @@ Web/后端、小程序和集成线只能创建自己发起的交接文件，不�
 - [D04 冒烟与 E2E 基线](D04-e2e-smoke-baseline.md)
 - [D05 安全基线（PASS）](D05-security-baseline.md)
 - [D06 正式项目台账（PASS）](D06-project-ledger.md)
+- [D07 项目角色与准入权限边界（PASS）](D07-project-role-permissions.md)
+- [D08 外协单位与人员档案闭环（PASS）](D08-contractor-personnel-archive.md)
+- [G1 主数据 API v1（PASS / FROZEN）](G1-master-data-api-v1.md)

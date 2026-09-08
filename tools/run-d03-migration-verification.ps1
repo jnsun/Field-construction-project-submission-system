@@ -132,7 +132,7 @@ foreach ($migration in $manifest.migrations) {
   if ($recorded.Trim().ToUpperInvariant() -ne $migration.sha256) { throw "Migration ledger verification failed: v$($migration.version)" }
 }
 
-$ledgerResult = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-Atq', '-c', "SELECT migration_key FROM public.safety_schema_migrations WHERE migration_key ~ '^training-admission-v(1[7-9]|[2-4][0-9]|5[0-7])$' ORDER BY migration_key;") -OutputDirectory $runDir -Label 'ledger-count'
+$ledgerResult = Invoke-D03PsqlChecked -DatabaseUrl $DatabaseUrl -Arguments @('-Atq', '-c', "SELECT migration_key FROM public.safety_schema_migrations WHERE migration_key ~ '^training-admission-v(1[7-9]|[2-6][0-9]|7[0-2])$' ORDER BY migration_key;") -OutputDirectory $runDir -Label 'ledger-count'
 $ledgerRows = @(([string]$ledgerResult.stdout -split "`r?`n" | Where-Object { $_ }))
 if ($ledgerRows.Count -ne $manifest.migrations.Count) { throw "Migration ledger is incomplete: expected $($manifest.migrations.Count), found $($ledgerRows.Count)." }
 

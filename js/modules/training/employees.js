@@ -77,7 +77,6 @@ const TrainingEmployees = {
             <button class="btn btn-secondary btn-sm" onclick="TrainingEmployees.downloadTemplate()">导入模板</button>
             <button class="btn btn-secondary btn-sm" onclick="TrainingEmployees.openImport()">Excel 导入</button>
             <button class="btn btn-secondary btn-sm" onclick="TrainingEmployees.provisionAll()">批量开通账号</button>
-            <button class="btn btn-danger btn-sm" onclick="TrainingEmployees.openBatchDelete()">批量删除</button>
             <button class="btn btn-primary btn-sm" onclick="TrainingEmployees.openForm()">+ 新增员工</button>` : ''}
         </div>
       </div>
@@ -118,7 +117,7 @@ const TrainingEmployees = {
   async load() {
     const { data, error } = await sb
       .from('training_employees')
-      .select('id, name, gender, employee_no, department_id, position, id_number, phone, hire_date, emp_type, status, remark, user_id')
+      .select('id, name, gender, employee_no, department_id, position, job_grade, phone, hire_date, emp_type, status, remark, user_id, identity_recorded')
       .order('name');
     if (error) throw error;
     this.state.list = data || [];
@@ -169,11 +168,7 @@ const TrainingEmployees = {
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
           <h2>员工档案（${rows.length}）</h2>
-          ${canEdit && selCount
-            ? `<span style="font-size:13px;color:#b91c1c">已勾选 ${selCount} 人
-                 <button class="btn btn-danger btn-sm" style="margin-left:8px"
-                   onclick="TrainingEmployees.openBatchDelete()">删除勾选</button></span>`
-            : ''}
+          ${canEdit && selCount ? `<span style="font-size:13px;color:#64748b">已勾选 ${selCount} 人</span>` : ''}
         </div>
         <div class="card-body" style="padding:0">
           ${isCard ? this.renderCardGroups(groups, canEdit) : this.renderTableGroups(groups, canEdit)}
@@ -228,7 +223,7 @@ const TrainingEmployees = {
         <td>${Utils.escapeHtml(e.employee_no || '')}</td>
         <td>${Utils.escapeHtml(TrainingModule.deptName(e.department_id))}</td>
         <td>${Utils.escapeHtml(e.position || '')}</td>
-        <td>${Utils.escapeHtml(Utils.maskIdNumber ? Utils.maskIdNumber(e.id_number) : (e.id_number || ''))}</td>
+        <td>${e.identity_recorded ? '已安全留存' : '未留存'}</td>
         <td>${Utils.escapeHtml(e.phone || '')}</td>
         <td>${Utils.escapeHtml(e.hire_date || '')}</td>
         <td>${this.typeLabel(e.emp_type)}</td>
@@ -244,8 +239,7 @@ const TrainingEmployees = {
             ${e.user_id
               ? `<button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.provision('${e.id}', true)" title="重置为身份证后6位">重置密码</button>`
               : `<button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.provision('${e.id}')">开通账号</button>`}
-            <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openForm('${e.id}')">编辑</button>
-            <button class="btn btn-sm btn-danger" onclick="TrainingEmployees.remove('${e.id}')">删除</button>` : ''}
+            <button class="btn btn-sm btn-secondary" onclick="TrainingEmployees.openForm('${e.id}')">编辑</button>` : ''}
         </td>
       </tr>`;
   },
@@ -424,7 +418,7 @@ const TrainingEmployees = {
             <div class="form-row">
               <div class="form-group">
                 <label>身份证号</label>
-                <input id="emp-idnumber" class="form-control" value="${Utils.escapeHtml(e ? (e.id_number || '') : '')}">
+                <input id="emp-idnumber" class="form-control" placeholder="${e && e.identity_recorded ? '已安全留存；留空表示不修改' : '请输入 18 位身份证号'}">
               </div>
               <div class="form-group">
                 <label>手机号</label>
@@ -461,26 +455,26 @@ const TrainingEmployees = {
 
   async submit(id) {
     const payload = {
-      name: document.getElementById('emp-name').value.trim(),
-      gender: document.getElementById('emp-gender').value || null,
-      employee_no: document.getElementById('emp-no').value.trim() || null,
-      department_id: document.getElementById('emp-dept').value || null,
-      position: document.getElementById('emp-position').value.trim() || null,
-      emp_type: document.getElementById('emp-type').value,
-      id_number: document.getElementById('emp-idnumber').value.trim() || null,
-      phone: document.getElementById('emp-phone').value.trim() || null,
-      hire_date: document.getElementById('emp-hire').value || null,
-      status: document.getElementById('emp-status').value,
-      remark: document.getElementById('emp-remark').value.trim() || null,
+      p_name: document.getElementById('emp-name').value.trim(),
+      p_gender: document.getElementById('emp-gender').value || null,
+      p_employee_no: document.getElementById('emp-no').value.trim() || null,
+      p_department_id: document.getElementById('emp-dept').value || null,
+      p_position: document.getElementById('emp-position').value.trim() || null,
+      p_job_grade: ((this.state.list.find(e => e.id === id) || {}).job_grade) || null,
+      p_emp_type: document.getElementById('emp-type').value,
+      p_id_number: document.getElementById('emp-idnumber').value.trim() || null,
+      p_phone: document.getElementById('emp-phone').value.trim() || null,
+      p_hire_date: document.getElementById('emp-hire').value || null,
+      p_status: document.getElementById('emp-status').value,
+      p_remark: document.getElementById('emp-remark').value.trim() || null,
     };
-    if (!payload.name) { alert('请填写姓名'); return; }
+    if (!payload.p_name) { alert('请填写姓名'); return; }
 
     let error;
     if (id) {
-      ({ error } = await sb.from('training_employees').update(payload).eq('id', id));
+      ({ error } = await sb.rpc('training_employee_update', { p_employee_id: id, ...payload }));
     } else {
-      payload.created_by = Auth.currentUser ? Auth.currentUser.id : null;
-      ({ error } = await sb.from('training_employees').insert(payload));
+      ({ error } = await sb.rpc('training_employee_create', payload));
     }
     if (error) { alert('保存失败：' + error.message); return; }
 
@@ -490,12 +484,7 @@ const TrainingEmployees = {
   },
 
   async remove(id) {
-    const e = this.state.list.find(x => x.id === id);
-    if (!confirm(`确定删除员工「${e ? e.name : ''}」？该员工的参训记录会保留姓名快照，不受影响。`)) return;
-    const { error } = await sb.from('training_employees').delete().eq('id', id);
-    if (error) { alert('删除失败：' + error.message); return; }
-    await this.load();
-    if (Utils.toast) Utils.toast('已删除');
+    if (Utils.toast) Utils.toast('人员档案已永久留存，请将状态改为“离职”', 'error');
   },
 
   // ------------------------------------------------------------ 批量删除
@@ -698,7 +687,6 @@ const TrainingEmployees = {
     const seenIdNo = {};
     this.state.list.forEach(e => {
       if (e.phone) seenPhone[String(e.phone).trim()] = true;
-      if (e.id_number) seenIdNo[String(e.id_number).trim()] = true;
     });
 
     const parsed = [];
@@ -847,7 +835,7 @@ const TrainingEmployees = {
       created_by: Auth.currentUser ? Auth.currentUser.id : null,
     }));
 
-    const { error } = await sb.from('training_employees').insert(payload);
+    const { error } = await sb.rpc('training_employee_batch_create', { p_people: payload });
     if (error) { alert('导入失败：' + error.message); return; }
 
     this.closeForm();

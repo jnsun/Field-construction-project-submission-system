@@ -4,9 +4,10 @@
 // =============================================================
 const TrainingContractors = {
 
-  state: { companies: [], contracts: [], documents: [], members: [], employees: [], projects: [] },
+  state: { companies: [], contracts: [], documents: [], members: [], employees: [], projects: [], certificateStatuses: [] },
   DOC_LABEL: { qualification: '单位资质', special_certificate: '特种作业证', other: '其他资料' },
-  CERT_TYPES: ['爆破', '钻探', '电工', '焊工'],
+  CERT_TYPES: ['爆破', '电工', '焊工'],
+  SPECIAL_WORK_TYPES: ['爆破', '电工', '焊工'],
 
   async render(box) {
     box.innerHTML = `
@@ -25,21 +26,22 @@ const TrainingContractors = {
     box.innerHTML = `<div class="toolbar"><div class="toolbar-left"><span class="toolbar-hint">外协资料人工审核台账</span></div>
       <div class="toolbar-right">
         <button class="btn btn-secondary btn-sm" onclick="TrainingContractors.load()">刷新</button>
-        ${canManage ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openIdentityImport()">补录身份证档案</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.downloadMemberTemplate()">导入模板</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openMemberImport()">批量导入人员</button>` : ''}
+        ${canManage ? `<button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openDocumentForm()">+ 登记资质/证照</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openContractForm()">+ 登记合同</button><button class="btn btn-secondary btn-sm" onclick="TrainingContractors.openIdentityImport()">补录身份证档案</button>` : ''}
         ${TrainingModule.canEdit() ? '<button class="btn btn-primary btn-sm" onclick="TrainingContractors.openCompanyForm()">+ 新建外协单位</button>' : ''}
       </div></div>`;
   },
 
   async load() {
-    const [companies, contracts, documents, members, employees, projects] = await Promise.all([
+    const [companies, contracts, documents, members, employees, projects, certificateStatuses] = await Promise.all([
       sb.from('contractor_companies').select('id, name, unified_code, legal_representative, contact_name, contact_phone, status, review_note, created_at').order('name'),
       sb.from('contractor_contracts').select('id, project_id, contractor_id, contract_no, contract_name, start_date, end_date, status, storage_path, review_note').order('created_at', { ascending: false }),
-      sb.from('contractor_documents').select('id, contractor_id, employee_id, project_id, document_type, certificate_type, certificate_no, valid_from, valid_until, storage_path, review_status, review_note, created_at').order('created_at', { ascending: false }),
-      sb.from('site_project_members').select('id, project_id, employee_id, contractor_id, membership_type, status, joined_at').order('joined_at', { ascending: false }),
+      sb.from('contractor_documents').select('id, contractor_id, employee_id, project_id, document_type, certificate_type, certificate_no, valid_from, valid_until, storage_path, review_status, review_note, revoked_at, revocation_reason, created_at').order('created_at', { ascending: false }),
+      sb.from('site_project_members').select('id, project_id, employee_id, contractor_id, membership_type, work_type, special_work_types, status, joined_at').order('joined_at', { ascending: false }),
       sb.from('training_employees').select('id, name, phone, position, department_id').order('name'),
       sb.from('site_projects').select('id, project_code, name, lead_entity_id, status').order('created_at', { ascending: false }),
+      sb.rpc('training_contractor_certificate_statuses', { p_project_id: null }),
     ]);
-    const error = [companies, contracts, documents, members, employees, projects].find(r => r.error);
+    const error = [companies, contracts, documents, members, employees, projects, certificateStatuses].find(r => r.error);
     if (error) throw error.error;
     this.state.companies = companies.data || [];
     this.state.contracts = contracts.data || [];
@@ -47,6 +49,7 @@ const TrainingContractors = {
     this.state.members = members.data || [];
     this.state.employees = employees.data || [];
     this.state.projects = projects.data || [];
+    this.state.certificateStatuses = certificateStatuses.data || [];
     this.renderToolbar();
     this.renderContent();
   },
@@ -99,7 +102,7 @@ const TrainingContractors = {
       <th>项目</th><th>外协单位</th><th>合同编号 / 名称</th><th>有效期</th><th>状态</th><th>附件路径</th><th>操作</th></tr></thead><tbody>
       ${this.state.contracts.length ? this.state.contracts.map(c => { const canEdit = TrainingModule.canManageProject(this.project(c.project_id)); return `<tr><td>${Utils.escapeHtml(this.projectName(c.project_id))}</td><td>${Utils.escapeHtml(this.companyName(c.contractor_id))}</td>
         <td>${Utils.escapeHtml(c.contract_no || '—')}<br>${Utils.escapeHtml(c.contract_name || '—')}</td><td>${Utils.escapeHtml([c.start_date, c.end_date].filter(Boolean).join(' ~ ') || '—')}</td>
-        <td>${this.contractStatus(c.status)}</td><td>${c.storage_path ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openAttachment('${encodeURIComponent(c.storage_path)}')">查看附件</button>` : '—'}</td><td>${canEdit && c.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewContract('${c.id}','valid')">通过</button><button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewContract('${c.id}','terminated')">驳回</button>` : ''}</td></tr>`; }).join('')
+        <td>${this.contractStatus(c.status)}</td><td>${c.storage_path ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openAttachment('${encodeURIComponent(c.storage_path)}')">查看附件</button>` : '—'}</td><td>${canEdit && c.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewContract('${c.id}','valid')">通过</button><button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewContract('${c.id}','terminated')">驳回</button>` : canEdit && c.status === 'valid' ? `<button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewContract('${c.id}','terminated')">终止</button>` : ''}</td></tr>`; }).join('')
         : TrainingModule.emptyRow(7, '暂无合同记录')}</tbody></table></div></div>`;
   },
 
@@ -111,29 +114,29 @@ const TrainingContractors = {
   renderMembers() {
     const box = document.getElementById('contractor-members'); if (!box) return;
     box.innerHTML = `<div class="card"><div class="card-header"><h2>项目外协人员台账（${this.state.members.filter(m => m.membership_type !== 'internal').length}）</h2>
-      ${TrainingModule.canManageAnyProject(this.state.projects) ? '<button class="btn btn-primary btn-sm" onclick="TrainingContractors.openMemberForm()">+ 建立人员并加入项目</button>' : ''}</div>
+      ${TrainingModule.canManageAnyProject(this.state.projects) ? '<span class="text-muted">新增外协人员须使用项目邀请码申请并完成对应审核</span>' : ''}</div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:820px"><thead><tr>
-      <th>姓名</th><th>手机号</th><th>工种</th><th>项目</th><th>外协单位</th><th>状态</th><th>入场时间</th><th>档案</th></tr></thead><tbody>
+      <th>姓名</th><th>手机号</th><th>工种</th><th>项目</th><th>本项目实际持证作业</th><th>外协单位</th><th>状态</th><th>入场时间</th><th>档案</th></tr></thead><tbody>
       ${this.state.members.filter(m => m.membership_type !== 'internal').length ? this.state.members.filter(m => m.membership_type !== 'internal').map(m => { const e = this.employee(m.employee_id); return `<tr>
         <td>${Utils.escapeHtml(e.name || '—')}</td><td>${Utils.escapeHtml(e.phone || '—')}</td><td>${Utils.escapeHtml(e.position || '—')}</td>
-        <td>${Utils.escapeHtml(this.projectName(m.project_id))}</td><td>${Utils.escapeHtml(this.companyName(m.contractor_id))}</td>
+        <td>${Utils.escapeHtml(this.projectName(m.project_id))}</td><td>${Utils.escapeHtml((m.special_work_types || []).join('、') || '未启用')}${TrainingModule.canManageProject(this.project(m.project_id)) && m.status === 'active' ? `<br><button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openSpecialWorkForm('${m.id}')">设置实际作业</button>` : ''}</td><td>${Utils.escapeHtml(this.companyName(m.contractor_id))}</td>
         <td>${m.status === 'active' ? this.status('在场', 'badge-success') : this.status(m.status === 'left' ? '已离场' : '已撤销')}</td><td>${Utils.escapeHtml((m.joined_at || '').slice(0, 10))}</td><td>${TrainingModule.canManageProject(this.project(m.project_id)) && ['active', 'left'].includes(m.status) ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openIdentityBackfill('${m.project_id}','${m.employee_id}')">补录身份证号</button>` : '—'}</td></tr>`; }).join('')
-        : TrainingModule.emptyRow(8, '暂无项目外协人员')}</tbody></table></div></div>`;
+        : TrainingModule.emptyRow(9, '暂无项目外协人员')}</tbody></table></div></div>`;
   },
 
   renderDocuments() {
     const box = document.getElementById('contractor-documents'); if (!box) return;
     box.innerHTML = `<div class="card"><div class="card-header"><h2>资质与特种作业证（${this.state.documents.length}）</h2></div>
       <div class="card-body" style="padding:0;overflow-x:auto"><table class="data-table" style="min-width:980px"><thead><tr>
-      <th>资料类型</th><th>单位 / 人员</th><th>项目</th><th>证书编号</th><th>有效期</th><th>审核</th><th>附件</th><th>操作</th></tr></thead><tbody>
-      ${this.state.documents.length ? this.state.documents.map(d => { const e = this.employee(d.employee_id); const canEdit = TrainingModule.canManageProject(this.project(d.project_id)); return `<tr>
+      <th>资料类型</th><th>单位 / 人员</th><th>项目</th><th>证书编号</th><th>有效期</th><th>本项目实际作业门禁</th><th>审核</th><th>附件</th><th>操作</th></tr></thead><tbody>
+      ${this.state.documents.length ? this.state.documents.map(d => { const e = this.employee(d.employee_id); const canEdit = TrainingModule.canManageProject(this.project(d.project_id)); const gate = this.state.certificateStatuses.find(x => x.project_id === d.project_id && x.employee_id === d.employee_id); return `<tr>
         <td>${Utils.escapeHtml(this.DOC_LABEL[d.document_type] || d.document_type)}${d.certificate_type ? `<br><span class="text-muted">${Utils.escapeHtml(d.certificate_type)}</span>` : ''}</td>
         <td>${Utils.escapeHtml(this.companyName(d.contractor_id))}${e.name ? `<br>${Utils.escapeHtml(e.name)}` : ''}</td><td>${Utils.escapeHtml(this.projectName(d.project_id))}</td>
         <td>${Utils.escapeHtml(d.certificate_no || '—')}</td><td>${Utils.escapeHtml([d.valid_from, d.valid_until].filter(Boolean).join(' ~ ') || '长期/未填')}</td>
-        <td>${d.review_status === 'approved' ? this.status('已通过', 'badge-success') : d.review_status === 'rejected' ? this.status('已驳回', 'badge-danger') : this.status('待审核', 'badge-warning')}</td>
+        <td>${d.document_type === 'special_certificate' ? Utils.escapeHtml(gate?.detail || '待服务端核验') : '不适用'}</td><td>${d.revoked_at ? this.status('已撤销', 'badge-muted') : d.review_status === 'approved' ? this.status('已通过', 'badge-success') : d.review_status === 'rejected' ? this.status('已驳回', 'badge-danger') : this.status('待审核', 'badge-warning')}</td>
         <td>${d.storage_path ? `<button class="btn btn-sm btn-secondary" onclick="TrainingContractors.openAttachment('${encodeURIComponent(d.storage_path)}')">查看附件</button>` : '—'}</td><td>${canEdit && d.review_status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingContractors.reviewDocument('${d.id}','approved')">通过</button>
-          <button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewDocument('${d.id}','rejected')">驳回</button>` : ''}</td></tr>`; }).join('')
-        : TrainingModule.emptyRow(8, '暂无资质或证照')}</tbody></table></div></div>`;
+          <button class="btn btn-sm btn-danger" onclick="TrainingContractors.reviewDocument('${d.id}','rejected')">驳回</button>` : canEdit && d.review_status === 'approved' && !d.revoked_at ? `<button class="btn btn-sm btn-danger" onclick="TrainingContractors.revokeDocument('${d.id}')">撤销</button>` : ''}</td></tr>`; }).join('')
+        : TrainingModule.emptyRow(9, '暂无资质或证照')}</tbody></table></div></div>`;
   },
 
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
@@ -142,6 +145,21 @@ const TrainingContractors = {
   companyOptions(selected = '') { return this.state.companies.filter(c => ['pending', 'active'].includes(c.status)).map(c => `<option value="${c.id}"${c.id === selected ? ' selected' : ''}>${Utils.escapeHtml(c.name)}</option>`).join(''); },
   employeeOptions() { return this.state.employees.filter(e => e.status !== 'left').map(e => `<option value="${e.id}">${Utils.escapeHtml(e.name)} · ${Utils.escapeHtml(e.position || '未填工种')}</option>`).join(''); },
   modal(title, body, submit) { this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingContractors.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:650px"><div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="TrainingContractors.close()">×</button></div><div class="modal-body">${body}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingContractors.close()">取消</button><button class="btn btn-primary" onclick="${submit}">保存</button></div></div></div>`; },
+
+  openSpecialWorkForm(memberId) {
+    const member = this.state.members.find(x => x.id === memberId); if (!member) return;
+    const selected = member.special_work_types || [];
+    this.modal('设置本项目实际持证作业', `<p class="hint">这里记录项目实际安排，不会根据人员持有证书或工种自动勾选；钻探属于项目级属性，不在此处选择。</p>${this.SPECIAL_WORK_TYPES.map(x => `<label style="display:inline-block;margin:0 20px 12px 0"><input type="checkbox" class="member-special-work" value="${x}"${selected.includes(x) ? ' checked' : ''}> ${x}作业</label>`).join('')}<div class="form-group"><label>变更原因 <span class="required">*</span></label><textarea id="member-special-work-reason" class="form-control" rows="3"></textarea></div>`, `TrainingContractors.submitSpecialWork('${memberId}')`);
+  },
+
+  async submitSpecialWork(memberId) {
+    const types = Array.from(document.querySelectorAll('.member-special-work:checked')).map(x => x.value);
+    const reason = document.getElementById('member-special-work-reason')?.value.trim() || '';
+    if (!reason) { Utils.toast('请填写实际作业变更原因', 'error'); return; }
+    const { error } = await sb.rpc('training_set_member_special_work_types', { p_member_id: memberId, p_special_work_types: types, p_reason: reason });
+    if (error) { Utils.toast(error.message, 'error'); return; }
+    this.close(); Utils.toast('本项目实际作业已更新', 'success'); await this.load();
+  },
 
   openCompanyForm(id) {
     const c = id ? this.company(id) : {};
@@ -153,9 +171,11 @@ const TrainingContractors = {
 
   async submitCompany(id) {
     const val = id => (document.getElementById(id) || {}).value || '';
-    const payload = { name: val('co-name').trim(), unified_code: val('co-code').trim() || null, legal_representative: val('co-legal').trim() || null, contact_name: val('co-contact').trim() || null, contact_phone: val('co-phone').trim() || null, updated_at: new Date().toISOString() };
-    if (!payload.name) { Utils.toast('请填写单位名称', 'error'); return; }
-    const result = id ? await sb.from('contractor_companies').update(payload).eq('id', id) : await sb.from('contractor_companies').insert({ ...payload, created_by: (Auth.currentUser || {}).id });
+    const payload = { p_name: val('co-name').trim(), p_unified_code: val('co-code').trim() || null, p_legal_representative: val('co-legal').trim() || null, p_contact_name: val('co-contact').trim() || null, p_contact_phone: val('co-phone').trim() || null };
+    if (!payload.p_name) { Utils.toast('请填写单位名称', 'error'); return; }
+    const result = id
+      ? await sb.rpc('contractor_company_update', { p_company_id: id, ...payload })
+      : await sb.rpc('contractor_company_create', payload);
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
     this.close(); Utils.toast(id ? '外协单位已更新' : '外协单位已建立', 'success'); await this.load();
   },
@@ -177,79 +197,14 @@ const TrainingContractors = {
     if (payload.start_date && payload.end_date && payload.end_date < payload.start_date) { Utils.toast('合同结束日期不能早于开始日期', 'error'); return; }
     payload.storage_path = await this.uploadAttachment(file, 'contractor-contracts', payload.project_id);
     if (!payload.storage_path) { Utils.toast('请上传合同附件或填写已有 Storage 路径', 'error'); return; }
-    const result = await sb.from('contractor_contracts').insert(payload);
+    const result = await sb.rpc('contractor_contract_create', {
+      p_project_id: payload.project_id, p_contractor_id: payload.contractor_id,
+      p_contract_no: payload.contract_no, p_contract_name: payload.contract_name,
+      p_start_date: payload.start_date, p_end_date: payload.end_date,
+      p_storage_path: payload.storage_path,
+    });
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
     this.close(); Utils.toast('合同已登记', 'success'); await this.load();
-  },
-
-  openMemberForm() {
-    this.modal('建立外协人员档案并加入项目', `<p class="hint">项目部代为建档时，身份证号会加密保存到本项目入场档案，不写入普通人员表。</p>
-      <div class="form-row"><div class="form-group"><label>姓名 <span class="required">*</span></label><input id="me-name" class="form-control"></div><div class="form-group"><label>手机号 <span class="required">*</span></label><input id="me-phone" class="form-control"></div></div>
-      <div class="form-group"><label>身份证号 <span class="required">*</span></label><input id="me-id-number" class="form-control" maxlength="18" autocomplete="off" placeholder="18 位大陆居民身份证号"></div>
-      <div class="form-row"><div class="form-group"><label>工种</label><input id="me-position" class="form-control" placeholder="如：钻探工 / 电工"></div><div class="form-group"><label>项目 <span class="required">*</span></label><select id="me-project" class="form-control">${this.projectOptions()}</select></div></div>
-      <div class="form-group"><label>外协单位 <span class="required">*</span></label><select id="me-company" class="form-control">${this.companyOptions()}</select></div>`, 'TrainingContractors.submitMember()');
-  },
-
-  async submitMember() {
-    const v = id => (document.getElementById(id) || {}).value || '';
-    const project = this.project(v('me-project'));
-    const name = v('me-name').trim(), phone = v('me-phone').trim(), idNumber = v('me-id-number').trim().toUpperCase(), position = v('me-position').trim();
-    if (!name || !phone || !idNumber || !position || !project.id || !v('me-company')) { Utils.toast('姓名、手机号、身份证号、工种、项目和外协单位不能为空', 'error'); return; }
-    if (!/^[1-9]\d{16}[\dX]$/.test(idNumber)) { Utils.toast('请填写 18 位大陆居民身份证号', 'error'); return; }
-    const { data, error } = await sb.rpc('training_batch_add_contractor_members', { p_project_id: project.id, p_contractor_id: v('me-company'), p_people: [{ name, phone, id_number: idNumber, position }] });
-    if (error || data?.[0]?.result_code === 'failed') { Utils.toast(error?.message || data?.[0]?.result_message || '人员建档失败', 'error'); return; }
-    this.close(); Utils.toast('外协人员已建档并加入项目', 'success'); await this.load();
-  },
-
-  MEMBER_IMPORT_HEADERS: ['姓名*', '手机号*', '身份证号*', '工种/岗位*'],
-  downloadMemberTemplate() {
-    if (typeof XLSX === 'undefined') { Utils.toast('Excel 组件未加载，请刷新页面后重试', 'error'); return; }
-    const data = [this.MEMBER_IMPORT_HEADERS, ['张三', '13800138000', '110101199001011234', '钻探工']];
-    const sheet = XLSX.utils.aoa_to_sheet(data); sheet['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 18 }];
-    const help = XLSX.utils.aoa_to_sheet([['填写说明'], ['1. 姓名、手机号、身份证号、工种/岗位均为必填项。'], ['2. 身份证号必须为 18 位大陆居民身份证号，系统将加密保存。'], ['3. 项目和外协单位在导入页面选择，不要写在表格内。'], ['4. 合同、资质和证照附件仍在外协台账中人工登记和审核。'], ['5. 同一手机号只能对应同一姓名；与其他外协单位存在有效归属冲突时，该行会导入失败。']]); help['!cols'] = [{ wch: 72 }];
-    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '外协人员导入'); XLSX.utils.book_append_sheet(book, help, '填写说明');
-    XLSX.writeFile(book, `项目外协人员导入模板_${Utils.formatDate(new Date())}.xlsx`);
-  },
-  openMemberImport() {
-    this.state.memberImportRows = null; this.state.memberImportResult = null;
-    this.state.memberImportProject = this.state.projects.find(p => p.status === 'active')?.id || '';
-    this.state.memberImportCompany = this.state.companies.find(c => c.status !== 'inactive')?.id || '';
-    this.renderMemberImport();
-  },
-  renderMemberImport() {
-    const rows = this.state.memberImportRows || []; const result = this.state.memberImportResult;
-    const valid = rows.filter(r => !r.errors.length); const invalid = rows.filter(r => r.errors.length);
-    const preview = result ? `<p>导入完成：新建 <b>${result.filter(r => r.result_code === 'created').length}</b> 人，复用档案 <b>${result.filter(r => r.result_code === 'reused').length}</b> 人，失败 <b style="color:#b91c1c">${result.filter(r => r.result_code === 'failed').length}</b> 人。</p><div style="max-height:260px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>结果</th><th>说明</th></tr></thead><tbody>${result.map(r => `<tr><td>${r.row_no}</td><td>${Utils.escapeHtml(r.result_code)}</td><td>${Utils.escapeHtml(r.result_message)}</td></tr>`).join('')}</tbody></table></div>` : `<p class="hint">表格将建立加密身份证档案并自动加入项目，但不会自动下发培训；请在“准入执行”页批量下发。</p><div class="form-row"><div class="form-group"><label>项目 <span class="required">*</span></label><select id="contractor-import-project" class="form-control">${this.projectOptions(this.state.memberImportProject)}</select></div><div class="form-group"><label>外协单位 <span class="required">*</span></label><select id="contractor-import-company" class="form-control">${this.companyOptions(this.state.memberImportCompany)}</select></div></div><div class="form-group"><label>Excel 文件</label><input id="contractor-import-file" type="file" accept=".xlsx,.xls" class="form-control"></div>${rows.length ? `<p>可导入 <b>${valid.length}</b> 行；需修正 <b style="color:#b91c1c">${invalid.length}</b> 行。</p><div style="max-height:220px;overflow:auto"><table class="data-table"><thead><tr><th>行号</th><th>姓名</th><th>手机号</th><th>身份证号</th><th>工种</th><th>检查结果</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.rowNo}</td><td>${Utils.escapeHtml(r.name)}</td><td>${Utils.escapeHtml(r.phone)}</td><td>${Utils.escapeHtml(r.idNumber ? `${r.idNumber.slice(0, 3)}***********${r.idNumber.slice(-4)}` : '')}</td><td>${Utils.escapeHtml(r.position)}</td><td>${r.errors.length ? `<span style="color:#b91c1c">${Utils.escapeHtml(r.errors.join('；'))}</span>` : '<span style="color:#15803d">可导入</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
-    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingContractors.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:760px"><div class="modal-header"><h3>批量导入项目外协人员</h3><button class="modal-close" onclick="TrainingContractors.close()">×</button></div><div class="modal-body">${preview}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingContractors.close()">${result ? '关闭' : '取消'}</button>${result ? '' : `<button class="btn btn-secondary" onclick="TrainingContractors.parseMemberImport()">解析文件</button>${rows.length && valid.length ? '<button class="btn btn-primary" onclick="TrainingContractors.submitMemberImport()">确认导入</button>' : ''}`}</div></div></div>`;
-  },
-  async parseMemberImport() {
-    const project = document.getElementById('contractor-import-project')?.value || ''; const company = document.getElementById('contractor-import-company')?.value || '';
-    const file = document.getElementById('contractor-import-file')?.files?.[0];
-    if (!project || !company || !file) { Utils.toast('请选择项目、外协单位和 Excel 文件', 'error'); return; }
-    if (typeof XLSX === 'undefined') { Utils.toast('Excel 组件未加载，请刷新页面后重试', 'error'); return; }
-    if (!/\.(xlsx|xls)$/i.test(file.name)) { Utils.toast('请选择 .xlsx 或 .xls 文件', 'error'); return; }
-    const book = XLSX.read(await file.arrayBuffer(), { type: 'array' }); const sheet = book.Sheets[book.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
-    if (raw.length < 2) { Utils.toast('表格中没有人员数据', 'error'); return; }
-    const phones = new Set(); const rows = [];
-    raw.slice(1).forEach((line, index) => {
-      const name = String(line[0] || '').trim(), phone = String(line[1] || '').trim(), idNumber = String(line[2] || '').trim().toUpperCase(), position = String(line[3] || '').trim();
-      if (!name && !phone && !idNumber && !position) return;
-      const errors = []; if (!name || !phone || !idNumber || !position) errors.push('姓名、手机号、身份证号和工种均必填');
-      if (phone && !/^1[3-9]\d{9}$/.test(phone)) errors.push('手机号格式不正确');
-      if (idNumber && !/^[1-9]\d{16}[\dX]$/.test(idNumber)) errors.push('身份证号必须为 18 位大陆居民身份证号');
-      if (phone && phones.has(phone)) errors.push('本表手机号重复'); if (phone) phones.add(phone);
-      rows.push({ rowNo: index + 2, name, phone, idNumber, position, errors });
-    });
-    if (rows.length > 300) { Utils.toast('单次最多导入 300 人，请分批处理', 'error'); return; }
-    this.state.memberImportProject = project; this.state.memberImportCompany = company; this.state.memberImportRows = rows; this.renderMemberImport();
-  },
-  async submitMemberImport() {
-    const rows = (this.state.memberImportRows || []).filter(r => !r.errors.length); if (!rows.length) { Utils.toast('没有可导入的人员', 'error'); return; }
-    if (!confirm(`确认将 ${rows.length} 名外协人员加入项目？`)) return;
-    const { data, error } = await sb.rpc('training_batch_add_contractor_members', { p_project_id: this.state.memberImportProject, p_contractor_id: this.state.memberImportCompany, p_people: rows.map(r => ({ name: r.name, phone: r.phone, id_number: r.idNumber, position: r.position })) });
-    if (error) { Utils.toast(error.message, 'error'); return; }
-    this.state.memberImportResult = data || []; this.renderMemberImport(); await this.load();
   },
 
   openIdentityBackfill(projectId, employeeId) {
@@ -321,7 +276,13 @@ const TrainingContractors = {
     if (payload.document_type === 'special_certificate' && (!payload.employee_id || !payload.certificate_type || !payload.valid_until)) { Utils.toast('特种作业证必须关联人员、证书类型和有效期', 'error'); return; }
     payload.storage_path = await this.uploadAttachment(file, 'contractor-documents', payload.project_id);
     if (!payload.storage_path) { Utils.toast('请上传附件或填写已有 Storage 路径', 'error'); return; }
-    const result = await sb.from('contractor_documents').insert(payload);
+    const result = await sb.rpc('contractor_document_create', {
+      p_project_id: payload.project_id, p_contractor_id: payload.contractor_id,
+      p_employee_id: payload.employee_id, p_document_type: payload.document_type,
+      p_certificate_type: payload.certificate_type, p_certificate_no: payload.certificate_no,
+      p_valid_from: null, p_valid_until: payload.valid_until,
+      p_storage_path: payload.storage_path,
+    });
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
     this.close(); Utils.toast('资料已登记，等待人工审核', 'success'); await this.load();
   },
@@ -353,17 +314,22 @@ const TrainingContractors = {
   async reviewDocument(id, status) {
     const note = status === 'rejected' ? prompt('请填写驳回原因') : '';
     if (status === 'rejected' && !note) return;
-    const result = await sb.from('contractor_documents').update({ review_status: status, reviewed_by: (Auth.currentUser || {}).id, reviewed_at: new Date().toISOString(), review_note: note || null }).eq('id', id);
+    const result = await sb.rpc('contractor_document_review', { p_document_id: id, p_status: status, p_note: note || null });
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
-    const doc = this.state.documents.find(x => x.id === id);
-    if (doc?.project_id) await sb.rpc('training_refresh_external_admissions', { p_project_id: doc.project_id, p_contractor_id: doc.contractor_id || null });
     Utils.toast(status === 'approved' ? '资料已审核通过' : '资料已驳回', 'success'); await this.load();
+  },
+
+  async revokeDocument(id) {
+    const reason = prompt('请填写撤销原因'); if (!reason) return;
+    const result = await sb.rpc('contractor_document_revoke', { p_document_id: id, p_reason: reason });
+    if (result.error) { Utils.toast(result.error.message, 'error'); return; }
+    Utils.toast('资料已撤销，历史版本和附件继续保留', 'success'); await this.load();
   },
 
   async reviewCompany(id, status) {
     const note = status === 'rejected' ? prompt('请填写驳回原因') : '';
     if (status === 'rejected' && !note) return;
-    const result = await sb.from('contractor_companies').update({ status, reviewed_by: (Auth.currentUser || {}).id, reviewed_at: new Date().toISOString(), review_note: note || null }).eq('id', id);
+    const result = await sb.rpc('contractor_company_review', { p_company_id: id, p_status: status, p_note: note || null });
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
     Utils.toast(status === 'active' ? '外协单位已审核通过' : '外协单位已驳回', 'success'); await this.load();
   },
@@ -371,10 +337,8 @@ const TrainingContractors = {
   async reviewContract(id, status) {
     const note = status === 'terminated' ? prompt('请填写合同驳回/终止原因') : '';
     if (status === 'terminated' && !note) return;
-    const result = await sb.from('contractor_contracts').update({ status, reviewed_by: (Auth.currentUser || {}).id, reviewed_at: new Date().toISOString(), review_note: note || null }).eq('id', id);
+    const result = await sb.rpc('contractor_contract_review', { p_contract_id: id, p_status: status, p_note: note || null });
     if (result.error) { Utils.toast(result.error.message, 'error'); return; }
-    const contract = this.state.contracts.find(x => x.id === id);
-    if (contract?.project_id) await sb.rpc('training_refresh_external_admissions', { p_project_id: contract.project_id, p_contractor_id: contract.contractor_id || null });
     Utils.toast(status === 'valid' ? '合同已审核通过' : '合同已终止', 'success'); await this.load();
   },
 };

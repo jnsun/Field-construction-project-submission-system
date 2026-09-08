@@ -1,0 +1,656 @@
+{
+  "contract_id": "G1-master-data-api-v1",
+  "contract_version": "1.0.0",
+  "status": "frozen_pass",
+  "authority": "Web/backend database RPC, RLS and Storage policies",
+  "scope": ["D06", "D07", "D08"],
+  "transport": {
+    "api": "Supabase PostgREST REST/RPC",
+    "authentication": "Bearer JWT supplied by the authenticated client",
+    "database_error": {
+      "default_sqlstate": "P0001",
+      "authorization_sqlstate": "42501",
+      "note": "Business RPCs currently return SQLSTATE plus the exact database message; no separate domain error-code field exists."
+    }
+  },
+  "result_contract_semantics": {
+    "result_fields": "union of fields that may appear; it does not make every field required",
+    "result_schema.required": "fields present in every successful result",
+    "result_schema.optional": "fields present only in some successful result variants",
+    "result_schema.variants": "exact successful branch shapes selected by the listed when values"
+  },
+  "generated_artifacts": {
+    "types": null,
+    "mocks": null,
+    "status": "not_present_in_repository",
+    "note": "The repository had no generated-type or mock contract pipeline when G1 was created."
+  },
+  "enums": {
+    "project_status": ["planning", "active", "paused", "pending_close", "closed"],
+    "project_role": ["project_manager", "safety_officer"],
+    "contractor_company_status": ["pending", "active", "rejected", "inactive"],
+    "join_review_path": ["first_project", "same_entity_cross_project", "cross_entity"],
+    "join_application_status": ["pending_project_review", "pending_entity_review", "approved", "rejected", "cancelled"],
+    "special_work_type": ["爆破", "电工", "焊工"],
+    "certificate_type": ["爆破", "电工", "焊工"],
+    "certificate_status": ["not_required", "valid", "missing", "pending", "expired", "revoked"],
+    "drilling_requirement_code": ["drilling_project_training"]
+  },
+  "resources": [
+    {
+      "name": "profiles",
+      "access": "RLS-scoped session profile read",
+      "public_fields": ["id", "department_id", "role", "admin_level", "employee_id"],
+      "note": "Minimal session role context; project assignments are read separately from site_project_roles."
+    },
+    {
+      "name": "site_projects",
+      "access": "RLS-scoped REST SELECT; mutations use controlled RPCs",
+      "public_fields": ["id", "project_code", "name", "project_type", "location", "status", "lead_entity_id", "start_date", "expected_end_date", "actual_end_date", "includes_drilling", "created_at", "updated_at"]
+    },
+    {
+      "name": "site_project_entities",
+      "access": "RLS-scoped REST SELECT; replacement uses site_project_set_entities",
+      "public_fields": ["project_id", "entity_id", "is_lead"]
+    },
+    {
+      "name": "site_project_roles",
+      "access": "RLS-scoped REST SELECT; grant and revoke use site_project_set_roles",
+      "public_fields": ["id", "project_id", "user_id", "role", "active", "assigned_by", "created_at"]
+    },
+    {
+      "name": "contractor_companies",
+      "access": "RLS-scoped current-state REST SELECT; mutations use controlled RPCs",
+      "public_fields": ["id", "name", "unified_code", "legal_representative", "contact_name", "contact_phone", "managing_entity_id", "status", "review_note", "created_at", "updated_at"]
+    },
+    {
+      "name": "contractor_company_versions",
+      "access": "RLS-scoped immutable history SELECT",
+      "public_fields": ["id", "contractor_id", "version_no", "name", "unified_code", "legal_representative", "contact_name", "contact_phone", "managing_entity_id", "status", "change_kind", "changed_by", "changed_at"]
+    },
+    {
+      "name": "training_employees",
+      "access": "column-granted and RLS-scoped REST SELECT; mutations use controlled RPCs",
+      "public_fields": ["id", "name", "employee_no", "department_id", "position", "phone", "hire_date", "emp_type", "status", "remark", "photo_path", "identity_recorded", "identity_updated_at"]
+    },
+    {
+      "name": "training_employee_versions",
+      "access": "column-granted and RLS-scoped immutable history SELECT",
+      "public_fields": ["id", "employee_id", "version_no", "name", "employee_no", "department_id", "position", "phone", "emp_type", "status", "photo_path", "identity_recorded", "change_kind", "change_source", "changed_by", "changed_at"]
+    },
+    {
+      "name": "site_project_members",
+      "access": "RLS-scoped REST SELECT; authenticated clients have no direct INSERT/UPDATE/DELETE; external membership is created only by site_project_review_application and later assignment changes use controlled RPCs",
+      "public_fields": ["id", "project_id", "employee_id", "contractor_id", "application_id", "membership_type", "work_type", "special_work_types", "status", "joined_at"]
+    },
+    {
+      "name": "site_project_member_assignment_history",
+      "access": "project-management-scoped immutable history SELECT",
+      "public_fields": ["id", "member_id", "project_id", "employee_id", "version_no", "previous_contractor_id", "contractor_id", "previous_work_type", "work_type", "previous_special_work_types", "special_work_types", "effective_at", "change_reason", "change_source", "changed_by"]
+    },
+    {
+      "name": "project_join_applications",
+      "access": "column-granted and RLS-scoped REST SELECT; create and review use controlled RPCs",
+      "public_fields": ["id", "project_id", "applicant_user_id", "employee_id", "name", "phone", "photo_path", "contractor_id", "contractor_name_input", "contractor_code_input", "position", "application_type", "review_path", "source_entity_id", "target_entity_id", "application_cycle", "status", "review_note", "created_at", "updated_at"]
+    },
+    {
+      "name": "project_join_application_events",
+      "access": "RLS-scoped immutable application and review history SELECT",
+      "public_fields": ["id", "application_id", "sequence_no", "project_id", "employee_id", "source_entity_id", "target_entity_id", "review_path", "application_cycle", "from_status", "to_status", "event_type", "event_source", "actor_id", "review_note", "occurred_at"]
+    },
+    {
+      "name": "contractor_contracts",
+      "access": "RLS-scoped current-state metadata SELECT; mutations use controlled RPCs",
+      "public_fields": ["id", "project_id", "contractor_id", "contract_name", "start_date", "end_date", "storage_path", "status", "review_note", "created_at", "updated_at"]
+    },
+    {
+      "name": "contractor_contract_versions",
+      "access": "RLS-scoped immutable history SELECT",
+      "public_fields": ["id", "contract_id", "version_no", "project_id", "contractor_id", "contract_name", "start_date", "end_date", "storage_path", "status", "change_kind", "changed_by", "changed_at"]
+    },
+    {
+      "name": "contractor_documents",
+      "access": "RLS-scoped current-state metadata SELECT; mutations use controlled RPCs",
+      "public_fields": ["id", "project_id", "contractor_id", "employee_id", "document_type", "certificate_type", "certificate_no", "valid_from", "valid_until", "storage_path", "review_status", "revoked_at", "revocation_reason", "created_at"]
+    },
+    {
+      "name": "contractor_document_versions",
+      "access": "RLS-scoped immutable history SELECT",
+      "public_fields": ["id", "document_id", "version_no", "project_id", "contractor_id", "employee_id", "document_type", "certificate_type", "certificate_no", "valid_from", "valid_until", "storage_path", "review_status", "revoked_at", "change_kind", "changed_by", "changed_at"]
+    }
+  ],
+  "rpcs": [
+    {
+      "name": "site_project_create",
+      "db_identity": "public.site_project_create(text,text,text,date,date,uuid,text,uuid[])",
+      "domain": "project",
+      "authorization": "company or authorized entity management scope",
+      "result": "site_projects row"
+    },
+    {
+      "name": "site_project_update",
+      "db_identity": "public.site_project_update(uuid,text,text,text,text,date,date,date,uuid,text)",
+      "domain": "project",
+      "authorization": "server-side project write permission; status transitions require a reason",
+      "result": "site_projects row"
+    },
+    {
+      "name": "site_project_set_entities",
+      "db_identity": "public.site_project_set_entities(uuid,uuid[])",
+      "domain": "project",
+      "authorization": "server-side owning entity permission",
+      "result": "void"
+    },
+    {
+      "name": "site_project_set_roles",
+      "db_identity": "public.site_project_set_roles(uuid,jsonb)",
+      "domain": "project_role",
+      "authorization": "lead-entity manager; assignees must be in allowed scope; maximum two active project managers",
+      "result": "void",
+      "revocation_semantics": "role.active is checked on every protected request; revoked access is not cached"
+    },
+    {
+      "name": "training_batch_remind",
+      "db_identity": "public.training_batch_remind(uuid,uuid[],text)",
+      "domain": "project_role_operation",
+      "authorization": "current project manager or safety officer for that project",
+      "result": "integer created reminder count",
+      "revocation_semantics": "current project role is rechecked on every request"
+    },
+    {
+      "name": "training_confirm_site",
+      "db_identity": "public.training_confirm_site(uuid,text,numeric,numeric,text,text)",
+      "domain": "project_role_operation",
+      "authorization": "current project manager or safety officer for the admission project",
+      "result": "void",
+      "revocation_semantics": "current project role is rechecked on every request"
+    },
+    {
+      "name": "training_log_verification",
+      "db_identity": "public.training_log_verification(uuid,uuid,text,text,text,text)",
+      "domain": "project_role_operation",
+      "authorization": "current project manager or safety officer for that project",
+      "result": "void",
+      "revocation_semantics": "current project role is rechecked on every request"
+    },
+    {
+      "name": "site_project_refresh_invite",
+      "db_identity": "public.site_project_refresh_invite(uuid)",
+      "domain": "project_invite",
+      "authorization": "server-side project management permission; paused, pending-close and closed projects are rejected",
+      "result": "jsonb invite result"
+    },
+    {
+      "name": "site_project_invite_summary",
+      "db_identity": "public.site_project_invite_summary(text)",
+      "domain": "project_invite",
+      "authorization": "authenticated; only a valid unrevoked unexpired invite for an active project resolves",
+      "result_fields": ["project_id", "project_code", "project_name", "expires_at"]
+    },
+    {
+      "name": "site_project_set_drilling_operation",
+      "db_identity": "public.site_project_set_drilling_operation(uuid,boolean,text)",
+      "domain": "project",
+      "authorization": "server-side project management permission",
+      "request_fields": ["project_id", "enabled", "reason"],
+      "result_fields": ["project_id", "includes_drilling", "changed"],
+      "note": "Drilling is project-level training scope and never a personnel certificate type."
+    },
+    {
+      "name": "training_project_drilling_training_scope",
+      "db_identity": "public.training_project_drilling_training_scope(uuid)",
+      "domain": "training_input",
+      "authorization": "project management-data read permission",
+      "result_fields": ["project_id", "member_id", "employee_id", "membership_type", "requires_drilling_training", "requirement_code"]
+    },
+    {
+      "name": "contractor_company_create",
+      "db_identity": "public.contractor_company_create(text,text,text,text,text)",
+      "domain": "contractor_company",
+      "authorization": "company or managing-entity permission",
+      "result_fields": ["company_id", "created", "version_no"],
+      "result_schema": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {
+          "company_id": { "type": "string", "format": "uuid", "nullable": false },
+          "created": { "type": "boolean", "nullable": false },
+          "version_no": { "type": "integer", "nullable": false }
+        },
+        "required": ["company_id", "created", "version_no"],
+        "optional": []
+      },
+      "idempotency": "An exact existing company returns the existing company_id with created=false."
+    },
+    {
+      "name": "contractor_company_update",
+      "db_identity": "public.contractor_company_update(uuid,text,text,text,text,text)",
+      "domain": "contractor_company",
+      "authorization": "company or owning managing-entity permission",
+      "result_fields": ["company_id", "changed", "version_no"],
+      "result_schema": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {
+          "company_id": { "type": "string", "format": "uuid", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false },
+          "version_no": { "type": "integer", "nullable": false }
+        },
+        "required": ["company_id", "changed", "version_no"],
+        "optional": []
+      }
+    },
+    {
+      "name": "contractor_company_review",
+      "db_identity": "public.contractor_company_review(uuid,text,text)",
+      "domain": "contractor_company",
+      "authorization": "company or owning managing-entity permission",
+      "result_fields": ["company_id", "status", "changed", "version_no"],
+      "result_schema": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {
+          "company_id": { "type": "string", "format": "uuid", "nullable": false },
+          "status": { "type": "string", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false },
+          "version_no": { "type": "integer", "nullable": false }
+        },
+        "required": ["company_id", "status", "changed", "version_no"],
+        "optional": []
+      }
+    },
+    {
+      "name": "training_employee_create",
+      "db_identity": "public.training_employee_create(text,text,text,uuid,text,text,text,text,date,text,text,text,text)",
+      "domain": "personnel",
+      "authorization": "company or authorized entity write scope",
+      "result_fields": ["employee_id", "created", "photo_path"],
+      "result_schema": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {
+          "employee_id": { "type": "string", "format": "uuid", "nullable": false },
+          "created": { "type": "boolean", "nullable": false },
+          "photo_path": { "type": "string", "nullable": true }
+        },
+        "required": ["employee_id", "created", "photo_path"],
+        "optional": []
+      },
+      "identity_input": "id_number is accepted only by this controlled server path; the derived match token is private",
+      "photo_input": "optional photo_path must be an existing immutable avatars object owned by auth.uid under the controlled new-employees upload namespace"
+    },
+    {
+      "name": "training_employee_update",
+      "db_identity": "public.training_employee_update(uuid,text,text,text,uuid,text,text,text,text,date,text,text,text)",
+      "domain": "personnel",
+      "authorization": "training_employee_can_maintain evaluated server-side",
+      "result_fields": ["employee_id", "changed", "version_no", "identity_changed"],
+      "result_schema": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {
+          "employee_id": { "type": "string", "format": "uuid", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false },
+          "version_no": { "type": "integer", "nullable": false },
+          "identity_changed": { "type": "boolean", "nullable": false }
+        },
+        "required": ["employee_id", "changed", "version_no"],
+        "optional": ["identity_changed"],
+        "variants": [
+          { "name": "no_change", "when": { "changed": false }, "required": ["employee_id", "changed", "version_no"], "optional": [] },
+          { "name": "changed", "when": { "changed": true }, "required": ["employee_id", "changed", "version_no", "identity_changed"], "optional": [] }
+        ]
+      }
+    },
+    {
+      "name": "training_employee_photo_update",
+      "db_identity": "public.training_employee_photo_update(uuid,text,text)",
+      "domain": "personnel",
+      "authorization": "training_employee_can_maintain plus Storage object ownership evaluated server-side",
+      "result_fields": ["employee_id", "photo_path", "changed", "version_no"],
+      "result_schema": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {
+          "employee_id": { "type": "string", "format": "uuid", "nullable": false },
+          "photo_path": { "type": "string", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false },
+          "version_no": { "type": "integer", "nullable": false }
+        },
+        "required": ["employee_id", "photo_path", "changed", "version_no"],
+        "optional": [],
+        "variants": [
+          { "name": "changed", "when": { "changed": true }, "required": ["employee_id", "photo_path", "changed", "version_no"], "optional": [] },
+          { "name": "no_change", "when": { "changed": false }, "required": ["employee_id", "photo_path", "changed", "version_no"], "optional": [] }
+        ]
+      },
+      "idempotency": "Repeating the same current photo path returns changed=false and does not add a personnel version."
+    },
+    {
+      "name": "training_employee_identity_get",
+      "db_identity": "public.training_employee_identity_get(uuid)",
+      "domain": "personnel_sensitive",
+      "authorization": "company administrator or authorized entity maintainer; project role alone is insufficient",
+      "result_fields": ["employee_id", "identity_recorded", "id_number"],
+      "sensitive_result": true
+    },
+    {
+      "name": "training_change_member_assignment",
+      "db_identity": "public.training_change_member_assignment(uuid,uuid,text,text)",
+      "domain": "personnel_assignment",
+      "authorization": "server-side project management permission and entity boundary",
+      "result_fields": ["member_id", "changed", "version_no"]
+    },
+    {
+      "name": "training_set_member_special_work_types",
+      "db_identity": "public.training_set_member_special_work_types(uuid,text[],text)",
+      "domain": "personnel_assignment",
+      "authorization": "server-side management permission for that member project",
+      "request_fields": ["member_id", "special_work_types", "reason"],
+      "result_fields": ["member_id", "special_work_types", "changed", "version_no"],
+      "rules": ["default empty", "zero, one or multiple values", "only 爆破, 电工, 焊工", "certificate ownership never enables a work type", "钻探 is forbidden"]
+    },
+    {
+      "name": "training_review_personnel_reapproval",
+      "db_identity": "public.training_review_personnel_reapproval(uuid,text,text)",
+      "domain": "personnel_reapproval",
+      "authorization": "server-side project management permission",
+      "result": "jsonb review result"
+    },
+    {
+      "name": "site_project_apply",
+      "db_identity": "public.site_project_apply(text,text,text,text,text,text,text,text,jsonb)",
+      "domain": "join_application",
+      "authorization": "authenticated applicant; server resolves invite, identity, review path and target entity",
+      "result": "application UUID",
+      "result_schema": { "type": "string", "format": "uuid", "nullable": false },
+      "identity_resolution": "private keyed HMAC of normalized identity; never name plus phone and never a client-supplied employee_id or HMAC",
+      "idempotency": "The same authenticated applicant and safe identity for the same project active cycle returns the existing application UUID."
+    },
+    {
+      "name": "site_project_review_application",
+      "db_identity": "public.site_project_review_application(uuid,text,text)",
+      "domain": "join_application",
+      "authorization": "first_project uses site_project_can_manage: current target lead-entity manager or active project_manager/safety_officer for that project; other paths require the current target-entity manager",
+      "result_fields": ["status", "review_path", "changed", "employee_id", "member_id"],
+      "result_schema": {
+        "type": "object",
+        "additional_properties": false,
+        "properties": {
+          "status": { "type": "string", "nullable": false },
+          "review_path": { "type": "string", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false },
+          "employee_id": { "type": "string", "format": "uuid", "nullable": false },
+          "member_id": { "type": "string", "format": "uuid", "nullable": false }
+        },
+        "required": ["status", "review_path", "changed"],
+        "optional": ["employee_id", "member_id"],
+        "variants": [
+          { "name": "approve_changed", "when": { "status": "approved", "changed": true }, "required": ["status", "review_path", "changed", "employee_id", "member_id"], "optional": [] },
+          { "name": "approve_idempotent", "when": { "status": "approved", "changed": false }, "required": ["status", "review_path", "changed", "employee_id", "member_id"], "optional": [] },
+          { "name": "reject_changed", "when": { "status": "rejected", "changed": true }, "required": ["status", "review_path", "changed"], "optional": [] },
+          { "name": "reject_idempotent", "when": { "status": "rejected", "changed": false }, "required": ["status", "review_path", "changed"], "optional": [] },
+          { "name": "reclassified_to_entity_review", "when": { "status": "pending_entity_review", "changed": true }, "required": ["status", "review_path", "changed", "employee_id"], "optional": [] }
+        ],
+        "request_context_fields_not_echoed": ["application_id"]
+      },
+      "idempotency": "Repeating the same completed approve or reject returns the existing result with changed=false after rechecking current authorization."
+    },
+    {
+      "name": "training_join_application_identity",
+      "db_identity": "public.training_join_application_identity(uuid)",
+      "domain": "join_application_sensitive",
+      "authorization": "company administrator or target lead-entity manager; project role alone is insufficient",
+      "result_fields": ["application_id", "employee_name", "id_number"],
+      "sensitive_result": true
+    },
+    {
+      "name": "site_project_import_application_attachment",
+      "db_identity": "public.site_project_import_application_attachment(uuid,text,text,date)",
+      "domain": "join_attachment",
+      "authorization": "approved application and current project management permission",
+      "result_fields": ["kind", "id", "created"],
+      "idempotency": "An already imported attachment returns its existing record id with created=false."
+    },
+    {
+      "name": "contractor_contract_create",
+      "db_identity": "public.contractor_contract_create(uuid,uuid,text,text,date,date,text)",
+      "domain": "contractor_archive",
+      "authorization": "server-side project management permission",
+      "result_fields": ["contract_id", "created", "status"],
+      "result_schema": {
+        "type": "object", "additional_properties": false,
+        "properties": {
+          "contract_id": { "type": "string", "format": "uuid", "nullable": false },
+          "created": { "type": "boolean", "nullable": false },
+          "status": { "type": "string", "nullable": false }
+        },
+        "required": ["contract_id", "created", "status"], "optional": []
+      }
+    },
+    {
+      "name": "contractor_contract_review",
+      "db_identity": "public.contractor_contract_review(uuid,text,text)",
+      "domain": "contractor_archive",
+      "authorization": "server-side project management permission",
+      "result_fields": ["contract_id", "status", "changed"],
+      "result_schema": {
+        "type": "object", "additional_properties": false,
+        "properties": {
+          "contract_id": { "type": "string", "format": "uuid", "nullable": false },
+          "status": { "type": "string", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false }
+        },
+        "required": ["contract_id", "status", "changed"], "optional": []
+      }
+    },
+    {
+      "name": "contractor_document_create",
+      "db_identity": "public.contractor_document_create(uuid,uuid,uuid,text,text,text,date,date,text)",
+      "domain": "contractor_archive",
+      "authorization": "server-side project management permission",
+      "result_fields": ["document_id", "created", "status"],
+      "result_schema": {
+        "type": "object", "additional_properties": false,
+        "properties": {
+          "document_id": { "type": "string", "format": "uuid", "nullable": false },
+          "created": { "type": "boolean", "nullable": false },
+          "status": { "type": "string", "nullable": false }
+        },
+        "required": ["document_id", "created", "status"], "optional": []
+      }
+    },
+    {
+      "name": "contractor_document_review",
+      "db_identity": "public.contractor_document_review(uuid,text,text)",
+      "domain": "contractor_archive",
+      "authorization": "server-side project management permission",
+      "result_fields": ["document_id", "status", "changed"],
+      "result_schema": {
+        "type": "object", "additional_properties": false,
+        "properties": {
+          "document_id": { "type": "string", "format": "uuid", "nullable": false },
+          "status": { "type": "string", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false }
+        },
+        "required": ["document_id", "status", "changed"], "optional": []
+      }
+    },
+    {
+      "name": "contractor_document_revoke",
+      "db_identity": "public.contractor_document_revoke(uuid,text)",
+      "domain": "contractor_archive",
+      "authorization": "server-side project management permission",
+      "result_fields": ["document_id", "status", "changed"],
+      "result_schema": {
+        "type": "object", "additional_properties": false,
+        "properties": {
+          "document_id": { "type": "string", "format": "uuid", "nullable": false },
+          "status": { "type": "string", "nullable": false },
+          "changed": { "type": "boolean", "nullable": false }
+        },
+        "required": ["document_id", "status", "changed"], "optional": []
+      },
+      "idempotency": "A repeated revoke returns status=revoked and changed=false."
+    },
+    {
+      "name": "training_contractor_certificate_statuses",
+      "db_identity": "public.training_contractor_certificate_statuses(uuid)",
+      "domain": "certificate_gate",
+      "authorization": "project management-data read permission",
+      "result_fields": ["project_id", "employee_id", "required_certificate", "certificate_status", "detail"],
+      "rule": "Only explicit project-member special_work_types are checked; an empty selection returns not_required."
+    },
+    {
+      "name": "training_contractor_personnel_ledger",
+      "db_identity": "public.training_contractor_personnel_ledger(uuid)",
+      "domain": "personnel_ledger",
+      "authorization": "RLS and function checks; ordinary project management receives masked identity, not full identity",
+      "identity_result": "always masked for every role; full identity is available only through an explicitly sensitive single-record RPC"
+    }
+  ],
+  "join_state_machine": {
+    "first_project": {
+      "initial_status": "pending_project_review",
+      "reviewer": "current authorized project management role",
+      "approval_effect": "create one employee if still absent, then one current project member"
+    },
+    "same_entity_cross_project": {
+      "initial_status": "pending_entity_review",
+      "reviewer": "target entity manager",
+      "approval_effect": "reuse employee and add a new project member without overwriting old project history"
+    },
+    "cross_entity": {
+      "initial_status": "pending_entity_review",
+      "reviewer": "target entity manager",
+      "approval_effect": "target-entity approval is mandatory; prior entity/project relations remain unchanged"
+    }
+  },
+  "idempotency": {
+    "active_application_statuses": ["pending_project_review", "pending_entity_review", "approved"],
+    "application_unique_keys": ["project_id + private identity match token", "project_id + applicant_user_id"],
+    "application_concurrency": "transaction advisory locks cover global identity, project identity and project applicant",
+    "employee_concurrency": "global private identity advisory lock plus a unique private match-token index prevents duplicate personnel",
+    "member_concurrency": "unique project_id + employee_id relation plus ON CONFLICT handling prevents duplicate current membership",
+    "review_concurrency": "application row FOR UPDATE plus identity advisory lock serializes review",
+    "client_prohibitions": ["must not submit employee_id as identity proof", "must not create or submit a private identity HMAC"]
+  },
+  "reason_contract": [
+    {
+      "case": "unauthenticated",
+      "actual_wire": ["HTTP 401 when JWT is absent or invalid", "SQLSTATE P0001 with message 请先登录 when an RPC reaches its auth guard"]
+    },
+    {
+      "case": "forbidden",
+      "actual_wire": ["HTTP 403 or SQLSTATE 42501 for RLS/grant denial", "SQLSTATE P0001 with the function-specific 您无权... message"]
+    },
+    {
+      "case": "project_paused",
+      "source_field": "site_projects.status=paused",
+      "actual_wire": ["SQLSTATE P0001 with message 项目当前未开放外协人员申请"]
+    },
+    {
+      "case": "project_closed",
+      "source_field": "site_projects.status=closed",
+      "actual_wire": ["SQLSTATE P0001 with message 项目当前未开放外协人员申请"]
+    },
+    {
+      "case": "invite_invalid_or_expired",
+      "actual_wire": ["SQLSTATE P0001 with message 邀请码无效或已过期"]
+    },
+    {
+      "case": "duplicate_or_idempotent_existing_application",
+      "actual_wire": ["same applicant and identity: HTTP success with the original application UUID", "different account for the same identity: SQLSTATE P0001 with message 该人员在本项目已有有效申请", "same account with another active identity: SQLSTATE P0001 with message 当前账号在本项目已有其他有效身份申请"]
+    },
+    {
+      "case": "identity_conflict",
+      "actual_wire": ["SQLSTATE P0001 with message 该身份已绑定其他账号，请联系经营实体管理员核验", "SQLSTATE P0001 with message 申请关联人员与安全身份匹配结果不一致"]
+    },
+    {
+      "case": "pending_project_review",
+      "source_field": "project_join_applications.status=pending_project_review"
+    },
+    {
+      "case": "pending_entity_review",
+      "source_field": "project_join_applications.status=pending_entity_review"
+    },
+    {
+      "case": "cross_entity_review_required",
+      "source_fields": ["project_join_applications.review_path=cross_entity", "project_join_applications.status=pending_entity_review"]
+    },
+    {
+      "case": "certificate_missing_or_type_mismatch",
+      "source_field": "certificate_status=missing",
+      "note": "The implementation does not emit a separate mismatch value; the required selected type having no matching certificate is missing."
+    },
+    {
+      "case": "certificate_expired",
+      "source_field": "certificate_status=expired"
+    },
+    {
+      "case": "certificate_pending_review",
+      "source_field": "certificate_status=pending"
+    },
+    {
+      "case": "certificate_revoked",
+      "source_field": "certificate_status=revoked"
+    },
+    {
+      "case": "special_work_not_required",
+      "source_field": "certificate_status=not_required"
+    },
+    {
+      "case": "drilling_project_scope",
+      "source_fields": ["site_projects.includes_drilling=true", "requirement_code=drilling_project_training"]
+    }
+  ],
+  "privacy": {
+    "default_identity": "masked or identity_recorded boolean only",
+    "sensitive_rpcs": ["training_employee_identity_get", "training_join_application_identity"],
+    "project_role_full_identity": false,
+    "forbidden_default_response_fields": ["id_number", "id_number_ciphertext", "id_number_match_token", "id_number_digest", "vault_key", "vault_secret", "service_role_key", "storage_internal_secret"],
+    "rules": ["private identity match tokens never leave the database", "Vault material is read only inside fixed-search_path SECURITY DEFINER functions", "no real identity or signed URL appears in this contract"]
+  },
+  "file_access": {
+    "bucket": "certificates",
+    "metadata_resources": ["contractor_contracts", "contractor_documents", "project_join_application_attachments"],
+    "signed_url_provider": "Supabase Storage createSignedUrl",
+    "signed_url_ttl_seconds": 300,
+    "upload_binding": "join application paths bind project_id, auth.uid and current invite hash; the server also verifies the existing Storage object owner before accepting a reference",
+    "read_authorization": "business-record binding plus bound applicant/project/invite path and current project/company/entity permission enforced by Storage RLS",
+    "denied_behavior": "unauthorized, cross-project, cross-entity and revoked-role access is denied by current RLS/business permission",
+    "immutability": "files bound to archived contracts, documents, applications, personnel photo versions, signatures or confirmations cannot be overwritten or deleted through ordinary client Storage operations",
+    "legacy_bypass": "authenticated has no EXECUTE privilege on training_batch_add_contractor_members; new external personnel must use site_project_apply and site_project_review_application"
+  },
+  "cross_line_inputs": {
+    "D12": {
+      "project_drilling_source": "site_projects.includes_drilling",
+      "drilling_scope_rpc": "training_project_drilling_training_scope",
+      "rules": ["all current project members are in scope when includes_drilling=true", "there is no drilling certificate gate", "爆破/电工/焊工 certificates are checked only for selected member special_work_types"]
+    },
+    "D30": {
+      "rules": ["identity binding must use a controlled server identity mechanism", "the client must never receive or submit the private HMAC", "name plus phone is not an authoritative identity key"]
+    },
+    "D31": {
+      "apply_rpc": "site_project_apply",
+      "review_rpc": "site_project_review_application",
+      "rules": ["the server decides first_project, same_entity_cross_project or cross_entity", "repeat scans and weak-network retries rely on server idempotency", "the mini program must not write business tables directly"]
+    }
+  },
+  "evidence": {
+    "migrations": ["v53", "v54", "v55", "v56", "v57", "v58", "v59", "v60", "v61", "v62", "v63", "v64", "v65", "v66", "v67", "v68", "v69", "v70", "v71", "v72", "v73"],
+    "d07_commit": "6ceb5a4ea3338fd812c774e5ae6cea18dd506bd0",
+    "d08_status": "PASS",
+    "d08_final": "PASS",
+    "r01": "PASS",
+    "review_counts": { "P0": 0, "P1": 0, "P2": 2 },
+    "p2_disposition": {
+      "R01-D08-09": "deferred",
+      "R01-D08-10": "closed_by_R03_status_evidence"
+    },
+    "g1_targeted": "23/23 PASS",
+    "consumers": ["D12", "D30-BE", "D30-MP via backend contract", "D31"],
+    "compatibility_policy": "future changes must remain backward compatible or use an explicit contract version upgrade",
+    "r03_status": "completed_by_D08_commit"
+  }
+}

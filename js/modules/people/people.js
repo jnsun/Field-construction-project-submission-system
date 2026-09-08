@@ -127,7 +127,7 @@ const PeopleModule = {
     box.innerHTML = `<div class="card"><div class="card-body"><div class="empty-state"><div class="spinner" style="margin:0 auto;"></div><p style="margin-top:12px;">加载中...</p></div></div></div>`;
 
     const [empRes, acctRes, deptRes] = await Promise.all([
-      sb.from('training_employees').select('*').order('created_at', { ascending: false }),
+      sb.from('training_employees').select('id,name,employee_no,department_id,position,phone,hire_date,emp_type,status,remark,created_by,created_at,updated_at,user_id,gender,job_grade,photo_path,identity_recorded,identity_updated_at').order('created_at', { ascending: false }),
       sb.from('profiles').select('*, departments(name)').order('created_at', { ascending: false }),
       sb.from('departments').select('*').order('sort_order'),
     ]);
@@ -269,7 +269,6 @@ const PeopleModule = {
           ? `<button class="btn btn-secondary btn-sm" onclick="PeopleModule.openAcctModal('edit','${acct.id}')">登录</button>`
           : `<button class="btn btn-secondary btn-sm" onclick="PeopleModule.openAcctModal('create','${e.id}')">开通登录</button>`) : ''}
         <button class="btn btn-secondary btn-sm" onclick="PeopleModule.open360('${e.id}')">360</button>
-        ${this.isCompanyAdmin() ? `<button class="btn btn-danger btn-sm" onclick="PeopleModule.deleteEmp('${e.id}')">删除</button>` : ''}
       </td>
     </tr>`;
   },
@@ -353,7 +352,7 @@ const PeopleModule = {
       </div>
       <div class="form-row-2">
         <div class="form-group"><label>身份证号</label>
-          <input name="id_number" value="${Utils.escapeHtml(v.id_number || '')}"></div>
+          <input name="id_number" placeholder="${empId && v.identity_recorded ? '已安全留存；留空表示不修改' : '请输入 18 位身份证号'}"></div>
         <div class="form-group"><label>手机号（也是登录标识）</label>
           <input name="phone" value="${Utils.escapeHtml(v.phone || '')}"></div>
       </div>
@@ -388,22 +387,23 @@ const PeopleModule = {
     const overlay = document.getElementById('people-modal');
     const get = (n) => { const el = overlay.querySelector(`[name="${n}"]`); return el ? el.value.trim() : ''; };
     const payload = {
-      name: get('name'), employee_no: get('employee_no') || null,
-      department_id: get('department_id') || null, position: get('position') || null,
-      job_grade: get('job_grade') || null, id_number: get('id_number') || null,
-      phone: get('phone') || null, hire_date: get('hire_date') || null,
-      emp_type: get('emp_type'), status: get('status'), remark: get('remark') || null,
+      p_name: get('name'), p_employee_no: get('employee_no') || null,
+      p_department_id: get('department_id') || null, p_position: get('position') || null,
+      p_job_grade: get('job_grade') || null, p_id_number: get('id_number') || null,
+      p_phone: get('phone') || null, p_hire_date: get('hire_date') || null,
+      p_gender: ((this.state.employees.find(e => e.id === this.state.editingEmpId) || {}).gender) || null,
+      p_emp_type: get('emp_type'), p_status: get('status'), p_remark: get('remark') || null,
     };
-    if (!payload.name) { Utils.toast('请填写姓名', 'error'); return; }
-    if (!payload.department_id) { Utils.toast('请选择部门', 'error'); return; }
+    if (!payload.p_name) { Utils.toast('请填写姓名', 'error'); return; }
+    if (!payload.p_department_id) { Utils.toast('请选择部门', 'error'); return; }
 
     const btn = overlay.querySelector('.modal-footer .btn-primary');
     const isEdit = !!this.state.editingEmpId;
     btn.disabled = true; btn.textContent = isEdit ? '保存中...' : '创建中...';
     try {
       const { error } = isEdit
-        ? await sb.from('training_employees').update(payload).eq('id', this.state.editingEmpId)
-        : await sb.from('training_employees').insert({ ...payload, created_by: (Auth.currentUser || {}).id });
+        ? await sb.rpc('training_employee_update', { p_employee_id: this.state.editingEmpId, ...payload })
+        : await sb.rpc('training_employee_create', payload);
       if (error) throw error;
       Utils.toast(isEdit ? '档案已更新' : '员工档案已创建', 'success');
       this.closeModal();
@@ -606,10 +606,7 @@ const PeopleModule = {
 
     const acct = this.accountOf(empId);
     const tasks = [
-      acct && emp.id_number
-        ? sb.from('certificates').select('id, cert_name, cert_no, valid_until, is_long_term')
-            .eq('cert_category', 'personal').eq('holder_id_no', emp.id_number)
-        : Promise.resolve({ data: [] }),
+      Promise.resolve({ data: [] }),
       sb.from('training_assignments').select('status, exam_status').eq('employee_id', empId),
       sb.from('personnel_change_logs').select('field, old_value, new_value, created_at')
         .eq('employee_id', empId).order('created_at', { ascending: false }).limit(10),
@@ -632,7 +629,7 @@ const PeopleModule = {
             <td>${Utils.escapeHtml(c.cert_no || '—')}</td>
             <td style="color:${color}">${exp}${days !== null && days <= 90 ? `（剩 ${days} 天）` : ''}</td></tr>`;
         }).join('')
-      : '<tr><td colspan="3" class="text-muted" style="text-align:center">暂无个人持证（证照模块按身份证号匹配）</td></tr>';
+      : '<tr><td colspan="3" class="text-muted" style="text-align:center">个人持证请在证照模块查看</td></tr>';
 
     const doneCount = asgs.filter(a => a.status === 'completed').length;
     const passCount = asgs.filter(a => a.exam_status === 'passed').length;
@@ -646,7 +643,7 @@ const PeopleModule = {
           ['部门', Utils.escapeHtml(this.deptName(emp.department_id))],
           ['岗位 / 工种', Utils.escapeHtml([emp.position, emp.job_grade].filter(Boolean).join(' / ') || '—')],
           ['人员类别', typeLabel],
-          ['身份证号', Utils.escapeHtml(emp.id_number || '—')],
+          ['身份证号', emp.identity_recorded ? '已安全留存' : '未留存'],
           ['手机号', Utils.escapeHtml(emp.phone || '—')],
           ['入职日期', Utils.escapeHtml(emp.hire_date || '—')],
           ['状态', emp.status === 'active' ? '在职' : '离职'],

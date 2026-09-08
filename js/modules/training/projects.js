@@ -74,7 +74,7 @@ const TrainingProjects = {
   async load() {
     const [projects, candidates, links, hints] = await Promise.all([
       sb.from('site_projects')
-        .select('id, project_code, name, project_type, location, status, start_date, expected_end_date, actual_end_date, lead_entity_id, pause_reason, close_reason, created_at, updated_at')
+        .select('id, project_code, name, project_type, location, status, start_date, expected_end_date, actual_end_date, lead_entity_id, includes_drilling, drilling_change_reason, drilling_changed_at, pause_reason, close_reason, created_at, updated_at')
         .order('created_at', { ascending: false }),
       sb.from('site_project_report_candidates')
         .select('department_id, project_name, construction_location, latest_reporting_month, latest_status, report_count')
@@ -267,6 +267,8 @@ const TrainingProjects = {
               <input id="site-project-type" class="form-control" value="${Utils.escapeHtml(p ? (p.project_type || '') : '')}" placeholder="如：地质勘查 / 钻探"></div>
               <div class="form-group"><label>主责经营实体 <span class="required">*</span></label>
                 <select id="site-project-entity" class="form-control">${this.entityOptions(p ? p.lead_entity_id : '')}</select></div></div>
+            <div class="form-group"><label><input id="site-project-drilling" type="checkbox"${p?.includes_drilling ? ' checked' : ''}> 本项目包含钻探作业</label>
+              <p class="text-muted" style="font-size:12px;margin:4px 0 0">启用后，本项目所有在场人员都会进入 D12 钻探专项培训范围；这里不要求任何“钻探证”。</p></div>
             <div class="form-group"><label>参与经营实体</label>
               <div style="max-height:120px;overflow:auto;border:1px solid var(--color-border);border-radius:6px;padding:8px">
                 ${this.entityChecks(p)}
@@ -313,6 +315,11 @@ const TrainingProjects = {
     if (!name || !entity) { Utils.toast('项目名称和主责经营实体不能为空', 'error'); return; }
     const entityIds = Array.from(document.querySelectorAll('.site-project-entity-cb:checked')).map(cb => cb.value);
     if (!entityIds.includes(entity)) entityIds.push(entity);
+    const drilling = Boolean(document.getElementById('site-project-drilling')?.checked);
+    const existing = id ? this.state.list.find(x => x.id === id) : null;
+    const drillingChanged = drilling !== Boolean(existing?.includes_drilling);
+    const reason = val('site-project-reason').trim();
+    if (drillingChanged && !reason) { Utils.toast('启用或取消钻探作业必须填写变更原因', 'error'); return; }
     const btn = document.querySelector('#training-modal-host .modal-footer .btn-primary');
     if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
     try {
@@ -343,6 +350,13 @@ const TrainingProjects = {
         });
       }
       if (result.error) throw result.error;
+      const projectId = id || result.data?.id;
+      if (drillingChanged) {
+        const drillingResult = await sb.rpc('site_project_set_drilling_operation', {
+          p_project_id: projectId, p_enabled: drilling, p_reason: reason,
+        });
+        if (drillingResult.error) throw drillingResult.error;
+      }
       if (id) {
         const links = await sb.rpc('site_project_set_entities', {
           p_project_id: id,
@@ -370,6 +384,7 @@ const TrainingProjects = {
             <div class="detail-grid">
               ${this.detail('项目编号', p.project_code)}${this.detail('项目名称', p.name)}
               ${this.detail('项目类型', p.project_type)}${this.detail('主责经营实体', TrainingModule.deptName(p.lead_entity_id))}
+              ${this.detail('包含钻探作业', p.includes_drilling ? '是（项目全员纳入专项培训范围）' : '否')}
               ${this.detail('施工地点', p.location)}${this.detail('状态', this.STATUS_LABEL[p.status] || p.status)}
               ${this.detail('开工日期', p.start_date)}${this.detail('预计完工', p.expected_end_date)}
               ${this.detail('实际完工', p.actual_end_date)}${this.detail('创建时间', p.created_at ? p.created_at.slice(0, 16).replace('T', ' ') : '')}

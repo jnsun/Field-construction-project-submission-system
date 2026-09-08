@@ -32,6 +32,14 @@ SET pause_started_at = CASE WHEN status = 'paused' THEN NOW() - INTERVAL '10 day
     pause_reason = CASE WHEN status = 'paused' THEN 'D02-TEST 暂停状态夹具' ELSE NULL END
 WHERE project_code = 'D02-PAUSED';
 
+SELECT set_config('app.project_drilling_assignment_source', 'rpc', false);
+UPDATE public.site_projects
+SET includes_drilling = (project_code = 'D02-HIGH-RISK'),
+    drilling_change_reason = CASE WHEN project_code = 'D02-HIGH-RISK' THEN 'D02-TEST 钻探项目夹具' ELSE drilling_change_reason END,
+    drilling_changed_at = CASE WHEN project_code = 'D02-HIGH-RISK' THEN NOW() ELSE drilling_changed_at END
+WHERE project_code LIKE 'D02-%';
+SELECT set_config('app.project_drilling_assignment_source', '', false);
+
 INSERT INTO public.site_project_entities(project_id, entity_id, is_lead)
 SELECT p.id, d.id, TRUE
 FROM public.site_projects p JOIN public.departments d ON d.code = 'D02-ENT-A'
@@ -87,7 +95,7 @@ SELECT c.id, e.id, p.id, 'special_certificate', e.position, 'D02-CERT-' || e.emp
 FROM public.training_employees e
 JOIN public.site_projects p ON p.project_code = 'D02-HIGH-RISK'
 LEFT JOIN public.contractor_companies c ON FALSE
-WHERE e.employee_no IN ('D02-005', 'D02-006')
+WHERE e.employee_no = 'D02-006'
   AND NOT EXISTS (SELECT 1 FROM public.contractor_documents d WHERE d.project_id = p.id AND d.employee_id = e.id AND d.certificate_no = 'D02-CERT-' || e.employee_no);
 
 INSERT INTO storage.buckets (id, name, public)
