@@ -22,18 +22,17 @@ function runPsql(databaseUrl, sql) {
   }
   return String(result.stdout || '').trim();
 }
-function applyMigration(databaseUrl) {
-  const result = spawnSync('psql', [databaseUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', migrationPath], { encoding: 'utf8', windowsHide: true });
-  if (result.error || result.status !== 0) throw new Error('D08-4 focused v72 迁移应用失败');
-}
 async function request(baseUrl, anonKey, pathName, options = {}) {
   const response = await fetch(`${baseUrl}${pathName}`, { ...options, headers: { apikey: anonKey, ...(options.headers || {}) } });
   const text = await response.text(); let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = text; }
   return { status: response.status, json };
 }
+async function loginAttempt(baseUrl, anonKey, email, password) {
+  return request(baseUrl, anonKey, '/auth/v1/token?grant_type=password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+}
 async function login(baseUrl, anonKey, email, password) {
-  const response = await request(baseUrl, anonKey, '/auth/v1/token?grant_type=password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const response = await loginAttempt(baseUrl, anonKey, email, password);
   if (response.status !== 200 || !response.json?.access_token || !response.json?.user?.id) throw new Error('D08-4 focused 隔离测试账号登录失败');
   return { token: response.json.access_token, userId: response.json.user.id };
 }
@@ -42,6 +41,39 @@ async function rpc(boundary, anonKey, token, name, body) {
 }
 const success = response => response.status >= 200 && response.status < 300;
 const denied = response => [400, 401, 403, 404].includes(response.status);
+
+function assertCurrentSchema(databaseUrl) {
+  return runPsql(databaseUrl, `SELECT (
+    to_regclass('public.training_special_work_audit_logs') IS NOT NULL
+    AND to_regprocedure('public.training_current_special_requirements(uuid,uuid)') IS NOT NULL
+    AND to_regprocedure('public.training_set_member_special_work_types(uuid,text[],text)') IS NOT NULL
+  )::int;`) === '1';
+}
+
+function resetSharedAuthFixture(databaseUrl) {
+  const adminEmail = required('SAFETY_TEST_ADMIN_EMAIL');
+  const adminPassword = required('SAFETY_TEST_ADMIN_PASSWORD');
+  const entityEmail = required('SAFETY_TEST_ENTITY_EMAIL');
+  const entityPassword = required('SAFETY_TEST_ENTITY_PASSWORD');
+  if (adminEmail.toLowerCase() === entityEmail.toLowerCase()) throw new Error('D08 Auth 夹具要求两个不同测试账号');
+  const count = Number(runPsql(databaseUrl, `BEGIN;
+UPDATE auth.users SET encrypted_password=crypt(${literal(adminPassword)},gen_salt('bf',10)),updated_at=now()
+ WHERE lower(email)=lower(${literal(adminEmail)});
+UPDATE auth.users SET encrypted_password=crypt(${literal(entityPassword)},gen_salt('bf',10)),updated_at=now()
+ WHERE lower(email)=lower(${literal(entityEmail)});
+SELECT count(*) FROM auth.users u JOIN public.profiles p ON p.id=u.id
+ LEFT JOIN public.training_employees e ON e.id=p.employee_id
+ WHERE (lower(u.email)=lower(${literal(adminEmail)}) AND p.role='admin' AND p.admin_level='company' AND e.employee_no='D02-001')
+    OR (lower(u.email)=lower(${literal(entityEmail)}) AND p.role='admin' AND p.admin_level='dept' AND e.employee_no='D02-002');
+COMMIT;`));
+  if (count !== 2) throw new Error('D08 Auth 夹具账号或角色与 D02 权威夹具不一致');
+}
+
+function finish(started, residue = '-') {
+  const failed = results.filter(x => !x.pass); const elapsed = Number(process.hrtime.bigint() - started) / 1e9;
+  console.log(`D08_SPECIAL_WORK_CORRECTION_SUMMARY total=${results.length} passed=${results.length - failed.length} failed=${failed.length} residue=${residue} elapsed_s=${elapsed.toFixed(2)}`);
+  if (failed.length) process.exitCode = 1;
+}
 
 function readScope(databaseUrl) {
   const value = runPsql(databaseUrl, `SELECT json_build_object(
@@ -111,13 +143,20 @@ async function main() {
     && !/certificate_type IN \([^\n]*钻探/.test(sql) && !web.includes("CERT_TYPES: ['爆破', '钻探'") && !web.includes('const highRisk'));
   const boundary = validateTestBoundary();
   check('D08-CORRECT-GATE 隔离测试边界', assertD02FixtureMarker(boundary) > 0);
-  applyMigration(boundary.databaseUrl);
+  check('D08-CORRECT-SCHEMA 当前测试库保持 v84 专项能力', assertCurrentSchema(boundary.databaseUrl));
+  if (process.argv.includes('--bootstrap-only')) return finish(started);
+  resetSharedAuthFixture(boundary.databaseUrl);
   const scope = readScope(boundary.databaseUrl);
   const anonKey = required('SAFETY_SUPABASE_ANON_KEY');
   const [companyUser, entityUser] = await Promise.all([
     login(boundary.apiOrigin, anonKey, required('SAFETY_TEST_ADMIN_EMAIL'), required('SAFETY_TEST_ADMIN_PASSWORD')),
     login(boundary.apiOrigin, anonKey, required('SAFETY_TEST_ENTITY_EMAIL'), required('SAFETY_TEST_ENTITY_PASSWORD')),
   ]);
+  const wrongPassword = await loginAttempt(boundary.apiOrigin, anonKey, required('SAFETY_TEST_ADMIN_EMAIL'), `${required('SAFETY_TEST_ADMIN_PASSWORD')}-wrong`);
+  check('D08-CORRECT-AUTH-01 管理员夹具登录成功', companyUser.userId === scope.company_user);
+  check('D08-CORRECT-AUTH-02 实体夹具登录成功', entityUser.userId === scope.entity_user);
+  check('D08-CORRECT-AUTH-03 错误密码仍被 Auth 拒绝', [400, 401].includes(wrongPassword.status) && !wrongPassword.json?.access_token);
+  if (process.argv.includes('--auth-fixture-only')) return finish(started);
   const suffix = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
   const specs = [['manager', '项目经理', false], ['ordinary', '普工', false], ['drillElectric', '电工', true], ['valid', '电工', true], ['expired', '电工', true], ['missing', '电工', true], ['multi', '焊工', true]];
   const fixture = { scope, suffix, projectA: crypto.randomUUID(), projectB: crypto.randomUUID(), roleA: crypto.randomUUID(), company: crypto.randomUUID(), sameMemberB: crypto.randomUUID(), people: specs.map(([key, position, external]) => ({ key, position, external, id: crypto.randomUUID(), memberA: crypto.randomUUID() })) };
@@ -170,9 +209,7 @@ async function main() {
     residue = cleanup(boundary.databaseUrl, fixture);
   }
   check('D08-CORRECT-17 focused 测试零残留', residue === 0, `residue=${residue}`);
-  const failed = results.filter(x => !x.pass); const elapsed = Number(process.hrtime.bigint() - started) / 1e9;
-  console.log(`D08_SPECIAL_WORK_CORRECTION_SUMMARY total=${results.length} passed=${results.length - failed.length} failed=${failed.length} residue=${residue} elapsed_s=${elapsed.toFixed(2)}`);
-  if (failed.length) process.exitCode = 1;
+  finish(started, residue);
 }
 
 main().catch(error => { console.error(`D08 special-work correction failed: ${error.message}`); process.exit(1); });

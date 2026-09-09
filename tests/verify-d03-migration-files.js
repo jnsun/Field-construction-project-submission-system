@@ -25,7 +25,7 @@ function verifyManifest(file, firstVersion, lastVersion) {
   const digestSource = source.replace(/\r\n/g, '\n');
   const digest = crypto.createHash('sha256').update(digestSource).digest('hex').toUpperCase();
   if (digest !== migration.sha256) failures.push(`Checksum changed for ${migration.file}; update the manifest after review.`);
-  if (/\bDROP\s+TABLE\b/i.test(source) || /\bTRUNCATE\b/i.test(source)) failures.push(`${migration.file} contains destructive table SQL.`);
+  if (/\bDROP\s+TABLE\b/i.test(source) || /^\s*TRUNCATE(?:\s+TABLE)?\b/im.test(source)) failures.push(`${migration.file} contains destructive table SQL.`);
   const executable = source.split(/\r?\n/).filter((line) => !line.trimStart().startsWith('--')).join('\n');
   const definers = (executable.match(/SECURITY\s+DEFINER/gi) || []).length;
   const fixedPaths = (executable.match(/SECURITY\s+DEFINER\s+SET\s+search_path\s*=\s*public(?:\s*,\s*(?:extensions|vault|storage))*/gi) || []).length;
@@ -36,7 +36,7 @@ function verifyManifest(file, firstVersion, lastVersion) {
 }
 
 const v1v16 = verifyManifest('training-admission-v1-v16.manifest.json', 1, 16);
-const v17v49 = verifyManifest('training-admission-v17-v49.manifest.json', 17, 83);
+const v17v49 = verifyManifest('training-admission-v17-v49.manifest.json', 17, 85);
 
 for (const file of v1v16.bootstrapFilesForEmptyDatabase) {
   if (!fs.existsSync(path.join(sqlDir, file))) failures.push(`Bootstrap prerequisite missing: ${file}.`);

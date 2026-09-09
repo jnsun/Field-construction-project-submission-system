@@ -3,7 +3,7 @@
 // 学习、考试和员工签字仍复用现有「我的培训」流程。
 // =============================================================
 const TrainingAdmissionOperations = {
-  state: { projects: [], members: [], employees: [], packages: [], admissions: [], signatures: [], roles: [], accesses: [], filter: '', actionFilter: '' },
+  state: { projects: [], members: [], employees: [], packages: [], admissions: [], signatures: [], roles: [], accesses: [], specialRequirements: [], filter: '', actionFilter: '' },
   STATUS: {
     pending: ['待学习', 'badge-warning'], learning: ['学习中', 'badge-info'],
     exam_pending: ['待考试', 'badge-warning'], exam_failed: ['考试未通过', 'badge-danger'],
@@ -33,8 +33,8 @@ const TrainingAdmissionOperations = {
 
   async load() {
     const results = await Promise.all([
-      sb.from('site_projects').select('id, project_code, name, status, lead_entity_id').order('created_at', { ascending: false }),
-      sb.from('site_project_members').select('id, project_id, employee_id, contractor_id, membership_type, status, joined_at').order('joined_at', { ascending: false }),
+      sb.from('site_projects').select('id, project_code, name, status, lead_entity_id, includes_drilling').order('created_at', { ascending: false }),
+      sb.from('site_project_members').select('id, project_id, employee_id, contractor_id, membership_type, special_work_types, status, joined_at').order('joined_at', { ascending: false }),
       sb.from('training_employees').select('id, name, phone, position, photo_path').order('name'),
       sb.from('training_admission_packages').select('id, project_id, title, version_no, status, validity_years, supersedes_package_id').eq('status', 'published').order('title'),
       sb.from('training_admissions').select('id, project_id, employee_id, package_id, status, exam_score, exam_attempts, final_signed_at, site_confirmed_at, valid_until, due_at, urgent, blocked_reason, retrain_required, retrain_reason, training_cycle_no, created_at').order('created_at', { ascending: false }),
@@ -45,6 +45,8 @@ const TrainingAdmissionOperations = {
     const error = results.find(r => r.error);
     if (error) throw error.error;
     [this.state.projects, this.state.members, this.state.employees, this.state.packages, this.state.admissions, this.state.signatures, this.state.roles, this.state.accesses] = results.map(r => r.data || []);
+    const special = await Promise.all(this.state.projects.filter(p => TrainingModule.canReadProjectManagementData(p)).map(p => sb.rpc('training_project_special_requirements', { p_project_id: p.id })));
+    this.state.specialRequirements = special.filter(x => !x.error).flatMap(x => x.data || []);
     const refreshes = await Promise.all(this.state.projects
       .filter(p => p.status !== 'closed' && TrainingModule.canManageProject(p))
       .flatMap(p => [
@@ -71,6 +73,7 @@ const TrainingAdmissionOperations = {
   myProjectRole(projectId) { const rs = this.state.roles.filter(r => r.project_id === projectId && r.active); return rs.some(r => r.role === 'project_manager') ? 'project_manager' : (rs.some(r => r.role === 'safety_officer') ? 'safety_officer' : ''); },
   hasOwnManagerSign(admissionId, role, cycleNo) { return this.state.signatures.some(s => s.admission_id === admissionId && !s.task_id && s.signer_role === role && s.signer_user_id === Auth.currentUser?.id && s.cycle_no === cycleNo); },
   activeAccess(admissionId) { return this.state.accesses.find(x => x.admission_id === admissionId && !x.revoked_at && new Date(x.expires_at) > new Date()); },
+  specialState(projectId, employeeId) { return this.state.specialRequirements.find(x => x.project_id === projectId && x.employee_id === employeeId) || null; },
   actionFor(row) {
     const a = row.a;
     if (!a) return 'start';
@@ -112,13 +115,17 @@ const TrainingAdmissionOperations = {
       ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openManagerSign('${a.id}','${role}')">项目签署</button>` : '';
     const temp = a && this.activeAccess(a.id);
     const history = `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openTimeline('${m.project_id}','${m.employee_id}')">流转档案</button>`;
-    const readActions = canRead ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openReadiness('${m.project_id}','${m.employee_id}')">准入清单</button>${history}` : '';
+    const readActions = canRead ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openSpecialStatus('${m.project_id}','${m.employee_id}')">专项要求</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openReadiness('${m.project_id}','${m.employee_id}')">准入清单</button>${history}` : '';
     const manageActions = !a ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openStartForm('${m.project_id}','${m.employee_id}')">发起准入</button>` : `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.recompute('${a.id}')">刷新资格</button>${a.retrain_required ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openRetrainForm('${a.id}', ${a.status === 'expired'})">${a.status === 'expired' ? '年度复训' : '发起复训'}</button>` : ''}${['pending_site_confirm', 'blocked'].includes(a.status) && !a.retrain_required ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.openConfirm('${a.id}')">现场确认</button>` : ''}${a.status !== 'eligible' && !temp ? `<button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.openTemporary('${a.id}')">临时通行</button>` : ''}${managerSign}${a.status === 'eligible' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionOperations.issue('${a.id}')">签发凭证</button>` : ''}`;
-    const actions = `${readActions}${canManage ? manageActions : ''}` || '<span class="text-muted">无可用操作</span>';
+    const specialManage = canManage ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.openSpecialWork('${m.id}')">设置实际专项</button>` : '';
+    const actions = `${readActions}${specialManage}${canManage ? manageActions : ''}` || '<span class="text-muted">无可用操作</span>';
     const due = a?.due_at ? new Date(a.due_at) : null;
     const overdue = due && due < new Date() && a.status !== 'eligible';
     const dueText = due ? due.toLocaleString().replace(/:\d{2}$/, '') : '—';
-    return `<tr><td><b>${this.esc(e.name)}</b><br><span class="text-muted">${this.esc(e.phone || '—')}</span></td><td>${this.esc(this.projectName(m.project_id))}</td><td>${this.esc(e.position || '—')}<br>${m.membership_type === 'external' ? '<span class="badge badge-warning">外协</span>' : '<span class="badge badge-muted">内部</span>'}</td><td>${a ? `${this.esc(p.title)} v${p.version_no || 1}` : '—'}</td><td>${a ? this.status(a.status) : this.status('blocked')}${temp ? '<br><span class="badge badge-danger">临时通行中</span>' : ''}<br><span class="text-muted">${this.esc(a?.blocked_reason || '')}</span></td><td>${a?.exam_score != null ? `${a.exam_score} 分 / ${a.exam_attempts || 0} 次` : '—'}</td><td>${a?.urgent ? '<span class="badge badge-danger">当天加急</span><br>' : ''}<span style="color:${overdue ? '#b91c1c' : 'inherit'}">${this.esc(dueText)}</span>${overdue ? '<br><span style="color:#b91c1c;font-size:12px">已逾期</span>' : ''}</td><td>${this.esc(a?.valid_until || '—')}</td><td>${actions}</td></tr>`;
+    const special = this.specialState(m.project_id, m.employee_id); const typeLabel = { blasting: '爆破', electrical: '电工', welding: '焊工', drilling: '钻探' };
+    const specialText = special?.required_special_types?.length ? special.required_special_types.map(x => typeLabel[x] || x).join('、') : '无专项要求';
+    const sourceBadge = m.membership_type === 'external' ? '<span class="badge badge-warning">外协</span>' : m.membership_type === 'temporary' ? '<span class="badge badge-info">临时个人</span>' : '<span class="badge badge-muted">内部</span>';
+    return `<tr><td><b>${this.esc(e.name)}</b><br><span class="text-muted">${this.esc(e.phone || '—')}</span></td><td>${this.esc(this.projectName(m.project_id))}${this.project(m.project_id).includes_drilling ? '<br><span class="badge badge-danger">全员钻探专项</span>' : ''}</td><td>${this.esc(e.position || '—')}<br>${sourceBadge}<br><span class="text-muted">专项：${this.esc(specialText)}</span></td><td>${a ? `${this.esc(p.title)} v${p.version_no || 1}` : '—'}</td><td>${a ? this.status(a.status) : this.status('blocked')}${temp ? '<br><span class="badge badge-danger">临时通行中</span>' : ''}<br><span class="text-muted">${this.esc(a?.blocked_reason || '')}</span></td><td>${a?.exam_score != null ? `${a.exam_score} 分 / ${a.exam_attempts || 0} 次` : '—'}</td><td>${a?.urgent ? '<span class="badge badge-danger">当天加急</span><br>' : ''}<span style="color:${overdue ? '#b91c1c' : 'inherit'}">${this.esc(dueText)}</span>${overdue ? '<br><span style="color:#b91c1c;font-size:12px">已逾期</span>' : ''}</td><td>${this.esc(a?.valid_until || '—')}</td><td>${actions}</td></tr>`;
   },
 
   tempRow(x) { const expired = new Date(x.expires_at) <= new Date(); const canManage = TrainingModule.canManageProject(this.project(x.project_id)); const person = x.training_employees || {}; return `<tr style="${expired ? 'color:#9ca3af' : 'background:#fff1f2'}"><td><b>${this.esc(person.name || '—')}</b><br><span class="text-muted">${this.esc(person.position || '')}</span></td><td>${this.esc(this.projectName(x.project_id))}</td><td>${this.esc(x.reason)}</td><td><b>${this.esc(x.pass_code || '—')}</b></td><td>${this.esc((x.expires_at || '').slice(0, 16).replace('T', ' '))}</td><td>${expired ? '<span class="badge badge-muted">已到期</span>' : '<span class="badge badge-danger">临时通行</span>'}</td><td>${!expired && canManage ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionOperations.showTemporaryQr('${this.esc(x.pass_code || '')}')">二维码</button> <button class="btn btn-sm btn-danger" onclick="TrainingAdmissionOperations.revokeTemporary('${x.id}')">撤销</button>` : '—'}</td></tr>`; },
@@ -126,6 +133,24 @@ const TrainingAdmissionOperations = {
   host() { return document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })(); },
   close() { this.host().innerHTML = ''; },
   modal(title, body, submit) { this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingAdmissionOperations.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:620px"><div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="TrainingAdmissionOperations.close()">×</button></div><div class="modal-body">${body}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionOperations.close()">取消</button><button class="btn btn-primary" onclick="${submit}">保存</button></div></div></div>`; },
+  openSpecialWork(memberId) {
+    const member = this.state.members.find(x => x.id === memberId); if (!member) return;
+    const labels = ['爆破','电工','焊工'];
+    this.modal('设置本项目实际专项作业', `<p class="hint">只按项目实际安排选择，不会因人员持证或岗位名称自动勾选。钻探由项目属性控制，对全部在场人员生效。</p>${labels.map(x => `<label style="display:inline-block;margin:0 20px 12px 0"><input type="checkbox" class="d12-special-work" value="${x}"${(member.special_work_types || []).includes(x) ? ' checked' : ''}> ${x}作业</label>`).join('')}<div class="form-group"><label>变更原因 <span class="required">*</span></label><textarea id="d12-special-reason" class="form-control" rows="3"></textarea></div>`, `TrainingAdmissionOperations.submitSpecialWork('${memberId}')`);
+  },
+  async submitSpecialWork(memberId) {
+    const types = Array.from(document.querySelectorAll('.d12-special-work:checked')).map(x => x.value); const reason = document.getElementById('d12-special-reason')?.value.trim() || '';
+    if (!reason) { Utils.toast('请填写实际专项作业变更原因', 'error'); return; }
+    const { error } = await sb.rpc('training_set_member_special_work_types', { p_member_id: memberId, p_special_work_types: types, p_reason: reason });
+    if (error) { Utils.toast(error.message, 'error'); return; } this.close(); Utils.toast('实际专项作业已更新，当前要求已实时重算', 'success'); await this.load();
+  },
+  async openSpecialStatus(projectId, employeeId) {
+    const { data, error } = await sb.rpc('training_current_special_requirements', { p_project_id: projectId, p_employee_id: employeeId });
+    if (error) { Utils.toast(error.message || '专项要求加载失败', 'error'); return; }
+    const state = data || {}; const badge = x => x === 'valid' || x === 'completed' || x === 'passed' || x === 'not_required' ? '<span class="badge badge-success">已满足</span>' : '<span class="badge badge-danger">待处理</span>';
+    const rows = (state.requirements || []).map(x => `<tr><td>${this.esc(x.label)}</td><td>${badge(x.certificate?.state)} ${this.esc(x.certificate?.state)}</td><td>${badge(x.training_status)} ${this.esc(x.training_status)}</td><td>${badge(x.exam_requirement)} ${this.esc(x.exam_requirement)}</td><td>${this.esc((x.reason_codes || []).join('、') || 'special_requirements_satisfied')}</td></tr>`).join('');
+    this.modal('当前项目专项要求', `${state.drilling_required ? '<div class="alert alert-danger">本项目 includes_drilling=true：全部 active personnel 必须完成钻探专项安全培训，不要求个人钻探证。</div>' : ''}<table class="data-table"><thead><tr><th>专项</th><th>证照</th><th>培训</th><th>考试</th><th>原因码</th></tr></thead><tbody>${rows || '<tr><td colspan="5">当前项目无专项作业要求</td></tr>'}</tbody></table>`, 'TrainingAdmissionOperations.close()');
+  },
   async openReadiness(projectId, employeeId) {
     const person = this.employee(employeeId);
     const [checklist, threeLevel] = await Promise.all([

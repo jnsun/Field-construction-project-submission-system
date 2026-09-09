@@ -1,5 +1,5 @@
 {
-  "schema": "d03-training-admission-v17-v81",
+  "schema": "d03-training-admission-v17-v85",
   "version": 1,
   "migrations": [
     { "version": 17, "file": "training-admission-v17.sql", "sha256": "B7C611DA14FF2C359A9358F41EE4E45A0248BF7A157A2E2F3B5231E114D07A33" },
@@ -68,6 +68,8 @@
     { "version": 80, "file": "training-admission-v80-d09-r02-p1-closure.sql", "sha256": "34775BC597D918A3BF87B9B30516D7FDFCB88E87F851532986690C330B7C9E3F" },
     { "version": 81, "file": "training-admission-v81-three-level-reuse.sql", "sha256": "714BAA3C87DC964E29D73997794B0FAD6B8BE1A17EB8E1EFC88F2DB7D844C04F" },
     { "version": 82, "file": "training-admission-v82-d11-r02-p1-closure.sql", "sha256": "8F66E4583756898602506091C547AA17F7DB5E4827D32581E2A11433480D1431" },
-    { "version": 83, "file": "training-admission-v83-employee-three-level-foundation.sql", "sha256": "E25C795A84199DAC941554BE6404A6CD39617E694B3652592D4EE9483261BBFC" }
+    { "version": 83, "file": "training-admission-v83-employee-three-level-foundation.sql", "sha256": "E25C795A84199DAC941554BE6404A6CD39617E694B3652592D4EE9483261BBFC" },
+    { "version": 84, "file": "training-admission-v84-special-work-requirements.sql", "sha256": "88AB2020EA02444A5C084110FCE6E1D003600FD902D660934CCB3D33918885F5" },
+    { "version": 85, "file": "training-admission-v85-d12-r01-p1-fixes.sql", "sha256": "786AF3CB739F0AE7C6874B5C9A4E74E2189D5202ED3AA37798FF1269E34992BA" }
   ]
 }

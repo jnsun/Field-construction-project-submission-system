@@ -1,0 +1,109 @@
+{
+  "version": "D12-special-work-requirements-v1",
+  "status": "pass",
+  "authority": "Web/backend database RPC; clients display results and never infer requirements",
+  "consumers": ["D13", "D18", "D32", "D33"],
+  "special_types": {
+    "actual_person_work": ["blasting", "electrical", "welding"],
+    "project_scope": ["drilling"],
+    "certificate_mapping": {
+      "blasting": "爆破",
+      "electrical": "电工",
+      "welding": "焊工",
+      "drilling": null
+    }
+  },
+  "rules": [
+    "A certificate never activates actual special work.",
+    "Actual blasting/electrical/welding is selected for one active project membership by an authorized project manager or safety officer.",
+    "site_projects.includes_drilling=true requires drilling training and an exam requirement for every active project member.",
+    "Drilling never requires a personal drilling certificate.",
+    "Internal employees, contractors and temporary individuals use the same special-work gate; employee three-level education remains independent."
+  ],
+  "rpcs": [
+    {
+      "name": "training_set_member_special_work_types",
+      "request": {
+        "p_member_id": { "type": "uuid", "required": true },
+        "p_special_work_types": { "type": "string[]", "required": true, "items": ["爆破", "电工", "焊工"] },
+        "p_reason": { "type": "string", "required": true, "maxLength": 1000 }
+      },
+      "response": { "member_id": "uuid", "changed": "boolean", "special_work_types": "string[]", "version_no": "integer|null" },
+      "authorization": "site_project_can_manage(member.project_id); active membership required",
+      "idempotency": "same normalized set returns changed=false; the member row lock serializes concurrent updates"
+    },
+    {
+      "name": "training_current_special_requirements",
+      "request": {
+        "p_project_id": { "type": "uuid", "required": true },
+        "p_employee_id": { "type": "uuid", "required": false, "nullable": true, "default": "current employee" }
+      },
+      "response": {
+        "required": ["project_id", "employee_id", "membership_active", "actual_special_work", "required_special_types", "drilling_required", "requirements", "blocked_reasons", "overall_satisfied", "reason_code"],
+        "requirement_fields": ["special_type", "label", "source", "certificate", "training_plan_id", "training_status", "exam_plan_id", "exam_requirement", "reason_codes"]
+      },
+      "authorization": "self or site_project_can_read_management_data(project)",
+      "freshness": "calculated at query time from current membership, project drilling flag, exact certificate state, published plans, assignments and published exam configuration"
+    },
+    {
+      "name": "training_project_special_requirements",
+      "request": { "p_project_id": { "type": "uuid", "required": true } },
+      "response": { "type": "array", "items": "training_current_special_requirements response for every active member" },
+      "authorization": "site_project_can_read_management_data(project)"
+    },
+    {
+      "name": "training_set_package_special_requirements",
+      "request": {
+        "p_package_id": { "type": "uuid", "required": true },
+        "p_rules": {
+          "type": "array",
+          "required": true,
+          "item": { "special_type": "enum", "training_plan_id": "uuid", "exam_plan_id": "uuid" }
+        }
+      },
+      "response": { "package_id": "uuid", "configured_count": "integer" },
+      "authorization": "company admin for a global draft package, or site_project_can_manage for its project draft package",
+      "mapping_guard": "training plan level must be special and plan.special_type must exactly equal rule.special_type; null or mismatched legacy mappings fail closed",
+      "idempotency": "atomic replace while the package row is locked; published packages are immutable"
+    }
+  ],
+  "certificate_states": ["not_required", "valid", "missing", "expired", "unapproved", "revoked"],
+  "training_states": ["plan_missing", "required", "incomplete", "completed"],
+  "exam_requirements": ["plan_missing", "required", "passed"],
+  "reason_codes": [
+    "special_work_not_required",
+    "special_certificate_missing",
+    "special_certificate_expired",
+    "special_certificate_unapproved",
+    "special_certificate_revoked",
+    "special_training_plan_missing",
+    "special_training_required",
+    "special_training_incomplete",
+    "special_exam_plan_missing",
+    "special_exam_required",
+    "drilling_training_required",
+    "special_requirements_satisfied"
+  ],
+  "audit": {
+    "resource": "training_special_work_audit_logs",
+    "fields": ["member_id", "project_id", "employee_id", "special_type", "old_active", "new_active", "operator_id", "operator_subject_id", "operator_role", "reason", "changed_at"],
+    "operator_identity": "operator_id is a nullable live auth reference; operator_subject_id is the immutable stable UUID snapshot retained after account deletion",
+    "immutability": "business UPDATE and all DELETE operations are rejected; only the auth foreign key may clear operator_id while the snapshot and every other audit field remain unchanged",
+    "read_scope": "self or project management-data reader"
+  },
+  "security": {
+    "direct_member_write": "denied; controlled RPC only",
+    "direct_rule_write": "denied; controlled RPC only",
+    "client_truncate": "anon and authenticated have no TRUNCATE privilege on D12 authoritative core tables",
+    "company_read_is_manage": false,
+    "cross_project_manage": "denied",
+    "rls": true,
+    "server_authoritative": true
+  },
+  "boundaries": {
+    "D13": "owns question selection, attempts, scoring and retries; D12 only publishes the required special exam plan and current requirement state",
+    "D17": "owns configurable retraining caused by major content or regulation changes",
+    "D18": "combines this current special status with all other qualification facts",
+    "D11": "one-time employee three-level education is not changed by D12"
+  }
+}

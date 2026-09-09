@@ -167,8 +167,17 @@ const TrainingAdmissionMine = {
         ${r.due_at ? `<span style="color:${r.status !== 'eligible' && new Date(r.due_at) < new Date() ? '#b91c1c' : '#64748b'}">${r.urgent ? '当天加急 · ' : ''}截止：${Utils.escapeHtml(new Date(r.due_at).toLocaleString().replace(/:\d{2}$/, ''))}</span>` : ''}
         <span>有效至：${Utils.escapeHtml(r.valid_until || '待生成')}</span>
       </div>${reason}
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${r.status === 'exam_pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.startAdmissionExam('${r.admission_id}')">开始综合考试</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openThreeLevelStatus('${r.project_id}')">三级教育状态</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSigning('${r.admission_id}')">三级教育签字</button>${r.certificate_no ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openCredential('${r.admission_id}')">查看电子记录凭证</button>` : ''}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${r.status === 'exam_pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.startAdmissionExam('${r.admission_id}')">开始综合考试</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openThreeLevelStatus('${r.project_id}')">三级教育状态</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSpecialRequirements('${r.project_id}')">专项作业要求</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSigning('${r.admission_id}')">三级教育签字</button>${r.certificate_no ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openCredential('${r.admission_id}')">查看电子记录凭证</button>` : ''}</div>
     </div>`;
+  },
+
+  async openSpecialRequirements(projectId) {
+    const { data, error } = await sb.rpc('training_current_special_requirements', { p_project_id: projectId, p_employee_id: null });
+    if (error) { Utils.toast(error.message || '专项要求加载失败', 'error'); return; }
+    const state = data || {}; const ok = x => ['valid','completed','passed','not_required'].includes(x);
+    const rows = (state.requirements || []).map(x => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px"><b>${Utils.escapeHtml(x.label)}专项</b><div style="font-size:12px;margin-top:6px">证照：${ok(x.certificate?.state) ? '已满足' : '待处理'} · 培训：${ok(x.training_status) ? '已完成' : '待完成'} · 考试：${ok(x.exam_requirement) ? '已通过' : '待完成'}</div>${x.reason_codes?.length ? `<div style="color:#b91c1c;font-size:12px;margin-top:4px">${Utils.escapeHtml(x.reason_codes.join('、'))}</div>` : ''}</div>`).join('');
+    const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
+    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="max-width:620px"><div class="modal-header"><h3>当前项目专项作业要求</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body">${state.drilling_required ? '<div class="alert alert-danger">本项目全员需钻探专项安全培训；钻探不要求个人证书。</div>' : ''}${rows || '<p class="text-muted">当前项目无专项作业要求。</p>'}</div><div class="modal-footer"><button class="btn btn-primary" onclick="document.getElementById('training-modal-host').innerHTML=''">关闭</button></div></div></div>`;
   },
 
   async openThreeLevelStatus(projectId) {
