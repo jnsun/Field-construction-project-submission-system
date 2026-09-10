@@ -115,6 +115,8 @@ async function main(){
       ? [{node_code:'org-confirm',node_type:'organization_responsible_confirmation',applies_stage_type:'actual_project',required:true,sequence_no:1,signer_mode:'SINGLE',signer_roles:['organization_responsible']}]
       : segment==='supersede'
         ? [{node_code:'stage-1',node_type:'employee_stage_acknowledgement',stage_order:1,required:true,sequence_no:1,signer_mode:'SINGLE',signer_roles:['employee']}]
+        : segment==='d16-prerequisite'
+          ? [{node_code:'employee-final',node_type:'employee_final_acknowledgement',required:true,sequence_no:1,signer_mode:'SINGLE',signer_roles:['employee'],requires_exam:false}]
         : fullNodes;
     const created=json(call(db,admin,`public.training_signature_policy_create(${q(`D15-${f.suffix}`)},'[D15-TEST] policy',${q(scheme)},CURRENT_DATE-1,'D15','create',${q(`${f.suffix}-create`)})`));
     policy.id=created.policy_id;policy.v1=created.policy_version_id;if(!segment)check('02 company admin creates draft policy',created.status==='draft');
@@ -123,7 +125,21 @@ async function main(){
     if(!segment)check('04 entity admin cannot manage company policy',code(call(db,extra.orgA,`public.training_signature_policy_create('DENY-${f.suffix}','deny',NULL,CURRENT_DATE,'deny','deny',NULL)`,true),'signature_forbidden'));
     const published=json(call(db,admin,`public.training_signature_policy_publish(${q(policy.v1)},'publish',${q(`${f.suffix}-publish`)})`));if(!segment)check('05 policy V1 publishes',published.status==='published');
     if(!segment)check('06 published policy is immutable',code(call(db,admin,`public.training_signature_policy_save_draft(${q(policy.v1)},${q(JSON.stringify(nodes))}::jsonb,CURRENT_DATE,'rewrite','rewrite',NULL)`,true),'signature_policy_immutable'));
-    if(segment==='organization'){
+    if(segment==='d16-prerequisite'){
+      psql(db,`BEGIN; SET LOCAL session_replication_role=replica;
+        UPDATE public.training_three_level_profiles SET status='completed',onboarding_category='completed',completed_at=NOW() WHERE employee_id=${q(f.employees.internal)};
+        UPDATE public.training_three_level_records SET status='completed',effective_hours=1,completed_at=NOW() WHERE id=${q(recordIds[0])};
+        INSERT INTO public.exam_attempts(id,paper_id,assignment_id,employee_id,attempt_no,questions,deadline_at,submitted_at,answers,score,result,status,project_id,admission_id,exam_type,rule_snapshot,exam_semantic_type)
+        VALUES(${q(examAttempt)},${q(f.paper)},${q(paperAssignment)},${q(f.employees.internal)},3,'[]',NOW()+INTERVAL '30 minutes',NOW()+INTERVAL '2 seconds','{}',100,'pass','submitted',${q(f.projects.a1)},${q(admission)},'admission','{"rule_version":"D16-R02"}','employee_comprehensive_admission_exam'); COMMIT;`);
+      check('D16-R02 D15 applicable requirement starts unmaterialized',scalar(db,`SELECT count(*) FROM public.training_signature_requirements WHERE requirement_snapshot_id=${q(snapshot)} AND admission_id=${q(admission)};`)==='0');
+      const site=json(call(db,f.manager,`public.training_site_confirmation_ensure(${q(admission)},'D16-R02-signature')`));
+      check('D16-R02 D16 materializes applicable D15 requirement',scalar(db,`SELECT count(*) FROM public.training_signature_requirements WHERE requirement_snapshot_id=${q(snapshot)} AND admission_id=${q(admission)} AND required;`)==='1');
+      check('D16-R02 unsigned materialized requirement blocks confirmation',site.prerequisite.blocked_reasons.includes('required_signature_not_completed')&&call(db,f.manager,`public.training_site_confirmation_prepare(${q(site.id)})`,true).err.includes('[D16:site_confirmation_prerequisite_not_met]'));
+      requirements=json(call(db,f.users.internal,`public.training_signature_requirement_list(${q(f.employees.internal)},${q(admission)})`));
+      const signed=prepareUploadSubmit(db,f.users.internal,requirements[0].id,'d16-r02-signed');paths.push(signed.prepared.storage_path);
+      const ready=json(call(db,f.manager,`public.training_site_confirmation_prepare(${q(site.id)})`));
+      check('D16-R02 completed D15 requirement allows D16 prepare',signed.result.status==='signed'&&ready.status==='prepared');
+    }else if(segment==='organization'){
       psql(db,`UPDATE public.training_three_level_records SET status='completed',effective_hours=1,completed_at=NOW() WHERE id=${q(recordIds[0])};`);
       const ensured=json(call(db,f.users.internal,`public.training_signature_ensure_requirements(${q(snapshot)},${q(admission)},${q(`${f.suffix}-org`)})`));requirements=ensured.requirements;
       const orgRequirement=requirements.find(x=>x.node_code==='org-confirm').id;
@@ -301,6 +317,12 @@ async function main(){
   } finally {
     const pathFilter=`name LIKE ${q(`training-admission/signature-evidence/%`)} AND name IN(${paths.length?paths.map(q).join(','):q(id())})`;
     psql(db,`BEGIN; SET LOCAL session_replication_role=replica;
+      DELETE FROM public.training_site_confirmation_locations WHERE requirement_id IN(SELECT id FROM public.training_site_confirmation_requirements WHERE admission_id IN(${q(admission)},${q(admissionB)}));
+      DELETE FROM public.training_site_confirmation_results WHERE requirement_id IN(SELECT id FROM public.training_site_confirmation_requirements WHERE admission_id IN(${q(admission)},${q(admissionB)}));
+      DELETE FROM public.training_site_confirmation_photo_validations WHERE requirement_id IN(SELECT id FROM public.training_site_confirmation_requirements WHERE admission_id IN(${q(admission)},${q(admissionB)}));
+      DELETE FROM public.training_site_confirmation_challenges WHERE requirement_id IN(SELECT id FROM public.training_site_confirmation_requirements WHERE admission_id IN(${q(admission)},${q(admissionB)}));
+      DELETE FROM public.training_site_confirmation_events WHERE requirement_id IN(SELECT id FROM public.training_site_confirmation_requirements WHERE admission_id IN(${q(admission)},${q(admissionB)}));
+      DELETE FROM public.training_site_confirmation_requirements WHERE admission_id IN(${q(admission)},${q(admissionB)});
       DELETE FROM storage.objects WHERE bucket_id='certificates' AND ${pathFilter};
       DELETE FROM public.training_signature_results WHERE requirement_id IN(SELECT id FROM public.training_signature_requirements WHERE requirement_snapshot_id IN(${q(snapshot)},${q(snapshot2)},${q(snapshot3)},${q(snapshot4)}));
       DELETE FROM public.training_signature_file_validations WHERE requirement_id IN(SELECT id FROM public.training_signature_requirements WHERE requirement_snapshot_id IN(${q(snapshot)},${q(snapshot2)},${q(snapshot3)},${q(snapshot4)}));

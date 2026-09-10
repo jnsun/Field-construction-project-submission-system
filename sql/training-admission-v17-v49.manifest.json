@@ -91,6 +91,8 @@
     { "version": 103, "file": "training-admission-v103-d15-r02-authority-prerequisites.sql", "sha256": "519DB13B18165E877A710AFD50252C8290ABF29BC9780EB71C038AAA17F6D7A6" },
     { "version": 104, "file": "training-admission-v104-d15-organization-signers-and-resign-cycle.sql", "sha256": "AD7659A74EB39740E8119AB21CC63866DF66819E2E1D36BEFBC525A0F3A9AACC" },
     { "version": 105, "file": "training-admission-v105-d15-file-validation-signed-time.sql", "sha256": "7FB8A3F95178A17E23EBB0F2213375D17C5B88DC6042C3FA5FDE5E6C8DAE71C4" },
-    { "version": 106, "file": "training-admission-v106-d15-validator-role-correction.sql", "sha256": "1570CB8F5D7D95569576DC738C06E229640F80DC888475B23EA947A2866B90D7" }
+    { "version": 106, "file": "training-admission-v106-d15-validator-role-correction.sql", "sha256": "1570CB8F5D7D95569576DC738C06E229640F80DC888475B23EA947A2866B90D7" },
+    { "version": 107, "file": "training-admission-v107-site-confirmation-evidence.sql", "sha256": "986C6D051566217330838165427C27D756D5335DDEB4141EE7220F666B7595D9" },
+    { "version": 108, "file": "training-admission-v108-d16-r01-p1-fixes.sql", "sha256": "75924C1269B7B634E62355DE266E5FABFC78F8E35A855DBF8BEBD66A120716F1" }
   ]
 }

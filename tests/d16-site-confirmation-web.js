@@ -1,0 +1,15 @@
+const fs=require('fs'),path=require('path');const root=path.resolve(__dirname,'..'),web=fs.readFileSync(path.join(root,'js','modules','training','site-confirmation.js'),'utf8'),training=fs.readFileSync(path.join(root,'js','modules','training','training.js'),'utf8'),html=fs.readFileSync(path.join(root,'index.html'),'utf8'),edge=fs.readFileSync(path.join(root,'supabase','functions','d16-validate-site-photo','index.ts'),'utf8'),fail=[];
+const check=(n,v)=>{console.log(`${v?'PASS':'FAIL'} D16-WEB ${n}`);if(!v)fail.push(n);};
+check('01 module loaded',html.includes('training/site-confirmation.js'));
+check('02 tab registered',training.includes("key: 'site-confirmation'"));
+check('03 renderer registered',training.includes('TrainingSiteConfirmation.render'));
+check('04 field managers can open tab',training.includes("'site-confirmation', 'admission-operations'"));
+check('05 server project list only',web.includes('training_site_confirmation_project_list'));
+check('06 server prepare and submit',web.includes('training_site_confirmation_prepare')&&web.includes('training_site_confirmation_submit'));
+check('07 private Storage upload',web.includes("sb.storage.from(p.storage_bucket).upload")&&web.includes('upsert:false'));
+check('08 Edge actual validation',web.includes("functions.invoke('d16-validate-site-photo'")&&edge.includes('validateSignatureImage'));
+check('09 location is optional',web.includes('失败不阻止照片确认')&&web.includes('resolve(null)'));
+check('10 location supplement RPC',web.includes('training_site_confirmation_supplement_location'));
+check('11 no local eligibility formula',!web.includes('training_three_level_status')&&!web.includes('exam_attempts')&&!web.includes('training_signature_requirements'));
+check('12 no miniprogram dependency',!web.includes('miniprogram'));
+console.log(`D16_WEB_RESULT ${fail.length?'FAIL':'PASS'} ${12-fail.length}/12`);if(fail.length)process.exit(1);

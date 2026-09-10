@@ -1,0 +1,93 @@
+{
+  "version": "D16-site-confirmation-v1",
+  "status": "candidate",
+  "authority": "Web/backend database RPC; clients display server results and never infer confirmation eligibility, confirmer authority, cycle validity or evidence completion",
+  "scope": "project plus person plus exact admission site confirmation before entry; D18 work eligibility is out of scope",
+  "applicable_paths": ["employee", "contractor", "temporary_individual"],
+  "excluded_paths": ["visitor"],
+  "confirmer": {
+    "mode": "ANY_OF",
+    "roles": ["project_manager", "safety_officer"],
+    "authority": "current active role on the exact site_project",
+    "ordinary_self_confirmation": false,
+    "company_or_entity_admin_default": false,
+    "submit_revalidation": true
+  },
+  "requirement": {
+    "binding": ["site_project", "active_project_member", "person", "exact_admission", "primary_admission_path"],
+    "states": ["pending", "confirmed", "invalidated", "superseded"],
+    "one_current": "one current requirement per project and person",
+    "history": "previous and successor requirements are linked and immutable evidence remains unchanged",
+    "source_event_idempotency": "one project/person/source_event_type/source_reference result"
+  },
+  "prerequisites": {
+    "project": "active",
+    "membership": "active exact member",
+    "employee": "current D11 authoritative three-level status must be satisfied",
+    "admission_exam": "current D13 exact admission/project/person/semantic/exam-plan submitted PASS attempt",
+    "special": "current D12 authoritative special requirements must be satisfied",
+    "signature": "D16 calls the authoritative D15 ensure operation; all applicable current required D15 signature requirements must be completed, and only an authoritative not_required result is not applicable",
+    "failure": "fail closed without mutating D11, D12, D13 or D15 facts"
+  },
+  "photo": {
+    "required": true,
+    "bucket": "certificates",
+    "path": "training-admission/site-confirmation/{requirement_id}/{challenge_id}/{unpredictable_uuid}.{png|jpg|jpeg}",
+    "accepted_mime": ["image/png", "image/jpeg"],
+    "active_validator_limit_bytes": 2097152,
+    "validation": "private object is bounded, magic-checked, fully decoded and bound by actual SHA-256, size, dimensions, object id/version/update time and uploader",
+    "overwrite": false,
+    "ordinary_update_delete": false
+  },
+  "location": {
+    "required_for_confirmation": false,
+    "states": ["present", "pending"],
+    "supplement": "one immutable later location bound to the original requirement and result",
+    "failure_does_not_block_photo_confirmation": true
+  },
+  "time": "confirmed_at is selected by the server and included in the final evidence digest",
+  "invalidation": {
+    "project_paused_or_closed": "invalidates current requirement",
+    "project_reactivated": "creates a new requirement for each current active non-visitor member with an exact admission",
+    "membership_inactive": "invalidates current requirement",
+    "membership_reactivated": "creates a new requirement when the project is active",
+    "simple_leave_return_without_authoritative_event": "preserves the current confirmation",
+    "future_events": "authorized project manager or safety officer may invoke controlled supersede with source type, unique reference and reason"
+  },
+  "rpcs": [
+    {"name":"training_site_confirmation_ensure","authorization":"current exact-project manager or safety officer"},
+    {"name":"training_site_confirmation_status","authorization":"self or scoped management reader"},
+    {"name":"training_site_confirmation_project_list","authorization":"current exact-project manager or safety officer"},
+    {"name":"training_site_confirmation_prepare","authorization":"current exact-project manager or safety officer"},
+    {"name":"d16-validate-site-photo edge handler","authorization":"current challenge confirmer JWT; service credential remains server-side"},
+    {"name":"training_site_confirmation_submit","authorization":"same current exact-project role revalidated at submit"},
+    {"name":"training_site_confirmation_supplement_location","authorization":"current exact-project manager or safety officer"},
+    {"name":"training_site_confirmation_supersede","authorization":"current exact-project manager or safety officer with audited source event and reason"}
+  ],
+  "idempotency": {
+    "prepare": "challenge-scoped",
+    "submit": "requirement row lock plus one result per requirement plus signer/idempotency uniqueness",
+    "concurrency": "project-manager/safety-officer racing submissions converge on one authoritative result",
+    "location": "one immutable supplement per result"
+  },
+  "privacy": {
+    "rls": true,
+    "direct_authenticated_table_access": false,
+    "private_storage": true,
+    "response_excludes_identity_number": true
+  },
+  "legacy_write_path": {
+    "rpc": "training_confirm_site(uuid,text,numeric,numeric,text,text)",
+    "ordinary_client_execute": false,
+    "ordinary_client_table_write": false,
+    "replacement": "D16 requirement/challenge/validated-photo/submit flow"
+  },
+  "reason_codes": [
+    "site_confirmation_not_found", "site_confirmation_forbidden", "site_confirmation_prerequisite_not_met",
+    "site_confirmation_already_completed", "site_confirmation_completed", "site_confirmation_stale",
+    "site_confirmation_challenge_expired", "site_confirmation_photo_invalid", "site_confirmation_photo_mismatch",
+    "site_confirmation_location_invalid", "site_confirmation_immutable", "membership_not_active",
+    "admission_binding_mismatch", "admission_path_not_applicable"
+  ],
+  "boundary": "D16 records site confirmation evidence only; it does not alter authoritative training, exam, signature, special-work or future D18 work-eligibility facts"
+}

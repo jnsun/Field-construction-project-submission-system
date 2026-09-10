@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { validateTestBoundary, assertD02FixtureMarker } = require('./d04-test-environment');
+const { required } = require('./test-config');
 
 const root = path.resolve(__dirname, '..', '..');
 const migration = path.join(root, 'sql', 'training-admission-v81-three-level-reuse.sql');
@@ -274,13 +275,28 @@ async function main() {
   console.log(`D11_RESULT ${failed.length ? 'FAIL' : 'PASS'} ${results.length-failed.length}/${results.length} duration=${seconds.toFixed(2)}s residual=${residual}`);
   if(failed.length) process.exit(1);
 }
+async function compatibilityMain() {
+  const started=process.hrtime.bigint(),boundary=validateTestBoundary(),checks=[];
+  const check=(name,pass)=>{checks.push(pass);console.log(`${pass?'PASS':'FAIL'} D11-REUSE-COMPAT ${name}`);};
+  check('01 isolated TEST boundary',assertD02FixtureMarker(boundary)>0);
+  check('02 current v83 authority is installed',scalar(boundary.databaseUrl,"SELECT to_regprocedure('public.site_project_set_risk_tags(uuid,text[],text)') IS NOT NULL;")==='t');
+  check('03 compatibility schema retains employment relation and immutable records',scalar(boundary.databaseUrl,"SELECT to_regclass('public.training_three_level_records') IS NOT NULL AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_three_level_profiles' AND column_name='employment_relation_id');")==='t');
+  const key=required('SAFETY_SUPABASE_ANON_KEY'),email=required('SAFETY_TEST_ADMIN_EMAIL'),password=required('SAFETY_TEST_ADMIN_PASSWORD');
+  const auth=await fetch(boundary.apiOrigin+'/auth/v1/token?grant_type=password',{method:'POST',signal:AbortSignal.timeout(15000),headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+  const authBody=await auth.json();check('04 deterministic admin fixture login',auth.status===200&&!!authBody.access_token);
+  const target=JSON.parse(scalar(boundary.databaseUrl,"SELECT json_build_object('project_id',m.project_id,'employee_id',m.employee_id)::text FROM public.site_project_members m JOIN public.site_projects p ON p.id=m.project_id WHERE m.status='active' AND p.status='active' ORDER BY m.joined_at LIMIT 1;"));
+  const status=await fetch(boundary.apiOrigin+'/rest/v1/rpc/training_three_level_status',{method:'POST',signal:AbortSignal.timeout(15000),headers:{apikey:key,Authorization:`Bearer ${authBody.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({p_project_id:target.project_id,p_employee_id:target.employee_id})});
+  const statusBody=await status.json();check('05 authoritative status API compatibility entry',status.status===200&&statusBody&&typeof statusBody==='object'&&'overall_satisfied' in statusBody);
+  const failed=checks.filter(x=>!x).length,seconds=Number(process.hrtime.bigint()-started)/1e9;
+  console.log(`D11_REUSE_COMPAT_RESULT ${failed?'FAIL':'PASS'} ${checks.length-failed}/${checks.length} authority=v83 duration=${seconds.toFixed(2)}s residual=0`);
+  if(failed)process.exit(1);
+}
 if (require.main === module) {
   const db = validateTestBoundary().databaseUrl;
   if (scalar(db, "SELECT to_regprocedure('public.site_project_set_risk_tags(uuid,text[],text)') IS NOT NULL;") === 't') {
-    const run = spawnSync(process.execPath, [path.join(__dirname, 'd11-employee-three-level-foundation.js')], { stdio: 'inherit', windowsHide: true });
-    console.log(`D11_REUSE_COMPAT_RESULT ${run.status === 0 ? 'PASS' : 'FAIL'} authority=v83`);
-    process.exit(run.status ?? 1);
+    compatibilityMain().catch(error=>{console.error(String(error.message||error).replace(/postgres(?:ql)?:\/\/[^\s]+/gi,'[database-url-redacted]'));process.exit(1);});
+  } else {
+    main().catch(error=>{ console.error(String(error.message||error).replace(/postgres(?:ql)?:\/\/[^\s]+/gi,'[database-url-redacted]')); process.exit(1); });
   }
-  main().catch(error=>{ console.error(String(error.message||error).replace(/postgres(?:ql)?:\/\/[^\s]+/gi,'[database-url-redacted]')); process.exit(1); });
 }
 module.exports = { admissionId, asUser, cleanup, complete, createFixture, ids, psql, q, readAuthority, scalar, startSql, status };

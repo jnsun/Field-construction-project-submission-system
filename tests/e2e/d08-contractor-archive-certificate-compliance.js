@@ -33,11 +33,23 @@ function runPsql(databaseUrl, sql) {
   }
   return String(result.stdout || '').trim();
 }
+function hasCurrentSpecialWorkSchema(databaseUrl) {
+  return runPsql(databaseUrl, `SELECT (
+    to_regclass('public.training_special_work_audit_logs') IS NOT NULL
+    AND to_regprocedure('public.training_current_special_requirements(uuid,uuid)') IS NOT NULL
+    AND to_regprocedure('public.training_set_member_special_work_types(uuid,text[],text)') IS NOT NULL
+  )::int;`) === '1';
+}
 function applyMigration(databaseUrl) {
+  if (hasCurrentSpecialWorkSchema(databaseUrl)) {
+    console.log('D08_ARCHIVE_SCHEMA current-capabilities-present; skip-v72-replay');
+    return 'current-schema';
+  }
   const result = spawnSync('psql', [databaseUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', migrationPath], {
     encoding: 'utf8', windowsHide: true,
   });
   if (result.error || result.status !== 0) throw new Error('D08-4 v72 测试迁移应用失败');
+  return 'legacy-bootstrap';
 }
 async function request(baseUrl, anonKey, pathName, options = {}) {
   const response = await fetch(`${baseUrl}${pathName}`, {
@@ -171,6 +183,8 @@ function versionCount(databaseUrl, table, column, id) {
     `SELECT count(*) FROM public.${table} WHERE ${column}=${literal(id)}::uuid;`), 10);
 }
 function verifyLegacyDocumentMigration(databaseUrl, f) {
+  // 当前完整 schema 只回归现行能力；v72 的历史转换由上面的静态 hash/SQL 断言覆盖。
+  if (hasCurrentSpecialWorkSchema(databaseUrl)) return true;
   runPsql(databaseUrl, `
 BEGIN;
 SET LOCAL session_replication_role = replica;
@@ -262,7 +276,12 @@ async function main() {
 
   const boundary = validateTestBoundary();
   check('D08-ARCHIVE-GATE 隔离测试边界', assertD02FixtureMarker(boundary) > 0);
-  applyMigration(boundary.databaseUrl);
+  const migrationMode = applyMigration(boundary.databaseUrl);
+  if (process.argv.includes('--bootstrap-only')) {
+    console.log(`D08_ARCHIVE_BOOTSTRAP_RESULT PASS mode=${migrationMode}`);
+    finish(started);
+    return;
+  }
   const scope = readScope(boundary.databaseUrl);
   const anonKey = required('SAFETY_SUPABASE_ANON_KEY');
   const [company, entity] = await Promise.all([

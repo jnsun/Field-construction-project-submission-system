@@ -161,9 +161,9 @@
       "name": "training_confirm_site",
       "db_identity": "public.training_confirm_site(uuid,text,numeric,numeric,text,text)",
       "domain": "project_role_operation",
-      "authorization": "current project manager or safety officer for the admission project",
-      "result": "void",
-      "revocation_semantics": "current project role is rechecked on every request"
+      "authorization": "disabled for anon/authenticated; historical server object only",
+      "result": "legacy write path revoked by D16 v108; use the D16 requirement/challenge/validated-photo/submit contract",
+      "revocation_semantics": "ordinary clients cannot execute this function"
     },
     {
       "name": "training_log_verification",

@@ -27,6 +27,7 @@ const TrainingModule = {
     { key: 'packages', label: '准入培训包' },
     { key: 'three-level-config', label: '三级教育配置' },
     { key: 'signatures', label: '电子签字' },
+    { key: 'site-confirmation', label: '现场确认' },
     { key: 'admission-operations', label: '准入执行' },
     { key: 'admission-review', label: '入场审核' },
     { key: 'admission-visitors', label: '领导访客' },
@@ -49,7 +50,7 @@ const TrainingModule = {
     const staff = this.isStaff();
     const fieldManager = this.isFieldManager();
 
-    if (fieldManager && !['plans', 'contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(this.state.view)) {
+    if (fieldManager && !['plans', 'contractors', 'site-confirmation', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(this.state.view)) {
       this.state.view = 'admission-operations';
     }
 
@@ -137,7 +138,7 @@ const TrainingModule = {
 
   buildTabs() {
     const tabs = this.isFieldManager()
-      ? this.TABS.filter(t => ['plans', 'contractors', 'signatures', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
+      ? this.TABS.filter(t => ['plans', 'contractors', 'site-confirmation', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
       : this.TABS.filter(t => t.key !== 'three-level-config' || this.canManageThreeLevelConfig());
     return `
       <div class="cat-tabs" id="training-tabs">
@@ -168,6 +169,7 @@ const TrainingModule = {
         case 'packages':  await TrainingAdmissionPackages.render(box); break;
         case 'three-level-config': await TrainingThreeLevelConfig.render(box); break;
         case 'signatures': await TrainingSignatureEvidence.render(box); break;
+        case 'site-confirmation': await TrainingSiteConfirmation.render(box); break;
         case 'admission-operations': await TrainingAdmissionOperations.render(box); break;
         case 'admission-review': await TrainingAdmissionReview.render(box); break;
         case 'admission-visitors': await TrainingAdmissionVisitors.render(box); break;

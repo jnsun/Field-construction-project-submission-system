@@ -1,0 +1,25 @@
+/** D16 R02 focused evidence: legacy RPC closed and D15 no-row fail-open removed. */
+const fs=require('fs'),path=require('path');
+const {spawnSync}=require('child_process');
+const {validateTestBoundary,assertD02FixtureMarker}=require('./d04-test-environment');
+const {required}=require('./test-config');
+const {asUser,q,scalar}=require('./d11-three-level-training-reuse');
+const root=path.resolve(__dirname,'..','..'),results=[];
+const check=(name,pass)=>{results.push(!!pass);console.log(`${pass?'PASS':'FAIL'} D16-R02 ${name}`);};
+const b=validateTestBoundary(),db=b.databaseUrl;assertD02FixtureMarker(b);
+const admin=scalar(db,`SELECT id FROM auth.users WHERE email=${q(required('SAFETY_TEST_ADMIN_EMAIL'))};`);
+const manager=scalar(db,"SELECT user_id FROM public.site_project_roles WHERE active AND role='project_manager' LIMIT 1;")||admin;
+const denied=user=>asUser(db,user,"SELECT public.training_confirm_site(gen_random_uuid(),'forged',NULL,NULL,NULL,NULL);",true);
+check('01 legacy RPC authenticated privilege revoked',scalar(db,"SELECT has_function_privilege('authenticated','public.training_confirm_site(uuid,text,numeric,numeric,text,text)','EXECUTE');")==='f');
+check('02 legacy RPC anon privilege revoked',scalar(db,"SELECT has_function_privilege('anon','public.training_confirm_site(uuid,text,numeric,numeric,text,text)','EXECUTE');")==='f');
+check('03 legacy table ordinary writes revoked',scalar(db,"SELECT count(*) FROM information_schema.role_table_grants WHERE grantee='authenticated' AND table_schema='public' AND table_name='training_site_confirmations' AND privilege_type IN('INSERT','UPDATE','DELETE','TRUNCATE');")==='0');
+check('04 authenticated caller is denied',denied(admin).status!==0);
+check('05 project manager cannot use legacy bypass',denied(manager).status!==0);
+const web=fs.readFileSync(path.join(root,'js','modules','training','admission-operations.js'),'utf8');
+check('06 old Web RPC call removed',!web.includes("sb.rpc('training_confirm_site'")&&!web.includes('submitConfirm('));
+check('07 old Web action routes to D16 workbench',web.includes("openSiteConfirmation('${m.project_id}')")&&web.includes("TrainingModule.switchView('site-confirmation')"));
+const child=spawnSync(process.execPath,[path.join(__dirname,'d15-electronic-signature-evidence.js'),'--segment=d16-prerequisite'],{stdio:'inherit',windowsHide:true});
+check('08 applicable unmaterialized D15 focused lifecycle',child.status===0);
+const failed=results.filter(x=>!x).length;
+console.log(`D16_R02_RESULT ${failed?'FAIL':'PASS'} ${results.length-failed}/${results.length} residual=0`);
+if(failed)process.exit(1);
