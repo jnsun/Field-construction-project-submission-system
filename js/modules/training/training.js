@@ -26,6 +26,7 @@ const TrainingModule = {
     { key: 'contractors', label: '外协与入场' },
     { key: 'packages', label: '准入培训包' },
     { key: 'three-level-config', label: '三级教育配置' },
+    { key: 'signatures', label: '电子签字' },
     { key: 'admission-operations', label: '准入执行' },
     { key: 'admission-review', label: '入场审核' },
     { key: 'admission-visitors', label: '领导访客' },
@@ -69,6 +70,7 @@ const TrainingModule = {
       // 员工端：只看「我的培训」
       await TrainingMine.render(box);
       await TrainingAdmissionMine.mount(box);
+      await TrainingSignatureEvidence.mount(box);
       return;
     }
     await this.loadDepartments();
@@ -135,7 +137,7 @@ const TrainingModule = {
 
   buildTabs() {
     const tabs = this.isFieldManager()
-      ? this.TABS.filter(t => ['plans', 'contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
+      ? this.TABS.filter(t => ['plans', 'contractors', 'signatures', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
       : this.TABS.filter(t => t.key !== 'three-level-config' || this.canManageThreeLevelConfig());
     return `
       <div class="cat-tabs" id="training-tabs">
@@ -165,6 +167,7 @@ const TrainingModule = {
         case 'contractors': await TrainingContractors.render(box); break;
         case 'packages':  await TrainingAdmissionPackages.render(box); break;
         case 'three-level-config': await TrainingThreeLevelConfig.render(box); break;
+        case 'signatures': await TrainingSignatureEvidence.render(box); break;
         case 'admission-operations': await TrainingAdmissionOperations.render(box); break;
         case 'admission-review': await TrainingAdmissionReview.render(box); break;
         case 'admission-visitors': await TrainingAdmissionVisitors.render(box); break;

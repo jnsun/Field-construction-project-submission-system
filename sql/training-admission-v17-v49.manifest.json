@@ -82,6 +82,15 @@
     { "version": 94, "file": "training-admission-v94-config-driven-three-level-cutover.sql", "sha256": "BD5FE9D6F531D5E681B55F9FA4853D409AA609D13932844C6834C3C0B3CAEDBC" },
     { "version": 95, "file": "training-admission-v95-d13-r02-authorization-boundaries.sql", "sha256": "B3A1903F15083004DE27B8E2A41A43BAF574B5C53600B6D8F6F0B64BDF84261E" },
     { "version": 96, "file": "training-admission-v96-d13-r02-integrity-fixes.sql", "sha256": "8A81930BDD15274A8374264546DB66F65B21FA3AD0B0E3A88A24103C80A20DB2" },
-    { "version": 97, "file": "training-admission-v97-training-plan-scope-correction.sql", "sha256": "3040BD5357EA60FFC066B480050E0A63DAEA45084F7455475D16E34F0181AB7F" }
+    { "version": 97, "file": "training-admission-v97-training-plan-scope-correction.sql", "sha256": "3040BD5357EA60FFC066B480050E0A63DAEA45084F7455475D16E34F0181AB7F" },
+    { "version": 98, "file": "training-admission-v98-electronic-signature-evidence.sql", "sha256": "FEE3155E6B61BA06F8CD1BE6783B9C7FD1CE3CBBFEB9161F614C95E1D269EF59" },
+    { "version": 99, "file": "training-admission-v99-signature-challenge-extension-path.sql", "sha256": "E3A489C87693918E3F8B0482739CE56FFB1F1682FFC0DCC352011484A68E88AC" },
+    { "version": 100, "file": "training-admission-v100-signature-file-suffix-correction.sql", "sha256": "D9F8A66B7A95843138C9134435377CEE0CFFA9CDDF773B6E0BE58B87FD62047E" },
+    { "version": 101, "file": "training-admission-v101-signature-future-retire-correction.sql", "sha256": "DF294473600C47571141E0CA25118A940C6AA0644CFF0EAFB5B1075ABD9876DB" },
+    { "version": 102, "file": "training-admission-v102-disable-legacy-signature-write-paths.sql", "sha256": "4E873238D8B875B852ACE3B6EDF3EB80206DAFCCDCD6BD2CA45770A14B36213C" },
+    { "version": 103, "file": "training-admission-v103-d15-r02-authority-prerequisites.sql", "sha256": "519DB13B18165E877A710AFD50252C8290ABF29BC9780EB71C038AAA17F6D7A6" },
+    { "version": 104, "file": "training-admission-v104-d15-organization-signers-and-resign-cycle.sql", "sha256": "AD7659A74EB39740E8119AB21CC63866DF66819E2E1D36BEFBC525A0F3A9AACC" },
+    { "version": 105, "file": "training-admission-v105-d15-file-validation-signed-time.sql", "sha256": "7FB8A3F95178A17E23EBB0F2213375D17C5B88DC6042C3FA5FDE5E6C8DAE71C4" },
+    { "version": 106, "file": "training-admission-v106-d15-validator-role-correction.sql", "sha256": "1570CB8F5D7D95569576DC738C06E229640F80DC888475B23EA947A2866B90D7" }
   ]
 }

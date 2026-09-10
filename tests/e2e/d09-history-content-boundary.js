@@ -10,12 +10,6 @@ const { assertD02FixtureMarker, validateTestBoundary } = require('./d04-test-env
 const root = path.resolve(__dirname, '..', '..');
 const migrationPath = path.join(root, 'sql', 'training-admission-v75-history-content-boundary.sql');
 const p1MigrationPath = path.join(root, 'sql', 'training-admission-v76-d09-p1-permission-boundaries.sql');
-const currentMigrationPaths = [77, 78, 79, 80].map(version => path.join(root, 'sql', {
-  77: 'training-admission-v77-storage-binding-boundary.sql',
-  78: 'training-admission-v78-plan-scope-hours-targets.sql',
-  79: 'training-admission-v79-plan-lifecycle-audit.sql',
-  80: 'training-admission-v80-d09-r02-p1-closure.sql',
-}[version]));
 const manifestPath = path.join(root, 'sql', 'training-admission-v17-v49.manifest.json');
 const minePath = path.join(root, 'js', 'modules', 'training', 'mine.js');
 const results = [];
@@ -112,6 +106,7 @@ FROM public.profiles p JOIN auth.users u ON u.id = p.id
 WHERE u.email = ${sqlLiteral(actorEmail)} AND p.role = 'admin' AND p.admin_level = 'dept' \gset
 SELECT p.id AS employee_user_id, p.employee_id AS employee_id
 FROM public.profiles p
+JOIN public.training_employees e ON e.id = p.employee_id
 WHERE p.role = 'employee' AND p.department_id = :'dept_id'::UUID AND p.employee_id IS NOT NULL
 ORDER BY p.id LIMIT 1 \gset
 SELECT set_config('request.jwt.claim.sub', :'actor_id', TRUE) AS ignored \gset
@@ -259,10 +254,8 @@ function main() {
   }
   const boundary = validateTestBoundary();
   assertD02FixtureMarker(boundary);
-  runPsql(boundary.databaseUrl, ['-f', migrationPath]);
-  runPsql(boundary.databaseUrl, ['-f', p1MigrationPath]);
-  currentMigrationPaths.forEach(file => runPsql(boundary.databaseUrl, ['-f', file]));
-  check('D09-DB-01 v75-v80 可连续应用', true);
+  const currentSchema = runPsql(boundary.databaseUrl, ['-c', "SELECT to_regprocedure('public.training_course_file_can_read(text)') IS NOT NULL AND to_regprocedure('public.training_publish_plan(uuid,text)') IS NOT NULL;"]);
+  check('D09-DB-01 当前完整 migration schema 可用且不重放历史 migration', currentSchema.stdout.split(/\r?\n/).filter(Boolean).at(-1) === 't');
   const matrix = runPsql(boundary.databaseUrl, [], matrixSql(required('SAFETY_TEST_ENTITY_EMAIL')));
   const summary = JSON.parse(matrix.stdout.split(/\r?\n/).filter(Boolean).at(-1));
   check('D09-DB-02 plan/course/RPC/library/read/Storage 矩阵', true);

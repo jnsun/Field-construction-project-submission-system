@@ -256,9 +256,7 @@ const TrainingMine = {
     const sig = a.training_signatures;
     const signed = Array.isArray(sig) ? sig.length > 0 : !!sig;
     const canSign = (r.status === 'completed' || a.exam_status === 'passed') && !signed;
-    return canSign
-      ? `<button class="btn btn-sm btn-primary" onclick="TrainingMine.openSign('${a.id}')">签字确认</button>`
-      : '';
+    return canSign ? '<span class="badge badge-warning">请在电子签字证据区确认</span>' : '';
   },
 
   host() {
@@ -1036,82 +1034,5 @@ const TrainingMine = {
 
   closeSimple() {
     this.host().innerHTML = '';
-  },
-
-  // ---------------------------------------------------------------- 签字
-  openSign(assignmentId) {
-    this.state.signAsg = assignmentId;
-    this.host().innerHTML = `
-      <div class="modal-overlay" onclick="TrainingMine.closeSimple()">
-        <div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
-          <div class="modal-header">
-            <h3>培训完成签字确认</h3>
-            <button class="modal-close" onclick="TrainingMine.closeSimple()">×</button>
-          </div>
-          <div class="modal-body">
-            <p class="hint" style="font-size:13px;margin-bottom:10px">
-              请在下方空白处<b>手写签名</b>，确认本人已完成本次培训。签字将留档备查。
-            </p>
-            <canvas id="sign-canvas" width="600" height="220"
-              style="width:100%;border:1.5px dashed #c7d0dc;border-radius:10px;touch-action:none;
-                     background:#fff;cursor:crosshair"></canvas>
-            <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
-              <button class="btn btn-sm btn-secondary" onclick="TrainingMine.clearSign()">清除重写</button>
-              <span class="hint" style="font-size:12px">请用手指或鼠标在框内签名</span>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-primary" onclick="TrainingMine.saveSign()">确认签字</button>
-            <button class="btn btn-secondary" onclick="TrainingMine.closeSimple()">取消</button>
-          </div>
-        </div>
-      </div>`;
-    this.initSignCanvas();
-  },
-
-  initSignCanvas() {
-    const cv = document.getElementById('sign-canvas');
-    const ctx = cv.getContext('2d');
-    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
-    this.state.signHasDrawn = false;
-    let drawing = false;
-    const pos = e => {
-      const r = cv.getBoundingClientRect();
-      return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height };
-    };
-    cv.onpointerdown = e => {
-      drawing = true; cv.setPointerCapture(e.pointerId);
-      const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
-    };
-    cv.onpointermove = e => {
-      if (!drawing) return;
-      const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
-      this.state.signHasDrawn = true;
-    };
-    cv.onpointerup = cv.onpointerleave = () => { drawing = false; };
-  },
-
-  clearSign() {
-    const cv = document.getElementById('sign-canvas');
-    if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
-    this.state.signHasDrawn = false;
-  },
-
-  async saveSign() {
-    if (!this.state.signHasDrawn) { alert('请先在框内签名'); return; }
-    const cv = document.getElementById('sign-canvas');
-    const blob = await (await fetch(cv.toDataURL('image/png'))).blob();
-    const path = `signatures/${this.state.signAsg}_${Date.now()}.png`;
-    const { error: upErr } = await sb.storage.from('training-courses')
-      .upload(path, blob, { contentType: 'image/png' });
-    if (upErr) { alert('签字上传失败：' + upErr.message); return; }
-    const { error } = await sb.rpc('training_submit_signature', {
-      p_assignment_id: this.state.signAsg, p_path: path,
-      p_device: (navigator.userAgent || '').slice(0, 200),
-    });
-    if (error) { alert('签字失败：' + error.message); return; }
-    if (Utils.toast) Utils.toast('签字成功，培训已完成！');
-    this.closeSimple();
-    await this.load();
   },
 };

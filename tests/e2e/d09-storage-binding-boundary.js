@@ -14,6 +14,7 @@ const migrations = [75, 76, 77, 80].map(version => path.join(root, 'sql',
         : 'training-admission-v80-d09-r02-p1-closure.sql'));
 const reproduce = process.argv.includes('--reproduce-v76');
 const diagnosePlan = process.argv.includes('--diagnose-plan');
+const diagnoseSchema = process.argv.includes('--diagnose-schema');
 const results = [];
 
 function literal(value) { return `'${String(value).replace(/'/g, "''")}'`; }
@@ -36,7 +37,41 @@ function runPsql(databaseUrl, sql) {
   return String(result.stdout || '').trim();
 }
 
+function currentSchemaCapabilities(databaseUrl) {
+  const flags = runPsql(databaseUrl, `SELECT concat_ws('|',
+    (to_regprocedure('public.training_course_file_can_bind(text)') IS NOT NULL)::text,
+    EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.training_courses'::regclass
+      AND tgname='trg_training_course_storage_binding_guard' AND tgenabled<>'D')::text,
+    EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.training_library'::regclass
+      AND tgname='trg_training_library_storage_binding_guard' AND tgenabled<>'D')::text,
+    (to_regprocedure('public.training_course_file_can_write(text)') IS NOT NULL)::text,
+    (to_regclass('public.training_signature_file_validations') IS NOT NULL)::text,
+    EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+      AND policyname='training_signature_evidence_upload')::text,
+    EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+      AND policyname='training_signature_evidence_read')::text);`).split('|');
+  return {
+    storageBoundary: flags.slice(0, 4).every(flag => flag === 'true'),
+    currentD15Schema: flags[4] === 'true',
+    d15PrivateStorage: flags[5] === 'true' && flags[6] === 'true',
+  };
+}
+
 function applyMigrations(databaseUrl) {
+  if (!reproduce) {
+    const capabilities = currentSchemaCapabilities(databaseUrl);
+    if (capabilities.storageBoundary) {
+      if (capabilities.currentD15Schema && !capabilities.d15PrivateStorage) {
+        throw new Error('当前 D15 schema 缺少私有签字 Storage 策略，拒绝重放历史 migration');
+      }
+      console.log('D09_STORAGE_SCHEMA current-capabilities-present; skip-v75-v80-replay');
+      return 'current-schema';
+    }
+    if (capabilities.currentD15Schema) {
+      throw new Error('当前 D15 schema 缺少 D09 Storage 能力，拒绝重放历史 migration');
+    }
+  }
+
   const files = reproduce ? migrations.slice(0, 2) : migrations;
   for (const file of files) {
     const result = spawnSync('psql', [databaseUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', file], {
@@ -44,6 +79,7 @@ function applyMigrations(databaseUrl) {
     });
     if (result.error || result.status !== 0) throw new Error(`迁移应用失败：${path.basename(file)}`);
   }
+  return reproduce ? 'reproduce-v76' : 'legacy-bootstrap';
 }
 
 async function request(baseUrl, anonKey, pathName, options = {}) {
@@ -150,7 +186,11 @@ async function main() {
       && /SECURITY DEFINER SET search_path = public/g.test(source)
       && /REVOKE ALL ON FUNCTION public\.training_course_file_can_bind\(TEXT\)[\s\S]*FROM PUBLIC, anon, authenticated/i.test(source));
   }
-  applyMigrations(boundary.databaseUrl);
+  const migrationMode = applyMigrations(boundary.databaseUrl);
+  if (diagnoseSchema) {
+    console.log(`D09_STORAGE_SCHEMA_DIAG mode=${migrationMode}`);
+    return;
+  }
 
   const suffix = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
   const id = () => crypto.randomUUID();

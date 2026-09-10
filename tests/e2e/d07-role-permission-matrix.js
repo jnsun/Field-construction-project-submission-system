@@ -100,6 +100,10 @@ function isDenied(response, message = '') {
     && (!message || String(response.json?.message || '') === message);
 }
 
+function responseDetail(response) {
+  return `${response?.status ?? 'none'}:${String(response?.json?.message || '').slice(0, 80)}`;
+}
+
 function verifySourceBoundary() {
   const source = fs.readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n');
   const manifest = JSON.parse(fs.readFileSync(
@@ -347,9 +351,10 @@ async function main() {
     const companyRefresh = await canRefresh(boundary, anonKey, company.token, fixture.projectAId);
     check('D07-MATRIX-02 公司级管理员', companyProjects?.length === 3 && companyEmployees?.length === 2
       && await canManage(boundary, anonKey, company.token, fixture.projectAId) === false
-      && isDenied(companyAssign, '仅项目主责经营实体管理员可以任命项目角色')
+      && isSuccess(companyAssign)
       && isDenied(companyRefresh, '您无权刷新项目邀请码')
-      && roleCount(boundary.databaseUrl, fixture.projectAId) === companyAssignBefore);
+      && roleCount(boundary.databaseUrl, fixture.projectAId) === companyAssignBefore + 1,
+      `projects=${companyProjects?.length ?? 'null'} employees=${companyEmployees?.length ?? 'null'} assign=${responseDetail(companyAssign)} refresh=${responseDetail(companyRefresh)}`);
 
     const entityProjects = await restRows(boundary, anonKey, entity.token, 'site_projects',
       `id=in.(${fixture.projectAId},${fixture.projectBId})`, 'id');
@@ -368,8 +373,9 @@ async function main() {
     check('D07-MATRIX-03 主责经营实体管理员', entityProjects?.length === 2
       && entityCrossProject?.length === 0 && entityOwnEmployee?.length === 1 && entityCrossEmployee?.length === 0
       && isSuccess(entityAssign) && isSuccess(entityRefresh)
-      && isDenied(entityCrossAssign, '仅项目主责经营实体管理员可以任命项目角色')
-      && isDenied(entityCrossRefresh, '您无权刷新项目邀请码'));
+      && isDenied(entityCrossAssign, '仅主责经营实体管理员或公司管理员可以任命项目角色')
+      && isDenied(entityCrossRefresh, '您无权刷新项目邀请码'),
+      `projects=${entityProjects?.length ?? 'null'}/${entityCrossProject?.length ?? 'null'} employees=${entityOwnEmployee?.length ?? 'null'}/${entityCrossEmployee?.length ?? 'null'} assign=${responseDetail(entityAssign)} refresh=${responseDetail(entityRefresh)} crossAssign=${responseDetail(entityCrossAssign)} crossRefresh=${responseDetail(entityCrossRefresh)}`);
     await entitySetRoles(boundary, boundary.databaseUrl, anonKey, entity.token, fixture, fixture.projectAId, []);
 
     switchActor(boundary.databaseUrl, fixture, fixture.ordinaryEmployeeId, fixture.leadEntityId);
@@ -392,7 +398,8 @@ async function main() {
       && isSuccess(managerA) && isSuccess(managerC)
       && isDenied(managerB, '您无权刷新项目邀请码') && isDenied(managerX, '您无权刷新项目邀请码')
       && managerOwnRows?.length > 0 && managerCrossRows?.length === 0 && managerBEmployee?.length === 0
-      && isDenied(managerAssign, '仅项目主责经营实体管理员可以任命项目角色'));
+      && isDenied(managerAssign, '仅主责经营实体管理员或公司管理员可以任命项目角色'),
+      `set=${responseDetail(managerASet)}/${responseDetail(managerCSet)} refresh=${responseDetail(managerA)}/${responseDetail(managerC)} denied=${responseDetail(managerB)}/${responseDetail(managerX)} rows=${managerOwnRows?.length ?? 'null'}/${managerCrossRows?.length ?? 'null'}/${managerBEmployee?.length ?? 'null'} assign=${responseDetail(managerAssign)}`);
     check('D07-MATRIX-05 同一人员可同时管理项目 A 和项目 C',
       roleCount(boundary.databaseUrl, fixture.projectAId, fixture.companyActor.id) === 1
       && roleCount(boundary.databaseUrl, fixture.projectCId, fixture.companyActor.id) === 1);
@@ -419,9 +426,10 @@ async function main() {
     check('D07-MATRIX-07 安全员', isSuccess(safetyASet) && isSuccess(safetyCSet)
       && isSuccess(safetyA) && isSuccess(safetyC)
       && isDenied(safetyB, '您无权刷新项目邀请码') && isDenied(safetyX, '您无权刷新项目邀请码')
-      && isDenied(safetyAssign, '仅项目主责经营实体管理员可以任命项目角色')
+      && isDenied(safetyAssign, '仅主责经营实体管理员或公司管理员可以任命项目角色')
       && roleCount(boundary.databaseUrl, fixture.projectAId, fixture.companyActor.id) === 1
-      && roleCount(boundary.databaseUrl, fixture.projectCId, fixture.companyActor.id) === 1);
+      && roleCount(boundary.databaseUrl, fixture.projectCId, fixture.companyActor.id) === 1,
+      `set=${responseDetail(safetyASet)}/${responseDetail(safetyCSet)} refresh=${responseDetail(safetyA)}/${responseDetail(safetyC)} denied=${responseDetail(safetyB)}/${responseDetail(safetyX)} assign=${responseDetail(safetyAssign)}`);
 
     runPsql(boundary.databaseUrl, `DELETE FROM public.site_project_roles WHERE user_id=${sqlLiteral(fixture.companyActor.id)}::uuid;`);
     const ordinaryOwn = await restRows(boundary, anonKey, company.token, 'training_employees',
@@ -446,8 +454,9 @@ async function main() {
     check('D07-MATRIX-08 普通员工', ordinaryOwn?.length === 1 && ordinaryOther?.length === 0
       && ordinaryA?.length === 1 && ordinaryB?.length === 0
       && isDenied(ordinaryRefresh, '您无权刷新项目邀请码')
-      && isDenied(illegalRest) && isDenied(illegalRpc, '仅项目主责经营实体管理员可以任命项目角色')
-      && roleCount(boundary.databaseUrl, fixture.projectAId, fixture.companyActor.id) === 0);
+      && isDenied(illegalRest) && isDenied(illegalRpc, '仅主责经营实体管理员或公司管理员可以任命项目角色')
+      && roleCount(boundary.databaseUrl, fixture.projectAId, fixture.companyActor.id) === 0,
+      `employees=${ordinaryOwn?.length ?? 'null'}/${ordinaryOther?.length ?? 'null'} projects=${ordinaryA?.length ?? 'null'}/${ordinaryB?.length ?? 'null'} refresh=${responseDetail(ordinaryRefresh)} rest=${responseDetail(illegalRest)} rpc=${responseDetail(illegalRpc)}`);
 
     switchActor(boundary.databaseUrl, fixture, fixture.externalEmployeeId, fixture.leadEntityId);
     const externalOwnEmployee = await restRows(boundary, anonKey, company.token, 'training_employees',

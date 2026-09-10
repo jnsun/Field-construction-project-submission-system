@@ -1,0 +1,106 @@
+{
+  "version": "D15-electronic-signature-evidence-v1",
+  "status": "pass",
+  "authority": "Web/backend database RPC; clients never create signature nodes, decide prerequisites, signer authority, evidence contents, digest, completion or server time",
+  "legal_scope": "system-internal handwritten electronic signature and business evidence; no claim of qualified or advanced electronic-signature legal effect",
+  "consumers": ["D16", "D17", "D18", "D21", "D22", "G2"],
+  "controlled_nodes": {
+    "employee_stage_acknowledgement": { "signer": "employee_self", "stage_scoped": true },
+    "employee_final_acknowledgement": { "signer": "employee_self", "final": true },
+    "organization_responsible_confirmation": { "signer": "organization_responsible", "scope": "organization_unit", "authority": "active stable-subject organization role; legacy entity_admin bridges only its operating_entity", "submit_revalidation": "revocation after prepare denies submit", "company_admin_default": false },
+    "project_manager_or_safety_confirmation": { "signer": ["project_manager", "safety_officer"], "mode": "ANY_OF", "scope": "site_project" }
+  },
+  "policy": {
+    "lifecycle": ["draft", "published", "retired"],
+    "versioning": "published versions are immutable; frozen requirements keep their version, and a future V2 leaves V1 selectable until V2 effective_from",
+    "configuration": ["controlled_node_type", "required", "signer_mode", "signer_roles", "sequence", "prerequisite", "scheme", "stage", "effective_from"],
+    "authority": "company administrator only"
+  },
+  "requirement": {
+    "source": "server policy resolution against an authoritative D11 Requirement Snapshot; an optional admission must match the same person and the Snapshot authoritative actual_project",
+    "frozen": ["policy_id", "policy_version_id", "node_type", "required", "signer_mode", "signer_roles", "sequence", "stage", "person", "stable_subject", "employment_relation", "admission", "project", "organization"],
+    "states": ["pending", "signed", "superseded"],
+    "client_creation": "forbidden"
+  },
+  "rpcs": [
+    { "name": "training_signature_policy_list", "authorization": "company administrator" },
+    { "name": "training_signature_policy_create", "authorization": "company administrator", "effect": "create policy and draft version" },
+    { "name": "training_signature_policy_save_draft", "authorization": "company administrator", "restriction": "draft only and controlled nodes only" },
+    { "name": "training_signature_policy_publish", "authorization": "company administrator", "effect": "freeze published version" },
+    { "name": "training_signature_policy_create_version", "authorization": "company administrator", "effect": "new draft version" },
+    { "name": "training_signature_policy_retire", "authorization": "company administrator", "effect": "stop future selection without changing history" },
+    { "name": "training_signature_ensure_requirements", "authorization": "eligible record participant or authorized manager", "effect": "idempotently create only policy-defined frozen requirements" },
+    { "name": "training_signature_requirement_list", "authorization": "record participant or authorized organization/project/company reader", "privacy": "no original image or full identity number" },
+    { "name": "training_signature_prepare", "authorization": "current authoritative signer", "response": ["requirement_id", "challenge_id", "nonce", "expires_at", "evidence_digest", "summary", "storage_bucket", "storage_path", "file_rules"] },
+    { "name": "d15-validate-signature edge handler", "authorization": "current challenge signer JWT; service credentials remain server-side", "effect": "bounded private-object download, PNG/JPEG magic and real decode, actual dimensions/size and SHA-256 validation" },
+    { "name": "training_signature_submit", "authorization": "same authoritative signer revalidated at submit", "request": ["p_challenge_id", "p_nonce", "p_idempotency_key", "p_device"], "effect": "requires an unchanged authoritative file-validation fact and writes one immutable result per requirement" },
+    { "name": "training_signature_result_file", "authorization": "record-level read authority", "effect": "return exact private object binding for short-lived signed URL" },
+    { "name": "training_organization_role_grant", "authorization": "company administrator", "effect": "grant an audited, effective-dated stable-subject organization_unit role" },
+    { "name": "training_organization_role_revoke", "authorization": "company administrator", "effect": "revoke organization authority immediately while preserving signed history" },
+    { "name": "training_signature_supersede_cycle", "authorization": "company administrator or controlled server workflow; employee denied", "input": ["previous_cycle_id", "authoritative_source_event_type", "authoritative_source_reference", "reason"], "effect": "resolve the target Snapshot and effective policy server-side, regenerate the complete node set, retain immutable old evidence and link previous/new cycles", "idempotency": "one successor per person and source event/reference; row lock and uniqueness collapse concurrent retries" }
+  ],
+  "prepare_submit": {
+    "challenge_ttl_minutes": 10,
+    "digest_revalidation": true,
+    "signed_at_binding": "submit chooses one server timestamptz before final digest generation; canonical UTC signature_signed_at and the same signed_at are stored atomically",
+    "signer_revalidation": true,
+    "prerequisite_revalidation": true,
+    "file_binding_revalidation": true,
+    "idempotency": "requirement row lock, idempotency key and uniqueness produce one authoritative result; retries return the original signed_at and digest",
+    "concurrency": "for ANY_OF, the first valid signer completes the requirement; later valid submits return the existing completion"
+  },
+  "prerequisites": {
+    "hard_invariants": "signature policy may add signature nodes but cannot waive required D11 training completion or an authoritative D13 exam requirement",
+    "management_nodes": "organization/project confirmations require all required Snapshot training items completed even when employee acknowledgement nodes are omitted",
+    "exam_binding": "exact admission, project, person, D13 semantic type, authoritative exam plan and PASS attempt"
+  },
+  "evidence_digest": {
+    "algorithm": "SHA-256",
+    "canonicalization": "server-generated PostgreSQL jsonb canonical representation",
+    "binds": ["person_and_stable_subject", "employment_relation_or_admission", "requirement_snapshot", "training_scheme_version", "training_package_release_versions", "completed_stages", "applicable_D13_exam_attempt", "signature_requirement", "policy_version", "signer_subject_role_scope_display", "authoritative_server_signed_at_utc", "validated_file_content_sha256_and_actual_dimensions"]
+  },
+  "file": {
+    "bucket": "certificates",
+    "path": "training-admission/signature-evidence/{requirement_id}/{challenge_id}/{unpredictable_uuid}.{png|jpg|jpeg}",
+    "accepted_mime": ["image/png", "image/jpeg"],
+    "trust": "client extension, MIME, size and dimensions are untrusted",
+    "validation": "server reads at most 2 MiB from private Storage, checks magic bytes, fully decodes PNG/JPEG, derives actual type/dimensions/size and SHA-256, and records an immutable validation fact",
+    "submit_requirement": "validation must match requirement, challenge, uploader, object id/version/updated_at and content digest; changed or unvalidated objects are rejected",
+    "max_bytes": 2097152,
+    "width_range": [64, 4096],
+    "height_range": [32, 4096],
+    "overwrite": false,
+    "ordinary_update_delete": false,
+    "read": "private, exact record authorization and short-lived signed URL"
+  },
+  "identity": {
+    "permanent": ["signer_stable_subject_id", "signer_role_snapshot", "signer_scope_snapshot", "signer_display_snapshot", "signed_at_server_time"],
+    "live_account": "optional reference; disable, close or login deletion does not erase historical signer identity"
+  },
+  "immutability": "signed result, signer, image, digest, role, scope, evidence references and signed_at cannot be updated or deleted through business or direct ordinary-client paths",
+  "supersede": "a validated authoritative business event creates one complete new cycle from its current Snapshot and effective policy; previous/new cycles are linked and old requirements, signed results, images, digests and audit remain immutable",
+  "reason_codes": [
+    "signature_not_required",
+    "signature_requirement_not_found",
+    "signature_prerequisite_not_met",
+    "signature_already_completed",
+    "signature_forbidden",
+    "signature_policy_invalid",
+    "signature_challenge_expired",
+    "signature_file_invalid",
+    "signature_file_mismatch",
+    "signature_evidence_changed",
+    "signature_superseded",
+    "signature_project_mismatch",
+    "signature_source_event_invalid"
+  ],
+  "security": {
+    "rls": true,
+    "direct_table_writes": "none for anon/authenticated",
+    "legacy_signature_write_paths": "revoked for anon/authenticated",
+    "storage_update_delete": "not granted",
+    "company_read_is_signer_authority": false,
+    "client_digest_input": false
+  },
+  "boundary": "D15 records confirmations of existing authoritative facts only; it never completes training, changes D11 completion, changes D13 score/result, or decides D18 work eligibility"
+}
