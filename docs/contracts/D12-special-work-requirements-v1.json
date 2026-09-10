@@ -16,7 +16,7 @@
   "rules": [
     "A certificate never activates actual special work.",
     "Actual blasting/electrical/welding is selected for one active project membership by an authorized project manager or safety officer.",
-    "site_projects.includes_drilling=true requires drilling training and an exam requirement for every active project member.",
+    "site_projects.includes_drilling=true requires drilling training for every active project member; EXAM-DRILL-001 decides whether an exam is additionally required.",
     "Drilling never requires a personal drilling certificate.",
     "Internal employees, contractors and temporary individuals use the same special-work gate; employee three-level education remains independent."
   ],
@@ -40,7 +40,7 @@
       },
       "response": {
         "required": ["project_id", "employee_id", "membership_active", "actual_special_work", "required_special_types", "drilling_required", "requirements", "blocked_reasons", "overall_satisfied", "reason_code"],
-        "requirement_fields": ["special_type", "label", "source", "certificate", "training_plan_id", "training_status", "exam_plan_id", "exam_requirement", "reason_codes"]
+        "requirement_fields": ["special_type", "category", "label", "source", "certificate", "training_plan_id", "training_status", "exam_required", "exam_plan_id", "exam_requirement", "reason_codes"]
       },
       "authorization": "self or site_project_can_read_management_data(project)",
       "freshness": "calculated at query time from current membership, project drilling flag, exact certificate state, published plans, assignments and published exam configuration"
@@ -69,7 +69,7 @@
   ],
   "certificate_states": ["not_required", "valid", "missing", "expired", "unapproved", "revoked"],
   "training_states": ["plan_missing", "required", "incomplete", "completed"],
-  "exam_requirements": ["plan_missing", "required", "passed"],
+  "exam_requirements": ["not_required", "plan_missing", "required", "passed"],
   "reason_codes": [
     "special_work_not_required",
     "special_certificate_missing",

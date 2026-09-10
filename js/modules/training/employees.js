@@ -487,7 +487,7 @@ const TrainingEmployees = {
     if (Utils.toast) Utils.toast('人员档案已永久留存，请将状态改为“离职”', 'error');
   },
 
-  // ------------------------------------------------------------ 批量删除
+  // ------------------------------------------------------------ 批量停用
   openBatchDelete() {
     const rows = this.filtered();
     const sel = rows.filter(e => this.state.selected.has(e.id));
@@ -502,35 +502,34 @@ const TrainingEmployees = {
       <div class="modal-overlay" onclick="TrainingEmployees.closeForm()">
         <div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
           <div class="modal-header">
-            <h3>批量删除员工档案</h3>
+            <h3>批量停用员工</h3>
             <button class="modal-close" onclick="TrainingEmployees.closeForm()">×</button>
           </div>
           <div class="modal-body">
-            <p style="color:#b91c1c;font-weight:500">删除后无法恢复，请确认。</p>
+            <p style="color:#b91c1c;font-weight:500">停用后人员档案和业务历史继续保留。</p>
             <p class="text-muted" style="font-size:13px;margin:8px 0">
-              删除员工时会一并清掉：该员工的<b>登录账号</b>、<b>参训名单</b>、<b>学习进度</b>。<br>
-              历史培训记录里的参训明细会保留姓名快照，不受影响。
+              系统会关闭该员工的<b>登录身份</b>并将人员状态改为离职；培训、项目、考试和审计历史不会删除。
             </p>
             <div style="border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-top:10px">
               <div style="display:flex;justify-content:space-between;align-items:center">
                 <div>
-                  <div style="font-weight:500">删除勾选的员工</div>
+                  <div style="font-weight:500">停用勾选的员工</div>
                   <div class="text-muted" style="font-size:12px">已勾选 ${sel.length} 人</div>
                 </div>
                 <button class="btn btn-danger btn-sm" ${sel.length ? '' : 'disabled'}
-                  onclick="TrainingEmployees.runBatchDelete('selected')">删除</button>
+                  onclick="TrainingEmployees.runBatchDelete('selected')">停用</button>
               </div>
             </div>
             <div style="border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-top:10px">
               <div style="display:flex;justify-content:space-between;align-items:center">
                 <div>
-                  <div style="font-weight:500">删除当前筛选结果</div>
+                  <div style="font-weight:500">停用当前筛选结果</div>
                   <div class="text-muted" style="font-size:12px">
                     当前列表共 ${rows.length} 人${filterDesc ? `（${Utils.escapeHtml(filterDesc)}）` : '（未设置筛选，即全部员工）'}
                   </div>
                 </div>
                 <button class="btn btn-danger btn-sm" ${rows.length ? '' : 'disabled'}
-                  onclick="TrainingEmployees.runBatchDelete('filtered')">删除</button>
+                  onclick="TrainingEmployees.runBatchDelete('filtered')">停用</button>
               </div>
             </div>
           </div>
@@ -548,16 +547,16 @@ const TrainingEmployees = {
       ? rows.filter(e => this.state.selected.has(e.id))
       : rows).map(e => e.id);
 
-    if (!ids.length) { alert('没有可删除的员工'); return; }
-    if (!confirm(`确定删除这 ${ids.length} 名员工？\n\n登录账号与学习进度会一并清除，且无法恢复。`)) return;
+    if (!ids.length) { alert('没有可停用的员工'); return; }
+    if (!confirm(`确定停用这 ${ids.length} 名员工？\n\n登录身份将关闭，人员档案和全部业务历史继续保留。`)) return;
 
     const { data, error } = await sb.rpc('training_employees_batch_delete', { p_ids: ids });
     if (error) {
       const msg = error.message || '';
       if (msg.includes('does not exist') || msg.includes('function')) {
-        alert('批量删除功能尚未启用。\n请先在 Supabase 的 SQL 编辑器里执行 sql/training-online-v2.sql 的第 16 节。');
+        alert('批量停用功能尚未启用。');
       } else {
-        alert('删除失败：' + msg);
+        alert('停用失败：' + msg);
       }
       return;
     }
@@ -566,13 +565,9 @@ const TrainingEmployees = {
     this.state.selected.clear();
     await this.load();
 
-    let info = `已删除 ${data.deleted} 名员工，连带清除 ${data.accounts} 个登录账号。`;
-    if (data.account_error) {
-      info += `\n\n注意：有 ${data.accounts === 0 ? '部分' : ''}登录账号没能删掉（多半是被其他业务数据引用），` +
-        `员工档案已删除，重新导入时若提示账号已存在，请让管理员在账号管理里手动删除。\n原始提示：${data.account_error}`;
-    }
+    const info = `已处理 ${data.processed} 名员工：停用 ${data.deactivated} 份人员档案，关闭 ${data.accounts_closed} 个登录身份。业务历史均已保留。`;
     alert(info);
-    if (Utils.toast) Utils.toast(`已删除 ${data.deleted} 名员工`);
+    if (Utils.toast) Utils.toast(`已停用 ${data.deactivated} 名员工`);
   },
 
   // ------------------------------------------------------------ 账号开通

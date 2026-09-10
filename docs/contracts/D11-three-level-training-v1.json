@@ -2,7 +2,7 @@
   "contract": "D11-three-level-training",
   "version": 1,
   "authority": "database",
-  "scope_levels": ["company", "entity", "third"],
+  "scope_levels": ["company", "organization", "third"],
   "rpc": {
     "training_three_level_status": {
       "request": {
@@ -39,8 +39,13 @@
       "roles": ["authorized_admin"]
     },
     "training_assign_three_level_program": {
-      "change": "assigns one company, entity and explicit basic_project or actual_project third-level record for the current employment relation",
+      "change": "compatibility wrapper; client plan arguments are ignored and the existing S3-B resolver/snapshot selects the frozen scheme, packages and stage types",
       "roles": ["authorized_admin"]
+    },
+    "training_ensure_three_level_requirement": {
+      "change": "production entrypoint that generates or reuses one immutable requirement snapshot and materializes D11 records from its required stage items",
+      "inputs": ["employee_id", "optional site_project_id", "optional request_id"],
+      "client_cannot_choose": ["organization", "applicability rule", "scheme", "scheme version", "training package", "training package version"]
     },
     "training_sync_three_level_tasks": {
       "request": { "p_admission_id": { "type": "uuid", "required": true } },
@@ -68,7 +73,7 @@
     "level_status": {
       "required": ["level", "state", "reason_code", "items"],
       "fields": {
-        "level": "company|entity|third",
+        "level": "company|organization|third",
         "state": "pending|learning|completed",
         "reason_code": "reason_code",
         "items": "task_status[]"
@@ -83,7 +88,7 @@
         "version_root_id": "uuid",
         "version_no": "integer",
         "status": "pending|learning|completed",
-        "third_level_mode": "basic_project|actual_project|null",
+        "stage_type": "company|organization|department_position|logistics_position|entity_position|basic_project|actual_project",
         "source_entity_id": "uuid|null",
         "source_project_id": "uuid|null",
         "planned_hours": "number|null",
@@ -143,6 +148,13 @@
     "source": "D09 assignment/progress/effective-hours services",
     "client_direct_completion": "denied",
     "history": "original plan/course/version snapshots remain unchanged"
+  },
+  "requirement_authority": {
+    "new_or_not_started": "latest effective configuration is resolved once and frozen in requirement snapshot",
+    "already_started": "on-demand legacy_d11_compatibility snapshot freezes existing truthful plan/version facts",
+    "already_completed": "completed, legacy_verified and legacy_supplement_completed remain satisfied without forced snapshot backfill",
+    "rehire": "a new employment relation receives its own snapshot and never reuses the previous relation snapshot",
+    "project_induction": "independent and never treated as a fourth three-level stage"
   },
   "future_special_training": {
     "owner": "D12",

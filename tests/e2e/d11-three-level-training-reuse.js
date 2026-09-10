@@ -14,9 +14,16 @@ function check(name, pass, detail = '') {
   console.log(`${pass ? 'PASS' : 'FAIL'} D11 ${name}${detail ? ` ${detail}` : ''}`);
 }
 function psql(databaseUrl, sql, allowFailure = false) {
-  const run = spawnSync('psql', [databaseUrl, '-X', '-Atq', '-v', 'ON_ERROR_STOP=1'], {
-    input: sql, encoding: 'utf8', windowsHide: true,
-  });
+  const retrySafe = !/\bINSERT\b/i.test(sql) && !/\bSELECT\s+public\./i.test(sql);
+  let run;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    run = spawnSync('psql', [databaseUrl, '-X', '-Atq', '-v', 'ON_ERROR_STOP=1'], {
+      input: sql, encoding: 'utf8', windowsHide: true,
+    });
+    const transient = /server closed the connection unexpectedly|connection .* failed|could not connect/i.test(String(run.stderr || run.error?.message || ''));
+    if (!(attempt < 2 && retrySafe && transient)) break;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500 * (attempt + 1));
+  }
   if (!allowFailure && (run.error || run.status !== 0)) {
     throw new Error(String(run.stderr || run.error?.message || '数据库执行失败')
       .replaceAll(databaseUrl, '[database-url-redacted]').trim());
@@ -33,6 +40,7 @@ function psqlAsync(databaseUrl, sql) {
   });
 }
 function apply(databaseUrl) {
+  if (scalar(databaseUrl, "SELECT to_regprocedure('public.site_project_set_risk_tags(uuid,text[],text)') IS NOT NULL;") === 't') return;
   const run = spawnSync('psql', [databaseUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', migration], {
     encoding: 'utf8', windowsHide: true,
   });
@@ -93,7 +101,7 @@ function createFixture(db, f) {
     [pl.projectA1,'project',null,p.a1,pl.projectA1,'allow'], [pl.projectA2,'project',null,p.a2,pl.projectA2,'allow'],
     [pl.projectB1,'project',null,p.b1,pl.projectB1,'allow'], [pl.projectA3,'project',null,p.a3,pl.projectA3,'allow'],
     [pl.exam,'company',null,null,pl.exam,'retrain'],
-  ].map(([id,level,dept,project,rootId,reuse], index) => `(${q(id)},${q(`[D11-TEST] plan ${index}`)},${q(level)},${dept ? q(dept) : 'NULL'},${project ? q(project) : 'NULL'},2026,1,0.5,'planned','approved','published',${q(rootId)},${index === 1 ? 2 : 1},${q(reuse)},${q(f.manager)})`).join(',');
+  ].map(([id,level,dept,project,rootId,reuse], index) => `(${q(id)},${q(`[D11-TEST] plan ${index}`)},${q(level)},'basic_three_level',${dept ? q(dept) : 'NULL'},${project ? q(project) : 'NULL'},${level === 'project' ? "'actual_project'" : 'NULL'},2026,1,0.5,'planned','approved','published',${q(rootId)},${index === 1 ? 2 : 1},${q(reuse)},${q(f.manager)})`).join(',');
   const packages = [
     [pk.a1,p.a1,'A1'], [pk.a2,p.a2,'A2'], [pk.b1,p.b1,'B1'], [pk.a3,p.a3,'A3'], [pk.missing,p.a2,'MISSING'],
   ].map(([id,project,title]) => `(${q(id)},${q(project)},${q(`[D11-TEST] ${title}`)},1,1,'published',${q(f.manager)},${q(pl.exam)})`).join(',');
@@ -117,15 +125,19 @@ INSERT INTO public.profiles(id,email,employee_id,department_id,role,full_name,is
  VALUES(${q(f.users.internal)},${q(auth.internalEmail)},${q(e.internal)},${q(f.entityA)},'employee','[D11-TEST] internal',false,NULL),
        (${q(f.users.contractor)},${q(auth.contractorEmail)},${q(e.contractor)},${q(f.entityA)},'employee','[D11-TEST] contractor',false,NULL)
  ON CONFLICT(id) DO UPDATE SET employee_id=EXCLUDED.employee_id,department_id=EXCLUDED.department_id,role='employee',full_name=EXCLUDED.full_name,is_super_admin=false,admin_level=NULL;
+INSERT INTO public.account_subjects(auth_user_id,employee_id)
+ VALUES(${q(f.users.internal)},${q(e.internal)}),(${q(f.users.contractor)},${q(e.contractor)});
+INSERT INTO public.account_lifecycle(subject_id)
+ SELECT id FROM public.account_subjects WHERE auth_user_id IN(${q(f.users.internal)},${q(f.users.contractor)});
 INSERT INTO public.contractor_companies(id,name,unified_code,status,managing_entity_id,created_by) VALUES
  (${q(f.contractors.known)},${q(`[D11-TEST] known ${f.suffix}`)},${q(`D11K${f.suffix}`)},'active',${q(f.entityA)},${q(f.manager)}),
  (${q(f.contractors.unknown)},${q(`[D11-TEST] unknown ${f.suffix}`)},${q(`D11U${f.suffix}`)},'active',NULL,${q(f.manager)});
-INSERT INTO public.training_plans(id,title,level,department_id,site_project_id,plan_year,hours,required_hours,status,approval_status,publish_status,version_root_id,version_no,reuse_policy,created_by) VALUES ${planRows};
+INSERT INTO public.training_plans(id,title,level,training_category,department_id,site_project_id,third_level_mode,plan_year,hours,required_hours,status,approval_status,publish_status,version_root_id,version_no,reuse_policy,created_by) VALUES ${planRows};
 INSERT INTO public.training_courses(plan_id,title,course_type,content,required,sort_order)
  SELECT id,'[D11-TEST] course','text','D11 safe content',true,1 FROM public.training_plans WHERE id IN (${Object.values(pl).map(q).join(',')});
 INSERT INTO public.training_admission_packages(id,project_id,title,version_no,validity_years,status,created_by,exam_plan_id) VALUES ${packages};
 INSERT INTO public.training_admission_package_items(package_id,plan_id,level,required,sort_order) VALUES ${items};
-INSERT INTO public.exam_papers(id,plan_id,title,mode,duration_min,pass_score,retry_limit,status,created_by) VALUES (${q(f.paper)},${q(pl.exam)},'[D11-TEST] exam','fixed',30,80,3,'published',${q(f.manager)});
+INSERT INTO public.exam_papers(id,plan_id,title,mode,duration_min,pass_score,retry_limit,status,created_by,exam_type,exam_semantic_type) VALUES (${q(f.paper)},${q(pl.exam)},'[D11-TEST] exam','fixed',30,80,3,'published',${q(f.manager)},'general','general');
 INSERT INTO public.exam_questions(id,scope,question_type,stem,options,answer,status,created_by) VALUES (${q(f.question)},'company','single','[D11-TEST] question','[{"key":"A","text":"ok"}]','A','published',${q(f.manager)});
 INSERT INTO public.exam_paper_questions(paper_id,question_id,score,sort_order) VALUES (${q(f.paper)},${q(f.question)},100,1);
 INSERT INTO public.site_project_roles(project_id,user_id,role,active) SELECT id,${q(f.manager)},'project_manager',true FROM public.site_projects WHERE id IN (${Object.values(p).map(q).join(',')});
@@ -155,6 +167,10 @@ function cleanup(db, f) {
   const projects = Object.values(f.projects).map(q).join(','), employees = Object.values(f.employees).map(q).join(','), plans = Object.values(f.plans).map(q).join(',');
   psql(db, `BEGIN; SET LOCAL session_replication_role=replica;
 DELETE FROM public.exam_attempts WHERE employee_id IN (${employees});
+DELETE FROM public.training_three_level_audit_logs WHERE employee_id IN (${employees});
+DELETE FROM public.training_three_level_legacy_evidence WHERE employee_id IN (${employees});
+DELETE FROM public.training_three_level_records WHERE employee_id IN (${employees});
+DELETE FROM public.training_three_level_profiles WHERE employee_id IN (${employees});
 DELETE FROM public.training_admission_signatures WHERE admission_id IN (SELECT id FROM public.training_admissions WHERE employee_id IN (${employees}));
 DELETE FROM public.training_admission_tasks WHERE admission_id IN (SELECT id FROM public.training_admissions WHERE employee_id IN (${employees}));
 DELETE FROM public.training_admissions WHERE employee_id IN (${employees});
@@ -163,15 +179,28 @@ DELETE FROM public.exam_paper_questions WHERE paper_id=${q(f.paper)}; DELETE FRO
 DELETE FROM public.training_admission_package_items WHERE package_id IN (${Object.values(f.packages).map(q).join(',')});
 DELETE FROM public.training_admission_packages WHERE id IN (${Object.values(f.packages).map(q).join(',')});
 DELETE FROM public.training_courses WHERE plan_id IN (${plans}); DELETE FROM public.training_plans WHERE id IN (${plans});
+DELETE FROM public.project_person_admission_path_history WHERE project_id IN (${projects});
+DELETE FROM public.project_person_admission_paths WHERE project_id IN (${projects});
 DELETE FROM public.site_project_members WHERE project_id IN (${projects}); DELETE FROM public.site_project_roles WHERE project_id IN (${projects});
 DELETE FROM public.site_project_entities WHERE project_id IN (${projects}); DELETE FROM public.site_project_audit_logs WHERE project_id IN (${projects});
 DELETE FROM public.site_projects WHERE id IN (${projects});
 DELETE FROM public.contractor_company_versions WHERE contractor_id IN (${Object.values(f.contractors).map(q).join(',')});
 DELETE FROM public.contractor_companies WHERE id IN (${Object.values(f.contractors).map(q).join(',')});
+DELETE FROM public.account_high_privilege_approvals WHERE target_subject_id IN(SELECT id FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')})) OR requested_by_subject_id IN(SELECT id FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')})) OR reviewed_by_subject_id IN(SELECT id FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')}));
+DELETE FROM public.account_lifecycle_history WHERE subject_id IN(SELECT id FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')})) OR operator_subject_id IN(SELECT id FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')}));
+DELETE FROM public.account_lifecycle WHERE subject_id IN(SELECT id FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')}));
+DELETE FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')});
+DELETE FROM public.profiles WHERE id IN (${Object.values(f.users).map(q).join(',')});
 DELETE FROM auth.users WHERE id IN (${Object.values(f.users).map(q).join(',')}); DELETE FROM public.training_employees WHERE id IN (${employees}); COMMIT;`);
   return Number(scalar(db, `SELECT (SELECT count(*) FROM public.site_projects WHERE id IN (${projects}))
     +(SELECT count(*) FROM public.training_employees WHERE id IN (${employees}))
-    +(SELECT count(*) FROM public.training_plans WHERE id IN (${plans}));`));
+    +(SELECT count(*) FROM public.training_plans WHERE id IN (${plans}))
+    +(SELECT count(*) FROM public.training_three_level_profiles WHERE employee_id IN (${employees}))
+    +(SELECT count(*) FROM public.training_three_level_records WHERE employee_id IN (${employees}))
+    +(SELECT count(*) FROM public.training_three_level_legacy_evidence WHERE employee_id IN (${employees}))
+    +(SELECT count(*) FROM public.training_three_level_audit_logs WHERE employee_id IN (${employees}))
+    +(SELECT count(*) FROM public.profiles WHERE id IN (${Object.values(f.users).map(q).join(',')}))
+    +(SELECT count(*) FROM public.account_subjects WHERE auth_user_id IN(${Object.values(f.users).map(q).join(',')}));`));
 }
 
 async function main() {
@@ -246,6 +275,12 @@ async function main() {
   if(failed.length) process.exit(1);
 }
 if (require.main === module) {
+  const db = validateTestBoundary().databaseUrl;
+  if (scalar(db, "SELECT to_regprocedure('public.site_project_set_risk_tags(uuid,text[],text)') IS NOT NULL;") === 't') {
+    const run = spawnSync(process.execPath, [path.join(__dirname, 'd11-employee-three-level-foundation.js')], { stdio: 'inherit', windowsHide: true });
+    console.log(`D11_REUSE_COMPAT_RESULT ${run.status === 0 ? 'PASS' : 'FAIL'} authority=v83`);
+    process.exit(run.status ?? 1);
+  }
   main().catch(error=>{ console.error(String(error.message||error).replace(/postgres(?:ql)?:\/\/[^\s]+/gi,'[database-url-redacted]')); process.exit(1); });
 }
 module.exports = { admissionId, asUser, cleanup, complete, createFixture, ids, psql, q, readAuthority, scalar, startSql, status };

@@ -14,6 +14,7 @@ const ExamPapers = {
     qPool: [],      // 题库候选
     qFilter: { type: '', kw: '' },
     editingId: null,
+    specialCatalog: [],
   },
 
   TYPE_LABEL: { single: '单选', multi: '多选', judge: '判断', case: '案例' },
@@ -32,7 +33,7 @@ const ExamPapers = {
       </div>
       <div id="paper-table"></div>
     `;
-    await Promise.all([this.load(), this.loadPlans()]);
+    await Promise.all([this.load(), this.loadPlans(), this.loadSpecialCatalog()]);
   },
 
   async load() {
@@ -51,6 +52,11 @@ const ExamPapers = {
     this.state.plans = data || [];
   },
 
+  async loadSpecialCatalog() {
+    const { data } = await sb.from('special_requirement_catalog').select('special_type, display_name').eq('enabled', true).order('sort_order');
+    this.state.specialCatalog = data || [];
+  },
+
   renderTable() {
     const box = document.getElementById('paper-table');
     if (!box) return;
@@ -65,6 +71,7 @@ const ExamPapers = {
             <thead>
               <tr>
                 <th>试卷名称</th>
+                <th style="width:90px">考试类型</th>
                 <th style="width:64px">模式</th>
                 <th style="width:170px">挂接计划</th>
                 <th style="width:66px">时长</th>
@@ -77,10 +84,11 @@ const ExamPapers = {
             </thead>
             <tbody>
               ${rows.length === 0
-                ? TrainingModule.emptyRow(canW ? 9 : 8, '暂无试卷。先在「题库管理」录题，再点右上角「+ 新建试卷」。')
+                ? TrainingModule.emptyRow(canW ? 10 : 9, '暂无试卷。先在「题库管理」录题，再点右上角「+ 新建试卷」。')
                 : rows.map(x => `
                   <tr>
                     <td title="${Utils.escapeHtml(x.title)}">${Utils.escapeHtml(x.title)}</td>
+                    <td>${x.exam_semantic_type === 'special_exam' ? `${Utils.escapeHtml(x.special_type || '')} 专项` : x.exam_semantic_type === 'project_induction_exam' ? '项目入场' : x.exam_type === 'admission' ? '员工综合准入' : '通用'}</td>
                     <td>${x.mode === 'fixed'
                         ? '<span class="badge badge-info">固定</span>'
                         : '<span class="badge badge-warning">随机</span>'}</td>
@@ -179,6 +187,25 @@ const ExamPapers = {
             </div>
             <div class="form-row" style="grid-template-columns:repeat(4,1fr)">
               <div class="form-group">
+                <label>考试类型</label>
+                <select id="pf-exam-type" onchange="document.getElementById('pf-special-type').disabled=this.value!=='special_exam'">
+                  <option value="employee_comprehensive_admission_exam"${!p || p.exam_semantic_type === 'employee_comprehensive_admission_exam' || p.exam_semantic_type === 'legacy_admission' ? ' selected' : ''}>员工综合准入考试</option>
+                  <option value="project_induction_exam"${p && p.exam_semantic_type === 'project_induction_exam' ? ' selected' : ''}>项目入场考试</option>
+                  <option value="special_exam"${p && p.exam_semantic_type === 'special_exam' ? ' selected' : ''}>专项考试</option>
+                  <option value="general"${p && p.exam_semantic_type === 'general' ? ' selected' : ''}>通用考试</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>专项类型</label>
+                <select id="pf-special-type" ${!p || p.exam_semantic_type !== 'special_exam' ? 'disabled' : ''}>
+                  ${this.state.specialCatalog.map(x => `<option value="${x.special_type}"${p && p.special_type === x.special_type ? ' selected' : ''}>${Utils.escapeHtml(x.display_name)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label>题数</label>
+                <input id="pf-question-count" type="number" min="10" max="100" value="${p ? p.question_count : 20}">
+              </div>
+              <div class="form-group">
                 <label>组卷模式</label>
                 <select id="pf-mode" onchange="ExamPapers.onModeChange()">
                   <option value="fixed"${this.state.formMode === 'fixed' ? ' selected' : ''}>固定（手动选题）</option>
@@ -187,11 +214,11 @@ const ExamPapers = {
               </div>
               <div class="form-group">
                 <label>时长（分钟）</label>
-                <input id="pf-duration" type="number" min="5" value="${p ? p.duration_min : 30}">
+                <input id="pf-duration" type="number" min="10" max="120" value="${p ? p.duration_min : 30}">
               </div>
               <div class="form-group">
                 <label>及格线</label>
-                <input id="pf-pass" type="number" step="0.5" min="0" value="${p ? p.pass_score : 60}">
+                <input id="pf-pass" type="number" step="0.5" min="60" max="100" value="${p ? p.pass_score : 80}">
               </div>
               <div class="form-group">
                 <label>补考次数（含首考）</label>
@@ -215,7 +242,7 @@ const ExamPapers = {
             <div class="form-group" style="display:flex;justify-content:space-between;align-items:center;
                 background:#f4f6fa;border-radius:8px;padding:8px 12px">
               <b style="font-size:13px">试卷总分：<span id="pf-total">0</span> 分</b>
-              <span class="hint" style="font-size:12px">及格线不能超过总分</span>
+              <span class="hint" style="font-size:12px">及格线按百分制配置</span>
             </div>
             <div id="pf-body"></div>
           </div>
@@ -455,11 +482,19 @@ const ExamPapers = {
     if (!title) return err('请填写试卷名称');
 
     const mode = document.getElementById('pf-mode').value;
-    const pass = parseFloat(document.getElementById('pf-pass').value) || 60;
+    const pass = parseFloat(document.getElementById('pf-pass').value);
+    const questionCount = parseInt(document.getElementById('pf-question-count').value, 10);
+    const duration = parseInt(document.getElementById('pf-duration').value, 10);
+    const retryLimit = parseInt(document.getElementById('pf-retry').value, 10);
+    const actualCount = mode === 'fixed' ? this.state.picked.length
+      : [...document.querySelectorAll('#pf-rules .pr-count')].reduce((sum, el) => sum + (parseInt(el.value, 10) || 0), 0);
+    if (!Number.isFinite(pass) || pass < 60 || pass > 100) return err('及格线必须在 60 至 100 之间');
+    if (!Number.isInteger(questionCount) || questionCount < 10 || questionCount > 100) return err('题数必须在 10 至 100 之间');
+    if (!Number.isInteger(duration) || duration < 10 || duration > 120) return err('时长必须在 10 至 120 分钟之间');
+    if (!Number.isInteger(retryLimit) || retryLimit < 1 || retryLimit > 10) return err('考试次数必须在 1 至 10 次之间');
+    if (document.getElementById('pf-status').value === 'published' && actualCount !== questionCount) return err(`发布试卷需要正好 ${questionCount} 题，当前为 ${actualCount} 题`);
     const total = parseFloat(document.getElementById('pf-total').textContent) || 0;
     if (total <= 0) return err(mode === 'fixed' ? '请至少添加 1 道题' : '请配置有效的抽题规则');
-    if (pass > total) return err(`及格线（${pass}）不能超过试卷总分（${total}）`);
-
     if (mode === 'fixed' && !this.state.picked.length) return err('请至少添加 1 道题');
     if (mode === 'random') {
       const rules = [];
@@ -478,13 +513,18 @@ const ExamPapers = {
       this.state.rules = rules;
     }
 
+    const semanticType = document.getElementById('pf-exam-type').value;
     const payload = {
       title,
       plan_id: document.getElementById('pf-plan').value || null,
+      exam_type: semanticType === 'special_exam' ? 'special' : semanticType === 'general' ? 'general' : 'admission',
+      exam_semantic_type: semanticType,
+      special_type: semanticType === 'special_exam' ? document.getElementById('pf-special-type').value : null,
+      question_count: questionCount,
       mode,
-      duration_min: parseInt(document.getElementById('pf-duration').value, 10) || 30,
+      duration_min: duration,
       pass_score: pass,
-      retry_limit: parseInt(document.getElementById('pf-retry').value, 10) || 3,
+      retry_limit: retryLimit,
       shuffle: document.getElementById('pf-shuffle').checked,
       total_score: total,
       status: document.getElementById('pf-status').value,

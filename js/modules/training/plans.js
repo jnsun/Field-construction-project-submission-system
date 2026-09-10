@@ -10,6 +10,7 @@ const TrainingPlans = {
     targets: {},          // plan_id -> [部门id]
     targetRows: [],       // 下发记录原始行（含 status / record_id / participant_count）
     projects: [],
+    specialCatalog: [],
     filters: { year: String(new Date().getFullYear()), level: '', status: '' },
   },
 
@@ -57,17 +58,19 @@ const TrainingPlans = {
   },
 
   async load() {
-    const [{ data, error }, tg, projects] = await Promise.all([
+    const [{ data, error }, tg, projects, catalog] = await Promise.all([
       sb.from('training_plans')
-        .select('id, title, category, level, department_id, site_project_id, third_level_mode, special_type, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, publication_note, exam_mode, approval_status, approval_note, submitted_at, approved_at, withdrawn_at, withdraw_reason, version_no, supersedes_plan_id')
+        .select('id, title, category, training_category, level, department_id, site_project_id, third_level_mode, special_type, plan_year, plan_month, start_date, end_date, hours, trainer, location, target_desc, require_exam, status, remark, deadline, required_hours, publish_status, publication_note, exam_mode, approval_status, approval_note, submitted_at, approved_at, withdrawn_at, withdraw_reason, version_no, supersedes_plan_id')
         .order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_plan_targets')
         .select('id, plan_id, department_id, due_date, status, actual_date, participant_count, record_id, trainer, location, content, sign_method, hours'),
       sb.from('site_projects').select('id,name,project_code,status').order('name'),
+      sb.from('special_requirement_catalog').select('special_type, display_name').eq('enabled', true).order('sort_order'),
     ]);
     if (error) throw error;
     this.state.list = data || [];
     this.state.projects = projects.data || [];
+    this.state.specialCatalog = catalog.data || [];
     this.state.targets = {};
     this.state.targetRows = tg.data || [];
     (tg.data || []).forEach(t => {
@@ -517,10 +520,16 @@ const TrainingPlans = {
               </div>
               <div class="form-group">
                 <label>专项类型</label>
-                <input id="plan-special-type" class="form-control" placeholder="仅专项培训填写" value="${Utils.escapeHtml(p ? (p.special_type || '') : '')}">
+                <select id="plan-special-type" class="form-control"><option value="">不适用</option>${this.state.specialCatalog.map(x => `<option value="${x.special_type}"${p?.special_type === x.special_type ? ' selected' : ''}>${Utils.escapeHtml(x.display_name)}</option>`).join('')}</select>
               </div>
             </div>
             <div class="form-row">
+              <div class="form-group">
+                <label>V1 培训分类</label>
+                <select id="plan-training-category" class="form-control">
+                  ${[['basic_three_level','基础三级教育'],['project_induction','项目入场教育'],['project_special','项目专项'],['special_operation','特种作业专项'],['continuing_or_change','持续/变化培训']].map(([v,l]) => `<option value="${v}"${(p?.training_category || 'continuing_or_change') === v ? ' selected' : ''}>${l}</option>`).join('')}
+                </select>
+              </div>
               <div class="form-group">
                 <label>培训类别</label>
                 <input id="plan-category" class="form-control" placeholder="如 入场三级教育 / 年度再培训 / 专项培训"
@@ -630,6 +639,7 @@ const TrainingPlans = {
     const payload = {
       title: document.getElementById('plan-title').value.trim(),
       level: document.getElementById('plan-level').value,
+      training_category: document.getElementById('plan-training-category').value,
       department_id: document.getElementById('plan-dept').value || null,
       site_project_id: document.getElementById('plan-project').value || null,
       third_level_mode: document.getElementById('plan-third-level-mode').value || null,

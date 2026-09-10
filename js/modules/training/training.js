@@ -18,12 +18,14 @@ const TrainingModule = {
     deptMap: {},           // id -> 部门对象
     profile: null,
     fieldRoles: [],        // 当前账号被任命为项目经理/安全员的项目级权限
+    authorityRoles: [],    // 服务端权威账号角色，仅用于公司级配置入口
   },
 
   TABS: [
     { key: 'projects',  label: '正式项目台账' },
     { key: 'contractors', label: '外协与入场' },
     { key: 'packages', label: '准入培训包' },
+    { key: 'three-level-config', label: '三级教育配置' },
     { key: 'admission-operations', label: '准入执行' },
     { key: 'admission-review', label: '入场审核' },
     { key: 'admission-visitors', label: '领导访客' },
@@ -42,7 +44,7 @@ const TrainingModule = {
   // ---------------------------------------------------------------- 入口
   async render(app) {
     this.state.profile = Auth.currentProfile || {};
-    await this.loadFieldRoles();
+    await Promise.all([this.loadFieldRoles(), this.loadAuthorityRoles()]);
     const staff = this.isStaff();
     const fieldManager = this.isFieldManager();
 
@@ -134,7 +136,7 @@ const TrainingModule = {
   buildTabs() {
     const tabs = this.isFieldManager()
       ? this.TABS.filter(t => ['plans', 'contractors', 'admission-operations', 'admission-review', 'admission-verify', 'admission-reports'].includes(t.key))
-      : this.TABS;
+      : this.TABS.filter(t => t.key !== 'three-level-config' || this.canManageThreeLevelConfig());
     return `
       <div class="cat-tabs" id="training-tabs">
         ${tabs.map(t => `
@@ -162,6 +164,7 @@ const TrainingModule = {
         case 'projects':  await TrainingProjects.render(box);  break;
         case 'contractors': await TrainingContractors.render(box); break;
         case 'packages':  await TrainingAdmissionPackages.render(box); break;
+        case 'three-level-config': await TrainingThreeLevelConfig.render(box); break;
         case 'admission-operations': await TrainingAdmissionOperations.render(box); break;
         case 'admission-review': await TrainingAdmissionReview.render(box); break;
         case 'admission-visitors': await TrainingAdmissionVisitors.render(box); break;
@@ -280,6 +283,19 @@ const TrainingModule = {
 
   canEdit() {
     return this.isAdmin();
+  },
+
+  async loadAuthorityRoles() {
+    this.state.authorityRoles = [];
+    if (!Auth.currentUser?.id) return;
+    try {
+      const { data, error } = await sb.rpc('training_account_roles');
+      if (!error) this.state.authorityRoles = Array.isArray(data) ? data : [];
+    } catch (_) { /* 权威角色 RPC 不可用时保持 fail closed */ }
+  },
+
+  canManageThreeLevelConfig() {
+    return (this.state.authorityRoles || []).some(r => r.role === 'company_admin' && r.scope === 'company');
   },
 
   canManagePlans() {

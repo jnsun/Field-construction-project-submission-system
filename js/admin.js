@@ -1069,6 +1069,17 @@ const Admin = {
       return;
     }
 
+    const [subjects, projectRoles] = await Promise.all([
+      sb.from('account_subjects').select('id, auth_user_id, account_lifecycle(status, changed_at)'),
+      sb.from('site_project_roles').select('user_id, project_id, role').eq('active', true),
+    ]);
+    const lifecycleByUser = new Map((subjects.data || []).map(x => [x.auth_user_id, Array.isArray(x.account_lifecycle) ? x.account_lifecycle[0] : x.account_lifecycle]));
+    const rolesByUser = new Map();
+    (projectRoles.data || []).forEach(r => { const list = rolesByUser.get(r.user_id) || []; list.push({ role: r.role, scope: 'project', scope_id: r.project_id }); rolesByUser.set(r.user_id, list); });
+    (data || []).forEach(u => {
+      u.account_status = lifecycleByUser.get(u.id)?.status || 'active';
+      u.scoped_roles = [{ role: u.role, scope: u.admin_level === 'company' || u.is_super_admin ? 'company' : 'entity', scope_id: u.department_id }, ...(rolesByUser.get(u.id) || [])];
+    });
     this.state.users = data || [];
     this.state.usersLoaded = true;
     this.renderUsersTable();
@@ -1144,15 +1155,21 @@ const Admin = {
       : '<span class="badge badge-muted">部门账号</span>';
     const deptName = u.departments ? u.departments.name : (u.role === 'admin' ? '-' : '<span class="badge badge-danger">未分配</span>');
 
-    // 操作按钮：当前账号不可操作；管理员账号仅超级管理员可编辑/删除
+    // 普通入口只改变登录生命周期，不物理删除人员或历史主体。
     const canManage = !isSelf && (u.role !== 'admin' || isSuper);
 
+    const status = u.account_status || 'active';
+    const statusBadge = status === 'active' ? '<span class="badge badge-success">启用</span>' : status === 'frozen' ? '<span class="badge badge-warning">冻结</span>' : status === 'disabled' ? '<span class="badge badge-danger">停用</span>' : '<span class="badge badge-muted">已关闭</span>';
+    const lifecycleActions = status === 'closed' ? '' : status === 'active'
+      ? `<button class="btn btn-secondary btn-sm" onclick="Admin.handleAccountStatus('${u.id}','frozen')">冻结</button><button class="btn btn-secondary btn-sm" onclick="Admin.handleAccountStatus('${u.id}','disabled')">停用</button>`
+      : `<button class="btn btn-primary btn-sm" onclick="Admin.handleAccountStatus('${u.id}','active')">恢复</button>`;
     const actions = isSelf
       ? '<span class="dept-meta" title="当前登录的账号不能在页面中修改">当前账号</span>'
       : canManage
         ? `
           <button class="btn btn-secondary btn-sm" onclick="Admin.openUserModal('${u.id}')">编辑</button>
-          <button class="btn btn-danger btn-sm" onclick="Admin.handleDeleteUser('${u.id}')">删除</button>
+          ${lifecycleActions}
+          ${status !== 'closed' ? `<button class="btn btn-danger btn-sm" onclick="Admin.handleAccountStatus('${u.id}','closed')">关闭</button>` : ''}
         `
         : '<span class="dept-meta" title="仅超级管理员可编辑/删除管理员账号">仅超管可操作</span>';
 
@@ -1162,12 +1179,25 @@ const Admin = {
         <td>${Utils.escapeHtml(this._loginEmailText(u))}</td>
         <td>${this.state.hasPhoneColumn ? (u.phone ? Utils.escapeHtml(u.phone) : '<span class="text-muted">-</span>') : '<span class="text-muted" title="未启用手机号功能，请执行 sql/phone-login.sql">未启用</span>'}</td>
         <td>${Utils.escapeHtml(u.full_name || '-')}</td>
-        <td>${roleBadge}</td>
+        <td>${roleBadge}<br>${statusBadge}<br><span class="text-muted">${Utils.escapeHtml((u.scoped_roles || []).map(r => `${r.role}@${r.scope}`).join('、'))}</span></td>
         <td>${deptName}</td>
         <td style="white-space:nowrap;">${Utils.formatDateTime(u.created_at)}</td>
         <td style="white-space:nowrap;">${actions}</td>
       </tr>
     `;
+  },
+
+  async handleAccountStatus(userId, status) {
+    const labels = { active: '恢复', disabled: '停用', frozen: '冻结', closed: '关闭登录身份' };
+    const reason = prompt(`请输入${labels[status] || status}原因：`);
+    if (!reason || !reason.trim()) return;
+    const { error } = await sb.rpc('training_account_set_status', {
+      p_user_id: userId, p_status: status, p_reason: reason.trim(),
+      p_request_id: `web-${status}-${userId}-${Date.now()}`, p_approval_id: null,
+    });
+    if (error) { Utils.toast(this.mapRpcError(error), 'error'); return; }
+    Utils.toast(`账号已${labels[status] || status}`, 'success');
+    await this.loadUsers();
   },
 
   /**

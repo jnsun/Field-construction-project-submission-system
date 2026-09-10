@@ -1,0 +1,79 @@
+{
+  "contract": "three-level-training-schemes-v1",
+  "status": "S3-D production configuration authority consumed by D11 through immutable requirement snapshots",
+  "authority": "server",
+  "organization_unit": {
+    "table": "organization_units",
+    "stable_key": "id",
+    "types": ["company", "internal_department", "operating_entity", "logistics_center", "other_internal_unit"],
+    "lifecycle": ["active", "inactive"],
+    "legacy_bridge": "organization_unit_legacy_mappings",
+    "rename_preserves_id": true,
+    "deactivate_preserves_history": true
+  },
+  "employment_organization": {
+    "table": "employment_organization_assignments",
+    "history": "employment_organization_assignment_history",
+    "identity": ["employee_id", "employment_relation_id"],
+    "current_unique_by": "employment_relation_id",
+    "project_membership_is_not_employment_organization": true,
+    "formal_internal_only": true
+  },
+  "scheme": {
+    "root": "three_level_training_schemes",
+    "versions": "three_level_training_scheme_versions",
+    "version_statuses": ["draft", "published", "retired", "superseded"],
+    "published_immutable": true,
+    "change_path": "published V1 -> new V2 draft -> publish V2",
+    "publish_chronology": "a new published version must have an effective_from strictly later than every existing published/superseded/retired version; same-date and retroactive ordinary publication are rejected",
+    "future_version_rule": "V1 remains effective through the day before future V2 effective_from"
+  },
+  "stage": {
+    "table": "three_level_training_scheme_stages",
+    "required_orders": [1, 2, 3],
+    "levels": ["company", "organization", "third"],
+    "types": ["company", "organization", "basic_project", "actual_project", "department_position", "logistics_position", "entity_position"],
+    "content_binding": "published basic_three_level training package",
+    "package_content_immutability": "items of a non-draft package version cannot be inserted, updated or deleted; changes require a new package version and existing snapshots remain pinned",
+    "package_version_policy": ["pinned"],
+    "courseware_direct_binding": false
+  },
+  "applicability": {
+    "table": "three_level_training_applicability_rules",
+    "controlled_fields": ["person_category", "organization_unit_id", "organization_type", "employment_status", "employment_type", "position_category", "effective_from", "effective_to", "priority", "active"],
+    "person_category": ["formal_internal"],
+    "version_selection_policy": ["latest_published", "pinned"],
+    "precedence": ["exact organization_unit", "organization_type", "company fallback"],
+    "within_precedence": "higher priority wins",
+    "same_precedence_and_priority_with_different_schemes": "ambiguous and fail closed",
+    "free_form_expressions": false
+  },
+  "permission": {
+    "management_role": { "role": "company_admin", "scope": "company", "account_status": "active" },
+    "role_source": "training_account_roles",
+    "writes": "SECURITY DEFINER RPC only",
+    "direct_table_writes": "denied to authenticated and anon"
+  },
+  "audit": {
+    "configuration": "training_configuration_audit_logs",
+    "organization_versions": "organization_unit_versions",
+    "employment_history": "employment_organization_assignment_history",
+    "immutable": true,
+    "required": ["object", "action", "operator_subject_id", "operator_roles_snapshot", "occurred_at", "before_state", "after_state", "reason", "request_id"]
+  },
+  "rpcs": {
+    "organization": ["training_organization_list", "training_organization_get", "training_organization_save", "training_organization_set_active"],
+    "employment_organization": ["training_employment_organization_assign", "training_employment_organization_current"],
+    "scheme": ["training_scheme_list", "training_scheme_get", "training_scheme_create", "training_scheme_create_version", "training_scheme_update_draft", "training_scheme_validate_publish", "training_scheme_applicability_conflicts", "training_scheme_publish", "training_scheme_retire"],
+    "stages": ["training_scheme_set_stages"],
+    "applicability": ["training_scheme_applicability_list", "training_scheme_applicability_save", "training_scheme_applicability_set_active", "training_scheme_match_applicability"]
+  },
+  "reason_codes": [
+    "organization_not_found", "organization_inactive", "organization_invalid", "organization_conflict",
+    "employment_relation_invalid", "scheme_not_found", "scheme_version_not_found", "scheme_version_not_draft",
+    "published_version_immutable", "invalid_stage_structure", "training_package_not_valid",
+    "applicability_rule_conflict", "scheme_effective_date_required", "scheme_effective_order_invalid", "applicability_rule_invalid", "forbidden", "reason_required"
+  ],
+  "production_consumers": { "D11": "requirement snapshot", "D13_employee_comprehensive_prerequisite": "authoritative D11 completion result" },
+  "non_goals": ["workflow engine", "free-form expressions", "project induction configuration", "special exam configuration"]
+}

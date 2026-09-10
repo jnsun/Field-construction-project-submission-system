@@ -29,7 +29,7 @@ function runPsql(databaseUrl, sql) {
     encoding: 'utf8',
     windowsHide: true,
   });
-  if (result.error || result.status !== 0) throw new Error('D07 角色权限矩阵测试库操作失败');
+  if (result.error || result.status !== 0) throw new Error(`D07 角色权限矩阵测试库操作失败：${String(result.stderr || result.error?.message || '').trim().split(/\r?\n/).at(-1)}`);
   return String(result.stdout || '').trim();
 }
 
@@ -171,12 +171,12 @@ INSERT INTO public.site_project_members(id, project_id, employee_id, membership_
 VALUES
   (${sqlLiteral(fixture.memberCId)}::uuid, ${sqlLiteral(fixture.projectCId)}::uuid, ${sqlLiteral(fixture.memberEmployeeId)}::uuid, 'internal', 'active'),
   (${sqlLiteral(fixture.memberOrdinaryAId)}::uuid, ${sqlLiteral(fixture.projectAId)}::uuid, ${sqlLiteral(fixture.ordinaryEmployeeId)}::uuid, 'internal', 'active');
-INSERT INTO public.project_join_applications(id, project_id, applicant_user_id, employee_id, name, phone, position, status)
+INSERT INTO public.project_join_applications(id, project_id, applicant_user_id, employee_id, name, phone, position, status, target_entity_id)
 VALUES
   (${sqlLiteral(fixture.externalOwnApplicationId)}::uuid, ${sqlLiteral(fixture.projectAId)}::uuid, ${sqlLiteral(fixture.companyActor.id)}::uuid,
-    ${sqlLiteral(fixture.externalEmployeeId)}::uuid, ${sqlLiteral(`[D07-TEST] 外协本人 ${fixture.suffix}`)}, ${sqlLiteral(`139${fixture.numericSuffix}`)}, '外协', 'pending_project_review'),
+    ${sqlLiteral(fixture.externalEmployeeId)}::uuid, ${sqlLiteral(`[D07-TEST] 外协本人 ${fixture.suffix}`)}, ${sqlLiteral(`139${fixture.numericSuffix}`)}, '外协', 'pending_project_review', ${sqlLiteral(fixture.leadEntityId)}::uuid),
   (${sqlLiteral(fixture.otherApplicationId)}::uuid, ${sqlLiteral(fixture.projectBId)}::uuid, ${sqlLiteral(fixture.entityActorId)}::uuid,
-    ${sqlLiteral(fixture.otherProjectEmployeeId)}::uuid, ${sqlLiteral(`[D07-TEST] 其他申请 ${fixture.suffix}`)}, ${sqlLiteral(`138${fixture.numericSuffix}`)}, '外协', 'pending_project_review');
+    ${sqlLiteral(fixture.otherProjectEmployeeId)}::uuid, ${sqlLiteral(`[D07-TEST] 其他申请 ${fixture.suffix}`)}, ${sqlLiteral(`138${fixture.numericSuffix}`)}, '外协', 'pending_project_review', ${sqlLiteral(fixture.leadEntityId)}::uuid);
 COMMIT;`);
 }
 
@@ -244,6 +244,7 @@ function cleanupFixture(databaseUrl, fixture) {
     : '';
   runPsql(databaseUrl, `
 BEGIN;
+SET LOCAL session_replication_role=replica;
 DELETE FROM public.training_visitor_safety_notices WHERE id=${sqlLiteral(fixture.visitorNoticeId)}::uuid;
 DELETE FROM public.site_project_invites WHERE project_id IN (
   ${sqlLiteral(fixture.projectAId)}::uuid, ${sqlLiteral(fixture.projectBId)}::uuid,
@@ -255,6 +256,14 @@ DELETE FROM public.site_project_roles WHERE project_id IN (
 );
 DELETE FROM public.project_join_applications WHERE id IN (
   ${sqlLiteral(fixture.externalOwnApplicationId)}::uuid, ${sqlLiteral(fixture.otherApplicationId)}::uuid
+);
+DELETE FROM public.project_person_admission_path_history WHERE project_id IN (
+  ${sqlLiteral(fixture.projectAId)}::uuid, ${sqlLiteral(fixture.projectBId)}::uuid,
+  ${sqlLiteral(fixture.projectCId)}::uuid, ${sqlLiteral(fixture.projectXId)}::uuid
+);
+DELETE FROM public.project_person_admission_paths WHERE project_id IN (
+  ${sqlLiteral(fixture.projectAId)}::uuid, ${sqlLiteral(fixture.projectBId)}::uuid,
+  ${sqlLiteral(fixture.projectCId)}::uuid, ${sqlLiteral(fixture.projectXId)}::uuid
 );
 DELETE FROM public.site_project_members WHERE id IN (
   ${sqlLiteral(fixture.memberCId)}::uuid, ${sqlLiteral(fixture.memberOrdinaryAId)}::uuid

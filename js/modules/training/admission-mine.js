@@ -167,15 +167,15 @@ const TrainingAdmissionMine = {
         ${r.due_at ? `<span style="color:${r.status !== 'eligible' && new Date(r.due_at) < new Date() ? '#b91c1c' : '#64748b'}">${r.urgent ? '当天加急 · ' : ''}截止：${Utils.escapeHtml(new Date(r.due_at).toLocaleString().replace(/:\d{2}$/, ''))}</span>` : ''}
         <span>有效至：${Utils.escapeHtml(r.valid_until || '待生成')}</span>
       </div>${reason}
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${r.status === 'exam_pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.startAdmissionExam('${r.admission_id}')">开始综合考试</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openThreeLevelStatus('${r.project_id}')">三级教育状态</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSpecialRequirements('${r.project_id}')">专项作业要求</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSigning('${r.admission_id}')">三级教育签字</button>${r.certificate_no ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openCredential('${r.admission_id}')">查看电子记录凭证</button>` : ''}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${r.status === 'exam_pending' ? `<button class="btn btn-sm btn-primary" onclick="TrainingAdmissionMine.startAdmissionExam('${r.admission_id}')">开始综合考试</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openThreeLevelStatus('${r.project_id}')">三级教育状态</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSpecialRequirements('${r.project_id}','${r.admission_id}')">专项作业要求</button><button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openSigning('${r.admission_id}')">三级教育签字</button>${r.certificate_no ? `<button class="btn btn-sm btn-secondary" onclick="TrainingAdmissionMine.openCredential('${r.admission_id}')">查看电子记录凭证</button>` : ''}</div>
     </div>`;
   },
 
-  async openSpecialRequirements(projectId) {
+  async openSpecialRequirements(projectId, admissionId) {
     const { data, error } = await sb.rpc('training_current_special_requirements', { p_project_id: projectId, p_employee_id: null });
     if (error) { Utils.toast(error.message || '专项要求加载失败', 'error'); return; }
     const state = data || {}; const ok = x => ['valid','completed','passed','not_required'].includes(x);
-    const rows = (state.requirements || []).map(x => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px"><b>${Utils.escapeHtml(x.label)}专项</b><div style="font-size:12px;margin-top:6px">证照：${ok(x.certificate?.state) ? '已满足' : '待处理'} · 培训：${ok(x.training_status) ? '已完成' : '待完成'} · 考试：${ok(x.exam_requirement) ? '已通过' : '待完成'}</div>${x.reason_codes?.length ? `<div style="color:#b91c1c;font-size:12px;margin-top:4px">${Utils.escapeHtml(x.reason_codes.join('、'))}</div>` : ''}</div>`).join('');
+    const rows = (state.requirements || []).map(x => `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px"><b>${Utils.escapeHtml(x.label)}专项</b><div style="font-size:12px;margin-top:6px">证照：${ok(x.certificate?.state) ? '已满足' : '待处理'} · 培训：${ok(x.training_status) ? '已完成' : '待完成'} · 考试：${ok(x.exam_requirement) ? '已通过' : '待完成'}</div>${x.reason_codes?.length ? `<div style="color:#b91c1c;font-size:12px;margin-top:4px">${Utils.escapeHtml(x.reason_codes.join('、'))}</div>` : ''}${x.exam_requirement === 'required' ? `<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="TrainingAdmissionMine.startSpecialExam('${admissionId}','${x.special_type}')">开始${Utils.escapeHtml(x.label)}专项考试</button>` : ''}</div>`).join('');
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
     host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="max-width:620px"><div class="modal-header"><h3>当前项目专项作业要求</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body">${state.drilling_required ? '<div class="alert alert-danger">本项目全员需钻探专项安全培训；钻探不要求个人证书。</div>' : ''}${rows || '<p class="text-muted">当前项目无专项作业要求。</p>'}</div><div class="modal-footer"><button class="btn btn-primary" onclick="document.getElementById('training-modal-host').innerHTML=''">关闭</button></div></div></div>`;
   },
@@ -183,21 +183,24 @@ const TrainingAdmissionMine = {
   async openThreeLevelStatus(projectId) {
     const { data, error } = await sb.rpc('training_three_level_status', { p_project_id: projectId });
     if (error) { Utils.toast(error.message || '三级教育状态加载失败', 'error'); return; }
-    const labels = { company: '公司级', entity: '经营实体级', project: '项目级', third: '第三级' };
+    const labels = { company: '一级 · 公司级教育', organization: '二级 · 所属组织级教育', entity: '二级 · 所属组织级教育', third: '三级教育' };
+    const stageLabels = { company: '公司级教育', organization: '所属组织级教育', department_position: '部门岗位教育', logistics_position: '后勤岗位教育', entity_position: '经营实体岗位教育', basic_project: '基本项目级教育', actual_project: '具体项目级教育' };
     const states = { completed: ['已完成','badge-success'], reused: ['已复用','badge-success'], required: ['待完成','badge-warning'], pending: ['待完成','badge-warning'], learning: ['学习中','badge-info'], missing: ['缺少计划','badge-danger'] };
     const categoryLabel = { new_hire: '新员工三级教育', legacy_evidence_review: '历史三级教育待确认', legacy_supplement: '三级教育补训待完成', legacy_verified: '历史三级教育已确认', legacy_supplement_completed: '三级教育补训已完成', completed: '新员工三级教育已完成', not_applicable: '不适用员工三级教育，走项目准入培训' }[data?.onboarding_category] || data?.onboarding_category || '三级教育状态未分类';
     const rows = (data?.levels || []).flatMap(level => {
       const items = level.items?.length ? level.items : [{}]; const state = states[level.state] || [level.state || '待处理','badge-muted'];
       return items.map((item, index) => {
         const source = item.reuse_source;
-        const mode = item.third_level_mode === 'basic_project' ? '基本项目级 · ' : item.third_level_mode === 'actual_project' ? `具体项目级 · ${item.source_project_id || '—'} · ` : '';
-        const current = `${mode}${item.plan_title || '当前计划'} v${item.version_no || '—'} · ${item.effective_hours || 0}/${item.required_hours || item.planned_hours || 0} 学时`;
+        const stageType = item.stage_type || level.stage_type || item.third_level_mode;
+        const mode = `${stageLabels[stageType] || ''}${stageType === 'actual_project' ? ` · ${item.source_project_id || '—'}` : ''}`;
+        const current = `${mode ? `${mode} · ` : ''}${item.training_package_title || item.plan_title || '当前培训包'} V${item.training_package_version_no || item.version_no || '—'} · ${item.effective_hours || 0}/${item.required_hours || item.planned_hours || 0} 学时`;
         const evidence = source ? `原始完成：${source.plan_title || source.plan_id || '历史计划'} v${source.version_no || '—'} · ${source.effective_hours || 0} 学时 · ${(source.completed_at || '时间未知').slice(0, 16).replace('T', ' ')} · ${source.source_project_id || source.source_entity_id || '公司级'}` : `本次完成：${(item.completed_at || '尚未完成').slice(0, 16).replace('T', ' ')} · ${item.source_project_id || item.source_entity_id || '—'}`;
         return `<tr><td>${Utils.escapeHtml(labels[level.level] || level.level)}${items.length > 1 ? ` ${index + 1}` : ''}</td><td><span class="badge ${state[1]}">${state[0]}</span>${item.reuse_invalid_reason ? `<br><span class="text-muted">${Utils.escapeHtml(item.reuse_invalid_reason)}</span>` : ''}</td><td>${Utils.escapeHtml(current)}</td><td style="max-width:300px;word-break:break-all">${Utils.escapeHtml(evidence)}</td></tr>`;
       });
     }).join('');
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
-    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="max-width:720px"><div class="modal-header"><h3>我的三级安全教育状态</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><p class="hint"><b>${Utils.escapeHtml(categoryLabel)}</b> · ${data?.three_level_applicable === false ? Utils.escapeHtml(data?.reason_code || 'three_level_not_applicable') : `综合考试前置：${data?.exam_allowed ? '已满足' : `未满足（${Utils.escapeHtml(data?.reason_code || 'unknown')}）`}`}</p><table class="data-table"><thead><tr><th>层级</th><th>状态</th><th>版本/有效学时</th><th>来源</th></tr></thead><tbody>${rows || TrainingModule.emptyRow(4, data?.three_level_applicable === false ? '不生成员工三级教育任务' : '暂无三级教育数据')}</tbody></table></div><div class="modal-footer"><button class="btn btn-primary" onclick="document.getElementById('training-modal-host').innerHTML=''">关闭</button></div></div></div>`;
+    const authority = data?.scheme_name ? `方案：${data.scheme_name} V${data.scheme_version_number || '—'} · 所属组织：${data.organization_name || '—'}` : data?.requirement_source === 'legacy_d11_compatibility' ? '切换前进行中任务已按原计划和版本冻结' : '';
+    host.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('training-modal-host').innerHTML=''"><div class="modal" onclick="event.stopPropagation()" style="max-width:720px"><div class="modal-header"><h3>我的三级安全教育状态</h3><button class="modal-close" onclick="document.getElementById('training-modal-host').innerHTML=''">×</button></div><div class="modal-body"><p class="hint"><b>${Utils.escapeHtml(categoryLabel)}</b> · ${data?.three_level_applicable === false ? Utils.escapeHtml(data?.reason_code || 'three_level_not_applicable') : `综合考试前置：${data?.exam_allowed ? '已满足' : `未满足（${Utils.escapeHtml(data?.reason_code || 'unknown')}）`}`}</p>${authority ? `<p class="hint">${Utils.escapeHtml(authority)}</p>` : ''}<table class="data-table"><thead><tr><th>层级</th><th>状态</th><th>方案版本/培训包/有效学时</th><th>来源</th></tr></thead><tbody>${rows || TrainingModule.emptyRow(4, data?.three_level_applicable === false ? '不生成员工三级教育任务' : '暂无三级教育数据')}</tbody></table></div><div class="modal-footer"><button class="btn btn-primary" onclick="document.getElementById('training-modal-host').innerHTML=''">关闭</button></div></div></div>`;
   },
 
   async openCredential(admissionId) {
@@ -260,7 +263,7 @@ const TrainingAdmissionMine = {
     const list = tasks.data || [];
     const sigs = signatures.data || [];
     const employeeSigned = id => sigs.some(s => s.task_id === id && s.signer_role === 'employee');
-    const labels = { company: '公司级教育', entity: '经营实体级教育', project: '项目级教育', special: '专项培训' };
+    const labels = { company: '公司级教育', entity: '所属组织级教育', project: '项目入场教育', special: '专项培训' };
     const allReady = list.length > 0 && list.every(t => t.status === 'completed' && employeeSigned(t.id));
     const finalSigned = sigs.some(s => !s.task_id && s.signer_role === 'employee' && s.cycle_no === admission.data.training_cycle_no);
     const host = document.getElementById('training-modal-host') || (() => { const h = document.createElement('div'); h.id = 'training-modal-host'; document.body.appendChild(h); return h; })();
@@ -268,11 +271,11 @@ const TrainingAdmissionMine = {
   },
 
   async startAdmissionExam(admissionId) {
-    const { data, error } = await sb.rpc('training_prepare_admission_exam', { p_admission_id: admissionId });
-    if (error) { Utils.toast(error.message, 'error'); return; }
-    const exam = Array.isArray(data) ? data[0] : data;
-    if (!exam?.plan_id) { Utils.toast('未找到综合考试配置', 'error'); return; }
-    await TrainingMine.openExam(exam.plan_id);
+    await TrainingMine.openAdmissionExam(admissionId, 'admission');
+  },
+
+  async startSpecialExam(admissionId, specialType) {
+    await TrainingMine.openAdmissionExam(admissionId, 'special', specialType);
   },
 
   openSignCanvas(admissionId, taskId, title) {

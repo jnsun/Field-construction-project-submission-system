@@ -16,22 +16,27 @@ const migrations = [
 const migration = migrations[0];
 const results = [];
 const check = (name, pass, detail = '') => { results.push({ name, pass }); console.log(`${pass ? 'PASS' : 'FAIL'} D12 ${name}${detail ? ` ${detail}` : ''}`); };
+const stopAfterFocus = name => {
+  if (process.env.D12_FOCUS !== name) return false;
+  if (results.some(result => !result.pass)) throw new Error(`D12 focused assertion ${name} failed`);
+  return true;
+};
 const code = (r, value) => r.status !== 0 && r.err.includes(`[D12:${value}]`);
 const status = (db, actor, project, employee) => JSON.parse(asUser(db, actor, `SELECT public.training_current_special_requirements(${q(project)},${q(employee)})::text;`).out.split(/\r?\n/).filter(x => x.startsWith('{')).at(-1));
 const member = (db, project, employee) => scalar(db, `SELECT id FROM public.site_project_members WHERE project_id=${q(project)} AND employee_id=${q(employee)};`);
 const jwtSql = (userId, sql) => `BEGIN; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub',${q(userId)},true); SELECT set_config('request.jwt.claim.role','authenticated',true); ${sql} COMMIT;`;
 function psqlAsync(databaseUrl, sql) { return new Promise(resolve => { const child = spawn('psql', [databaseUrl, '-X', '-Atq', '-v', 'ON_ERROR_STOP=1'], { windowsHide: true }); let out='',err=''; child.stdout.on('data',x=>{out+=x;}); child.stderr.on('data',x=>{err+=x;}); child.on('close',status=>resolve({status,out:out.trim(),err:err.trim()})); child.stdin.end(sql); }); }
-function apply(db) { for (const file of migrations) { const r=spawnSync('psql',[db,'-X','-q','-v','ON_ERROR_STOP=1','-f',file],{encoding:'utf8',windowsHide:true}); if(r.error||r.status!==0) throw new Error(`${path.basename(file)} failed: ${String(r.stderr||r.error?.message||'').trim().split(/\r?\n/).at(-1)}`); } }
+function apply(db) { if (scalar(db,"SELECT to_regprocedure('public.site_project_set_risk_tags(uuid,text[],text)') IS NOT NULL;")==='t') return; for (const file of migrations) { const r=spawnSync('psql',[db,'-X','-q','-v','ON_ERROR_STOP=1','-f',file],{encoding:'utf8',windowsHide:true}); if(r.error||r.status!==0) throw new Error(`${path.basename(file)} failed: ${String(r.stderr||r.error?.message||'').trim().split(/\r?\n/).at(-1)}`); } }
 async function request(base,key,pathName,options={}) { const response=await fetch(base+pathName,{...options,signal:AbortSignal.timeout(15000),headers:{apikey:key,...(options.headers||{})}}); const text=await response.text();let json;try{json=text?JSON.parse(text):null;}catch{json=text;}return{status:response.status,json}; }
 async function login(b,key,email,password) { const r=await request(b.apiOrigin,key,'/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})}); if(r.status!==200||!r.json?.access_token) throw new Error('D12 temporary login failed');return r.json.access_token; }
 
 async function main() {
-  const started=process.hrtime.bigint(); const b=validateTestBoundary(); const key=required('SAFETY_SUPABASE_ANON_KEY'); const f=ids(); let residual=-1;
+  const started=process.hrtime.bigint(); const b=validateTestBoundary(); const key=required('SAFETY_SUPABASE_ANON_KEY'); const f=ids(); let residual=-1,drillParameterVersion=null;
   const id=()=>crypto.randomUUID();
   f.users.safety=id(); f.users.company=id(); f.users.audit=id(); f.employees.safety=id(); f.employees.temp=id(); f.packages.r02=id();
   f.plans.blasting=id(); f.plans.electrical=id(); f.plans.welding=id(); f.plans.drilling=id();
   f.plans.examBlasting=id(); f.plans.examElectrical=id(); f.plans.examWelding=id(); f.plans.examDrilling=id(); f.plans.examMissing=id();
-  const papers=[id(),id(),id(),id()]; const docs=[];
+  const papers=[id(),id(),id(),id()]; const examQuestionIds=Array.from({length:9},id); const docs=[];
   check('01 isolated TEST boundary',assertD02FixtureMarker(b)>0); apply(b.databaseUrl); readAuthority(b.databaseUrl,f);
   try {
     createFixture(b.databaseUrl,f);
@@ -46,28 +51,35 @@ async function main() {
       INSERT INTO public.profiles(id,email,employee_id,department_id,role,full_name,is_super_admin,admin_level) VALUES
       (${q(f.users.safety)},${q(`d12-${f.suffix}-s@example.invalid`)},${q(f.employees.safety)},${q(f.entityA)},'employee','[D12-TEST] safety',false,NULL),
       (${q(f.users.company)},${q(`d12-${f.suffix}-r@example.invalid`)},NULL,NULL,'admin','[D12-TEST] company reader',false,'company');
+      INSERT INTO public.account_subjects(auth_user_id,employee_id) VALUES
+      (${q(f.users.safety)},${q(f.employees.safety)}),(${q(f.users.company)},NULL);
+      INSERT INTO public.account_lifecycle(subject_id) SELECT id FROM public.account_subjects WHERE auth_user_id IN(${q(f.users.safety)},${q(f.users.company)});
       INSERT INTO public.site_project_roles(project_id,user_id,role,active) VALUES
       (${q(f.projects.a1)},${q(f.users.safety)},'safety_officer',true),(${q(f.projects.a2)},${q(f.users.safety)},'safety_officer',true);
       INSERT INTO public.site_project_members(project_id,employee_id,membership_type,status,created_by) VALUES
       (${q(f.projects.a2)},${q(managerEmployee)},'internal','active',${q(f.manager)}),
       (${q(f.projects.a2)},${q(f.employees.safety)},'internal','active',${q(f.manager)}),
       (${q(f.projects.a2)},${q(f.employees.temp)},'temporary','active',${q(f.manager)});
-      INSERT INTO public.training_plans(id,title,level,department_id,special_type,plan_year,hours,required_hours,status,approval_status,publish_status,version_root_id,version_no,reuse_policy,created_by) VALUES
-      (${q(f.plans.blasting)},'[D12-TEST] blasting','special',${q(f.entityA)},'blasting',2026,1,0.5,'planned','approved','published',${q(f.plans.blasting)},1,'allow',${q(f.manager)}),
-      (${q(f.plans.electrical)},'[D12-TEST] electrical','special',${q(f.entityA)},'electrical',2026,1,0.5,'planned','approved','published',${q(f.plans.electrical)},1,'allow',${q(f.manager)}),
-      (${q(f.plans.welding)},'[D12-TEST] welding','special',${q(f.entityA)},'welding',2026,1,0.5,'planned','approved','published',${q(f.plans.welding)},1,'allow',${q(f.manager)}),
-      (${q(f.plans.drilling)},'[D12-TEST] drilling','special',${q(f.entityA)},'drilling',2026,1,0.5,'planned','approved','published',${q(f.plans.drilling)},1,'allow',${q(f.manager)}),
-      (${q(f.plans.examBlasting)},'[D12-TEST] blasting exam','company',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examBlasting)},1,'retrain',${q(f.manager)}),
-      (${q(f.plans.examElectrical)},'[D12-TEST] electrical exam','company',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examElectrical)},1,'retrain',${q(f.manager)}),
-      (${q(f.plans.examWelding)},'[D12-TEST] welding exam','company',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examWelding)},1,'retrain',${q(f.manager)}),
-      (${q(f.plans.examDrilling)},'[D12-TEST] drilling exam','company',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examDrilling)},1,'retrain',${q(f.manager)}),
-      (${q(f.plans.examMissing)},'[D12-TEST] missing exam paper','company',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examMissing)},1,'retrain',${q(f.manager)});
+      INSERT INTO public.training_plans(id,title,level,training_category,department_id,special_type,plan_year,hours,required_hours,status,approval_status,publish_status,version_root_id,version_no,reuse_policy,created_by) VALUES
+      (${q(f.plans.blasting)},'[D12-TEST] blasting','special','special_operation',${q(f.entityA)},'blasting',2026,1,0.5,'planned','approved','published',${q(f.plans.blasting)},1,'allow',${q(f.manager)}),
+      (${q(f.plans.electrical)},'[D12-TEST] electrical','special','special_operation',${q(f.entityA)},'electrical',2026,1,0.5,'planned','approved','published',${q(f.plans.electrical)},1,'allow',${q(f.manager)}),
+      (${q(f.plans.welding)},'[D12-TEST] welding','special','special_operation',${q(f.entityA)},'welding',2026,1,0.5,'planned','approved','published',${q(f.plans.welding)},1,'allow',${q(f.manager)}),
+      (${q(f.plans.drilling)},'[D12-TEST] drilling','special','project_special',${q(f.entityA)},'drilling',2026,1,0.5,'planned','approved','published',${q(f.plans.drilling)},1,'allow',${q(f.manager)}),
+      (${q(f.plans.examBlasting)},'[D12-TEST] blasting exam','company','continuing_or_change',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examBlasting)},1,'retrain',${q(f.manager)}),
+      (${q(f.plans.examElectrical)},'[D12-TEST] electrical exam','company','continuing_or_change',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examElectrical)},1,'retrain',${q(f.manager)}),
+      (${q(f.plans.examWelding)},'[D12-TEST] welding exam','company','continuing_or_change',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examWelding)},1,'retrain',${q(f.manager)}),
+      (${q(f.plans.examDrilling)},'[D12-TEST] drilling exam','company','continuing_or_change',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examDrilling)},1,'retrain',${q(f.manager)}),
+      (${q(f.plans.examMissing)},'[D12-TEST] missing exam paper','company','continuing_or_change',NULL,NULL,2026,1,0.5,'planned','approved','published',${q(f.plans.examMissing)},1,'retrain',${q(f.manager)});
       INSERT INTO public.training_courses(plan_id,title,course_type,content,required,sort_order) SELECT id,title,'text','safe',true,1 FROM public.training_plans WHERE id IN(${[f.plans.blasting,f.plans.electrical,f.plans.welding,f.plans.drilling].map(q).join(',')});
-      INSERT INTO public.exam_papers(id,plan_id,title,mode,duration_min,pass_score,retry_limit,status,created_by) VALUES
-      (${q(papers[0])},${q(f.plans.examBlasting)},'[D12-TEST] blast paper','fixed',30,80,3,'published',${q(f.manager)}),
-      (${q(papers[1])},${q(f.plans.examElectrical)},'[D12-TEST] electric paper','fixed',30,80,3,'published',${q(f.manager)}),
-      (${q(papers[2])},${q(f.plans.examWelding)},'[D12-TEST] weld paper','fixed',30,80,3,'published',${q(f.manager)}),
-      (${q(papers[3])},${q(f.plans.examDrilling)},'[D12-TEST] drill paper','fixed',30,80,3,'published',${q(f.manager)});
+      INSERT INTO public.exam_papers(id,plan_id,title,mode,duration_min,pass_score,retry_limit,status,created_by,exam_type,special_type,exam_semantic_type,question_count) VALUES
+      (${q(papers[0])},${q(f.plans.examBlasting)},'[D12-TEST] blast paper','fixed',30,80,3,'published',${q(f.manager)},'special','blasting','special_exam',10),
+      (${q(papers[1])},${q(f.plans.examElectrical)},'[D12-TEST] electric paper','fixed',30,80,3,'published',${q(f.manager)},'special','electrical','special_exam',10),
+      (${q(papers[2])},${q(f.plans.examWelding)},'[D12-TEST] weld paper','fixed',30,80,3,'published',${q(f.manager)},'special','welding','special_exam',10),
+      (${q(papers[3])},${q(f.plans.examDrilling)},'[D12-TEST] drill paper','fixed',30,80,3,'published',${q(f.manager)},'special','drilling','special_exam',10);
+      INSERT INTO public.exam_questions(id,scope,question_type,stem,options,answer,status,created_by)
+      SELECT x,'company','single','[D12-TEST] electrical','[{"key":"A","text":"safe"}]','A','published',${q(f.manager)} FROM unnest(ARRAY[${examQuestionIds.map(q).join(',')}]::uuid[]) x;
+      INSERT INTO public.exam_paper_questions(paper_id,question_id,score,sort_order)
+      SELECT ${q(papers[1])},x.id,10,x.n FROM unnest(ARRAY[${q(f.question)},${examQuestionIds.map(q).join(',')}]::uuid[]) WITH ORDINALITY x(id,n);
       INSERT INTO public.training_admission_package_items(package_id,plan_id,level,required,sort_order)
       SELECT p.id,x.plan_id::uuid,'special',true,x.n FROM public.training_admission_packages p CROSS JOIN (VALUES
         (${q(f.plans.blasting)},10),(${q(f.plans.electrical)},11),(${q(f.plans.welding)},12),(${q(f.plans.drilling)},13)) x(plan_id,n)
@@ -128,13 +140,15 @@ async function main() {
     check('16 cancelling welding preserves electrical',s.required_special_types.join(',')==='electrical');
     check('17 cancellation keeps immutable history',Number(scalar(b.databaseUrl,`SELECT count(*) FROM public.training_special_work_audit_logs WHERE member_id=${q(mInternal)} AND special_type='welding';`))>=2);
     psql(b.databaseUrl,`BEGIN; SET LOCAL session_replication_role=replica;
-      UPDATE public.training_assignments SET status='completed',progress=100,hours_earned=0.5,completed_at=NOW() WHERE plan_id=${q(f.plans.electrical)} AND employee_id=${q(f.employees.internal)};
-      INSERT INTO public.training_assignments(plan_id,employee_id,user_id,department_id,status,progress,exam_status,exam_score)
-        VALUES(${q(f.plans.examElectrical)},${q(f.employees.internal)},${q(f.users.internal)},${q(f.entityA)},'completed',100,'passed',100)
-        ON CONFLICT(plan_id,employee_id) DO UPDATE SET exam_status='passed',exam_score=100; COMMIT;`);
+      UPDATE public.training_assignments SET status='completed',progress=100,hours_earned=0.5,completed_at=NOW() WHERE plan_id=${q(f.plans.electrical)} AND employee_id=${q(f.employees.internal)}; COMMIT;`);
+    const electricalAdmission=admissionId(b.databaseUrl,f.projects.a1,f.employees.internal);
+    const electricalAttempt=JSON.parse(asUser(b.databaseUrl,f.users.internal,`SELECT public.training_exam_start(${q(electricalAdmission)},'special','electrical','D12-18')::text;`).out.split(/\r?\n/).filter(x=>x.startsWith('{')).at(-1));
+    const electricalAnswers=Object.fromEntries([f.question,...examQuestionIds].map(question=>[question,'A']));
+    const electricalPass=JSON.parse(asUser(b.databaseUrl,f.users.internal,`SELECT public.training_exam_submit(${q(electricalAttempt.attempt_id)},${q(JSON.stringify(electricalAnswers))}::jsonb)::text;`).out.split(/\r?\n/).filter(x=>x.startsWith('{')).at(-1));
     s=status(b.databaseUrl,f.manager,f.projects.a1,f.employees.internal);
-    check('18 completed training plus passed exact exam satisfies requirement',s.overall_satisfied&&s.reason_code==='special_requirements_satisfied');
-    check('19 project A work does not pollute project B',status(b.databaseUrl,f.manager,f.projects.a2,f.employees.internal).actual_special_work.length===0);
+    check('18 completed training plus passed exact exam satisfies requirement',electricalPass.result==='pass'&&s.overall_satisfied&&s.reason_code==='special_requirements_satisfied');
+    if(stopAfterFocus('18')) return;
+    check('19 project A work does not pollute project B',status(b.databaseUrl,f.manager,f.projects.a2,f.employees.internal).actual_special_work.length===0&&scalar(b.databaseUrl,`SELECT count(*) FROM public.exam_attempts WHERE employee_id=${q(f.employees.internal)} AND project_id=${q(f.projects.a2)} AND exam_type='special' AND special_type='electrical' AND result='pass';`)==='0');
 
     const selfDenied=asUser(b.databaseUrl,f.users.internal,`SELECT public.training_set_member_special_work_types(${q(mInternal)},ARRAY['焊工'],'self escalation');`,true);
     check('20 ordinary person cannot self-select actual work',code(selfDenied,'forbidden'));
@@ -158,6 +172,19 @@ async function main() {
     check('30 contractor is in drilling scope',drillRows.some(x=>x.employee_id===f.employees.contractor&&x.required_special_types.includes('drilling')));
     check('31 temporary individual is in drilling scope',drillRows.some(x=>x.employee_id===f.employees.temp&&x.required_special_types.includes('drilling')));
     check('32 drilling never requires personal certificate',drillRows.every(x=>x.requirements.find(y=>y.special_type==='drilling')?.certificate.state==='not_required'));
+    check('32A drilling exam OFF does not add exam blocking',drillRows.every(x=>{const d=x.requirements.find(y=>y.special_type==='drilling');return d?.exam_required===false&&d?.exam_requirement==='not_required'&&!d?.reason_codes.includes('special_exam_plan_missing');}));
+    psql(b.databaseUrl,startSql(f,f.projects.a2,f.employees.safety,f.packages.a2));
+    const drillSubmission=JSON.parse(asUser(b.databaseUrl,f.manager,`SELECT public.system_parameter_set('EXAM-DRILL-001','true'::jsonb,NULL,NOW(),${q(`D12-${f.suffix}-DRILL-ON`)},'{}'::jsonb)::text;`).out.split(/\r?\n/).filter(x=>x.startsWith('{')).at(-1));
+    drillParameterVersion=drillSubmission.version_id;
+    const drillApproval=asUser(b.databaseUrl,f.users.company,`SELECT public.system_parameter_approve(${q(drillParameterVersion)},true,'D12 approved drilling exam ON',${q(`D12-${f.suffix}-DRILL-APPROVE`)});`);
+    let drillOn=status(b.databaseUrl,f.manager,f.projects.a2,f.employees.safety).requirements.find(x=>x.special_type==='drilling');
+    check('32B drilling exam ON requires configured exam',drillSubmission.status==='draft'&&drillApproval.status===0&&drillOn?.exam_required===true&&drillOn?.exam_requirement==='required');
+    if(stopAfterFocus('32B')) return;
+    psql(b.databaseUrl,`UPDATE public.training_admission_special_rules SET exam_plan_id=NULL WHERE package_id=${q(f.packages.a2)} AND special_type='drilling';`);
+    drillOn=status(b.databaseUrl,f.manager,f.projects.a2,f.employees.safety).requirements.find(x=>x.special_type==='drilling');
+    check('32C drilling exam ON without exam configuration fails closed',drillOn?.exam_required===true&&drillOn?.exam_requirement==='plan_missing');
+    if(stopAfterFocus('32C')) return;
+    psql(b.databaseUrl,`UPDATE public.training_admission_special_rules SET exam_plan_id=${q(f.plans.examDrilling)} WHERE package_id=${q(f.packages.a2)} AND special_type='drilling';`);
     docs.push(scalar(b.databaseUrl,`INSERT INTO public.contractor_documents(project_id,employee_id,document_type,certificate_type,storage_path,review_status,review_note) VALUES(${q(f.projects.a2)},${q(f.employees.temp)},'other','钻探','training-admission/contractor-documents/${f.projects.a2}/legacy-drilling.pdf','approved','legacy only') RETURNING id;`));
     check('33 legacy drilling document does not enter gate',status(b.databaseUrl,f.manager,f.projects.a2,f.employees.temp).requirements.find(x=>x.special_type==='drilling').certificate.required===false);
     psql(b.databaseUrl,`UPDATE public.site_project_members SET status='left',left_at=NOW() WHERE project_id=${q(f.projects.a2)} AND employee_id=${q(f.employees.temp)};`);
@@ -241,12 +268,16 @@ async function main() {
   } finally {
     psql(b.databaseUrl,`BEGIN; SET LOCAL session_replication_role=replica;
       DELETE FROM public.training_special_work_audit_logs WHERE project_id IN(${Object.values(f.projects).map(q).join(',')});
+      ${drillParameterVersion ? `DELETE FROM public.system_parameter_version_approvals WHERE version_id=${q(drillParameterVersion)}; DELETE FROM public.system_parameter_audit WHERE new_version_id=${q(drillParameterVersion)}; DELETE FROM public.system_parameter_versions WHERE id=${q(drillParameterVersion)};` : ''}
       DELETE FROM public.contractor_documents WHERE id IN(${docs.length?docs.map(q).join(','):'NULL'});
       DELETE FROM storage.objects WHERE bucket_id='certificates' AND name LIKE ${q(`training-admission/contractor-documents/${f.projects.a1}/d12-%`)};
+      DELETE FROM public.exam_attempt_events WHERE attempt_id IN(SELECT id FROM public.exam_attempts WHERE employee_id IN(${Object.values(f.employees).map(q).join(',')}));
+      DELETE FROM public.exam_paper_questions WHERE paper_id IN(${papers.map(q).join(',')});
       DELETE FROM public.exam_papers WHERE id IN(${papers.map(q).join(',')}); COMMIT;`);
     residual=cleanup(b.databaseUrl,f);
+    psql(b.databaseUrl,`DELETE FROM public.exam_questions WHERE id IN(${examQuestionIds.map(q).join(',')});`);
     const extra=Number(scalar(b.databaseUrl,`SELECT count(*) FROM public.training_special_work_audit_logs WHERE project_id IN(${Object.values(f.projects).map(q).join(',')});`));
-    residual+=extra; check('47 cleanup residual = 0',residual===0,`residual=${residual}`);
+    residual+=extra+Number(scalar(b.databaseUrl,`SELECT count(*) FROM public.exam_questions WHERE id IN(${examQuestionIds.map(q).join(',')});`)); check('47 cleanup residual = 0',residual===0,`residual=${residual}`);
   }
   const failed=results.filter(x=>!x.pass); const seconds=Number(process.hrtime.bigint()-started)/1e9;
   console.log(`D12_RESULT ${failed.length?'FAIL':'PASS'} ${results.length-failed.length}/${results.length} duration=${seconds.toFixed(2)}s residual=${residual}`);

@@ -970,7 +970,7 @@ const CertAdmin = {
   /**
    * 导出台账 CSV（按当前筛选结果）
    */
-  exportCSV() {
+  async exportCSV() {
     const { company, category, type, status, keyword } = this.state.filters;
     const filtered = this.state.certs
       .map(c => ({ cert: c, st: this.statusOf(c) }))
@@ -1007,26 +1007,31 @@ const CertAdmin = {
       { key: 'created_at', label: '登记时间' },
     ];
 
-    const exportData = filtered.map(({ cert, st }, i) => ({
+    const { data: maskedRows, error } = await sb.rpc('certificate_normal_export', { p_ids: filtered.map(x => x.cert.id) });
+    if (error) { Utils.toast('导出失败：' + error.message, 'error'); return; }
+    const maskedById = new Map((maskedRows || []).map(x => [x.id, x]));
+    const exportData = filtered.map(({ cert, st }, i) => {
+      const masked = maskedById.get(cert.id) || {};
+      return ({
       index: i + 1,
       company_name: cert.departments ? cert.departments.name : '未分配',
       cert_name: cert.cert_name,
       category_label: Utils.categoryLabel(cert.cert_category),
       cert_type: cert.cert_type,
       sub_text: Utils.subText(cert),
-      cert_no: cert.cert_no,
+      cert_no: masked.cert_no || '',
       issuing_authority: cert.issuing_authority || '',
       issue_date: cert.issue_date || '',
       valid_from: cert.valid_from || '',
       valid_until_label: cert.is_long_term ? '长期有效' : (cert.valid_until || ''),
       is_long_term: cert.is_long_term,
       holder_name: cert.holder_name || '',
-      holder_id_no: cert.holder_id_no || '',
+      holder_id_no: masked.holder_id_no || '',
       holder_position: cert.holder_position || '',
       status_label: st.label,
       remark: cert.remark || '',
       created_at: Utils.formatDateTime(cert.created_at),
-    }));
+    }); });
 
     const filename = `资质证照台账_${Utils.formatDate(new Date())}.csv`;
     Utils.exportCSV(exportData, filename, columns);
@@ -1572,7 +1577,7 @@ const CertAdmin = {
                 <div class="form-group cert-field-person" ${category === 'personal' ? '' : 'style="display:none;"'}>
                   <label>证件号</label>
                   <input type="text" name="holder_id_no" maxlength="30" placeholder="（个人证照）身份证 / 证件号" value="${Utils.escapeHtml(v.holder_id_no || '')}">
-                  <p class="hint">列表脱敏展示，详情弹窗与管理员导出可见完整号码</p>
+                  <p class="hint">列表和普通导出始终脱敏；完整资料不通过本页面批量导出</p>
                 </div>
                 <div class="form-group cert-field-person" ${category === 'personal' ? '' : 'style="display:none;"'}>
                   <label>职务 / 岗位</label>

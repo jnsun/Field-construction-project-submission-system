@@ -1,0 +1,62 @@
+/** S3-C Web smoke: menu, controlled forms, server RPC use and preview-only simulator. */
+const fs = require('fs');
+const path = require('path');
+const root = path.resolve(__dirname, '..');
+const ui = fs.readFileSync(path.join(root, 'js/modules/training/three-level-config.js'), 'utf8');
+const training = fs.readFileSync(path.join(root, 'js/modules/training/training.js'), 'utf8');
+const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const sql = fs.readFileSync(path.join(root, 'sql/training-admission-v93-training-scheme-publish-validation.sql'), 'utf8');
+const contract = JSON.parse(fs.readFileSync(path.join(root, 'docs/contracts/three-level-training-schemes-v1.json'), 'utf8'));
+const Module = require(path.join(root, 'js/modules/training/three-level-config.js'));
+const results=[];
+function check(name, pass){results.push({name,pass:!!pass});console.log(`${pass?'PASS':'FAIL'} S3C-WEB ${name}`);}
+function has(source,...parts){return parts.every(x=>source.includes(x));}
+
+Module.state.authorityRoles=[];
+const permission = roles => { global.TrainingModule={state:{authorityRoles:roles}}; return roles.some(r=>r.role==='company_admin'&&r.scope==='company'); };
+check('01 company admin menu authority', has(training,"role === 'company_admin'","scope === 'company'",'三级教育配置') && permission([{role:'company_admin',scope:'company'}]));
+check('02 entity admin has no write entry', !permission([{role:'entity_admin',scope:'entity'}]));
+check('03 project manager has no write entry', !permission([{role:'project_manager',scope:'project'}]));
+check('04 ordinary employee has no write entry', !permission([{role:'employee',scope:'self'}]));
+check('05 direct page remains server protected', has(ui,'training_organization_list','你没有公司级培训规则配置权限') && has(sql,'training_scheme_require_company_admin'));
+check('06 organization list', has(ui,'组织机构','training_organization_list','组织编码'));
+check('07 organization create', has(ui,'新建组织','training_organization_save'));
+check('08 organization edit', has(ui,'编辑组织','saveOrganization'));
+check('09 organization deactivate', has(ui,'training_organization_set_active','组织已停用'));
+check('10 organization history has no delete action', has(ui,'组织版本历史','organization_unit_versions') && !/deleteOrganization|删除组织/.test(ui));
+check('11 create scheme', has(ui,'新建三级教育方案','training_scheme_create'));
+check('12 create V1 draft', has(ui,'training_scheme_create_version','首版生效日期'));
+check('13 edit draft', has(ui,'training_scheme_update_draft','保存草稿'));
+check('14 server validated publish', has(ui,'training_scheme_validate_publish','training_scheme_publish','校验并发布'));
+check('15 published page readonly', has(ui,"v.status!=='draft'",'已发布版本不可直接修改',' disabled'));
+check('16 create V2 from V1', has(ui,'创建新版本','p_source_version_id'));
+check('17 historical V1 view', has(ui,'版本历史','只读查看','created_at','published_at'));
+check('18 company stage', has(ui,"stage_level:'company'","stage_type:'company'",'公司级教育'));
+check('19 organization stage', has(ui,"stage_level:'organization'","stage_type:'organization'",'所属组织级教育'));
+check('20 department position stage', has(ui,'department_position','部门岗位级'));
+check('21 logistics position stage', has(ui,'logistics_position','后勤岗位级'));
+check('22 entity position stage', has(ui,'entity_position','经营实体岗位级'));
+check('23 basic project stage', has(ui,'basic_project','基本项目级'));
+check('24 actual project stage and warning', has(ui,'actual_project','人员必须绑定合法具体项目后才能满足第三级要求'));
+check('25 only published basic package choices', has(ui,".eq('status','published')",".eq('training_category','basic_three_level')") && has(sql,"p.status<>'published'","p.training_category<>'basic_three_level'"));
+check('26 exact organization rule', has(ui,'精确组织（最高层级）','organization_unit_id'));
+check('27 organization type rule', has(ui,'组织类型（未选精确组织时）','organization_type'));
+check('28 company fallback rule', has(ui,'公司兜底','公司默认'));
+check('29 precedence and priority shown', has(ui,'匹配优先级：1. 精确组织','Rule priority','Precedence='));
+check('30 ambiguous conflict warning', has(ui,'规则冲突，当前人员将无法解析三级教育方案','training_scheme_applicability_conflicts') && has(sql,'applicability_rule_conflict'));
+check('31 finance employee is selectable for simulator', has(ui,'training_three_level_profiles','s3c-sim-person'));
+check('32 internal organization is server-resolved', has(ui,'explain_three_level_training_resolution','当前组织'));
+check('33 logistics center label', has(ui,"logistics_center:'后勤中心'"));
+check('34 operating entity label', has(ui,"operating_entity:'经营实体'"));
+check('35 contractor not applicable reason', has(ui,'three_level_not_applicable','person_category'));
+check('36 temporary remains visible as not applicable fact', has(ui,'该人员类型不适用本公司员工三级教育'));
+check('37 visitor remains visible as not applicable fact', has(ui,'人员事实','不适用本公司员工三级教育'));
+check('38 actual project input and blocked reason', has(ui,'s3c-sim-project','actual_project','具体项目'));
+check('39 explain shows match reason', has(ui,'为什么命中这个方案','evaluated_rules','excluded_reason'));
+check('40 simulator never creates snapshot', has(ui,'模拟结果（不会创建正式培训要求）') && !ui.includes('generate_three_level_training_requirement_snapshot'));
+check('41 script is loaded by existing app', index.includes('js/modules/training/three-level-config.js'));
+check('42 contract contains minimal v93 RPCs', contract.rpcs.scheme.includes('training_scheme_validate_publish') && contract.rpcs.scheme.includes('training_scheme_applicability_conflicts'));
+
+const failed=results.filter(x=>!x.pass);
+console.log(`S3C_WEB_RESULT ${failed.length?'FAIL':'PASS'} ${results.length-failed.length}/${results.length}`);
+if(failed.length) process.exit(1);

@@ -782,14 +782,29 @@ const TrainingMine = {
   },
 
   // ---------------------------------------------------------------- 考试
-  async openExam(planId) {
+  async openExam() {
+    alert('请从“我的项目准入”进入考试，以便服务端核验当前项目和人员前置条件。');
+  },
+
+  async openAdmissionExam(admissionId, examType = 'admission', specialType = null) {
     try {
-      const { data, error } = await sb.rpc('exam_start', { p_plan_id: planId });
+      const { data, error } = await sb.rpc('training_exam_start', {
+        p_admission_id: admissionId,
+        p_exam_type: examType,
+        p_special_type: specialType,
+        p_idempotency_key: null,
+      });
       if (error) { alert(error.message); return; }
       this.state.exam = {
         attemptId: data.attempt_id,
         deadline: new Date(data.deadline_at),
-        totalScore: data.total_score,
+        serverOffset: new Date(data.server_now).getTime() - Date.now(),
+        examType: data.exam_type,
+        specialType: data.special_type,
+        attemptNo: data.attempt_no,
+        maxAttempts: data.max_attempts,
+        remainingAttempts: data.remaining_attempts,
+        passLine: data.pass_line,
         questions: data.questions || [],
       };
       this.renderExamModal();
@@ -804,12 +819,12 @@ const TrainingMine = {
       <div class="modal-overlay" onclick="TrainingMine.closeExam()">
         <div class="modal" onclick="event.stopPropagation()" style="max-width:820px">
           <div class="modal-header">
-            <h3>在线考试</h3>
+            <h3>${ex.examType === 'special' ? `${Utils.escapeHtml(ex.specialType || '')} 专项考试` : '综合准入考试'}</h3>
             <span id="exam-timer" style="font-weight:600;color:#b91c1c;font-size:15px">--:--</span>
           </div>
           <div class="modal-body">
             <p class="hint" style="font-size:12px;margin-bottom:12px">
-              共 ${ex.questions.length} 题，总分 ${ex.totalScore} 分。切屏会被记录，请专注作答；到时自动交卷。
+              第 ${ex.attemptNo}/${ex.maxAttempts} 次，共 ${ex.questions.length} 题，及格线 ${ex.passLine} 分。切屏会被记录；服务端时间到后自动结束。
             </p>
             ${ex.questions.map((q, idx) => this.renderQuestion(q, idx)).join('')}
           </div>
@@ -864,7 +879,7 @@ const TrainingMine = {
     const tick = () => {
       const el = document.getElementById('exam-timer');
       if (!el) { this.stopTimer(); return; }
-      const ms = this.state.exam.deadline - Date.now();
+      const ms = this.state.exam.deadline.getTime() - (Date.now() + Number(this.state.exam.serverOffset || 0));
       if (ms <= 0) {
         el.textContent = '00:00';
         this.stopTimer();
@@ -887,7 +902,7 @@ const TrainingMine = {
     this.detachSwitchWatch();
     this.state.switchHandler = () => {
       if (document.visibilityState === 'hidden' && this.state.exam) {
-        sb.rpc('exam_report_switch', { p_attempt_id: this.state.exam.attemptId }).then(() => {}, () => {});
+        sb.rpc('training_exam_report_switch', { p_attempt_id: this.state.exam.attemptId }).then(() => {}, () => {});
       }
     };
     document.addEventListener('visibilitychange', this.state.switchHandler);
@@ -926,7 +941,7 @@ const TrainingMine = {
     });
 
     try {
-      const { data, error } = await sb.rpc('exam_submit', {
+      const { data, error } = await sb.rpc('training_exam_submit', {
         p_attempt_id: ex.attemptId, p_answers: answers,
       });
       if (error) { alert('交卷失败：' + error.message); return; }
@@ -955,7 +970,8 @@ const TrainingMine = {
             <div>${pass
               ? '<span class="badge badge-success" style="font-size:14px;padding:6px 16px">恭喜通过！请回到任务列表完成签字确认</span>'
               : '<span class="badge badge-danger" style="font-size:14px;padding:6px 16px">未通过，可在错题本复习后再考</span>'}</div>
-            ${res.timeout ? '<p class="hint" style="font-size:12px;margin-top:10px">本场考试已超时，按已答内容判分</p>' : ''}
+            ${res.status === 'timed_out' ? '<p class="hint" style="font-size:12px;margin-top:10px">本场考试已由服务端判定超时</p>' : ''}
+            <p class="hint" style="font-size:12px;margin-top:10px">剩余次数：${res.remaining_attempts}</p>
           </div>
           <div class="modal-footer">
             <button class="btn btn-primary" onclick="TrainingMine.closeExam()">知道了</button>

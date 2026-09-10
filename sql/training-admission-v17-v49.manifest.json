@@ -1,5 +1,5 @@
 {
-  "schema": "d03-training-admission-v17-v85",
+  "schema": "d03-training-admission-v17-v86",
   "version": 1,
   "migrations": [
     { "version": 17, "file": "training-admission-v17.sql", "sha256": "B7C611DA14FF2C359A9358F41EE4E45A0248BF7A157A2E2F3B5231E114D07A33" },
@@ -70,6 +70,18 @@
     { "version": 82, "file": "training-admission-v82-d11-r02-p1-closure.sql", "sha256": "8F66E4583756898602506091C547AA17F7DB5E4827D32581E2A11433480D1431" },
     { "version": 83, "file": "training-admission-v83-employee-three-level-foundation.sql", "sha256": "E25C795A84199DAC941554BE6404A6CD39617E694B3652592D4EE9483261BBFC" },
     { "version": 84, "file": "training-admission-v84-special-work-requirements.sql", "sha256": "88AB2020EA02444A5C084110FCE6E1D003600FD902D660934CCB3D33918885F5" },
-    { "version": 85, "file": "training-admission-v85-d12-r01-p1-fixes.sql", "sha256": "786AF3CB739F0AE7C6874B5C9A4E74E2189D5202ED3AA37798FF1269E34992BA" }
+    { "version": 85, "file": "training-admission-v85-d12-r01-p1-fixes.sql", "sha256": "786AF3CB739F0AE7C6874B5C9A4E74E2189D5202ED3AA37798FF1269E34992BA" },
+    { "version": 86, "file": "training-admission-v86-authoritative-admission-exams.sql", "sha256": "A2E15EA68CC33166772327D8113C9118C304BDE011E30F9C8DF6D35F2454EA11" },
+    { "version": 87, "file": "training-admission-v87-v11-account-export.sql", "sha256": "67DEFED61578512C5AB30A8D12D8DD95E6E5DBC7F66AB79CB46804AFBF01D1D2" },
+    { "version": 88, "file": "training-admission-v88-v11-authority-models.sql", "sha256": "83CC5B869B8F826C7C52D12C87D912BB210239E634641F53380E6A4583D7A261" },
+    { "version": 89, "file": "training-admission-v89-v11-special-exam-compat.sql", "sha256": "15532EC3297E111E2EC74B8AA026D2A8025C2B0FDCC67C2C7427F8AF761BDD2D" },
+    { "version": 90, "file": "training-admission-v90-v11-project-induction.sql", "sha256": "6617902F958605CC12915498ED3ED6AEE8593843372AED59A1A1029A0C469828" },
+    { "version": 91, "file": "training-admission-v91-training-scheme-foundation.sql", "sha256": "3350129D4070EB4712F7BB3231EDC3A32C96B07AD4E0369386170DDB646E18FA" },
+    { "version": 92, "file": "training-admission-v92-training-requirement-resolver.sql", "sha256": "8D7B8A621878FE8D02B6FB7C6348489EE3D2F2785FB5969E51AC007764CCB12C" },
+    { "version": 93, "file": "training-admission-v93-training-scheme-publish-validation.sql", "sha256": "00438715E3C2865E919DE8B835EE4AE7A786696DAE6CD92D7FA5BBB79E211F47" },
+    { "version": 94, "file": "training-admission-v94-config-driven-three-level-cutover.sql", "sha256": "BD5FE9D6F531D5E681B55F9FA4853D409AA609D13932844C6834C3C0B3CAEDBC" },
+    { "version": 95, "file": "training-admission-v95-d13-r02-authorization-boundaries.sql", "sha256": "B3A1903F15083004DE27B8E2A41A43BAF574B5C53600B6D8F6F0B64BDF84261E" },
+    { "version": 96, "file": "training-admission-v96-d13-r02-integrity-fixes.sql", "sha256": "8A81930BDD15274A8374264546DB66F65B21FA3AD0B0E3A88A24103C80A20DB2" },
+    { "version": 97, "file": "training-admission-v97-training-plan-scope-correction.sql", "sha256": "3040BD5357EA60FFC066B480050E0A63DAEA45084F7455475D16E34F0181AB7F" }
   ]
 }

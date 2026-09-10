@@ -1,0 +1,71 @@
+{
+  "version": "D13-authoritative-exams-v1",
+  "status": "pass",
+  "authority": "Web/backend database RPC; clients never decide eligibility, paper contents, time, score, result or attempts",
+  "consumers": ["D18", "G2", "D32", "D33"],
+  "exam_types": {
+    "employee_comprehensive_admission_exam": { "storage_compatibility_type": "admission", "special_type": null },
+    "project_induction_exam": { "storage_compatibility_type": "admission", "special_type": null },
+    "special_exam": { "storage_compatibility_type": "special", "catalog": "special_requirement_catalog", "matching": "exact" }
+  },
+  "controlled_defaults": { "question_count": 20, "duration_minutes": 30, "pass_score": 80, "max_attempts": 3 },
+  "allowed_ranges": { "question_count": [10, 100], "duration_minutes": [10, 120], "pass_score": [60, 100], "max_attempts": [1, 10] },
+  "rpcs": [
+    {
+      "name": "training_exam_start",
+      "request": ["p_admission_id", "p_exam_type", "p_special_type", "p_idempotency_key"],
+      "response": ["attempt_id", "admission_id", "project_id", "exam_type", "special_type", "attempt_no", "status", "started_at", "deadline_at", "server_now", "pass_line", "max_attempts", "remaining_attempts", "questions", "question_count", "rule_version"],
+      "authorization": "current user must own the admission and remain an active project member",
+      "idempotency": "an existing ongoing requirement is resumed; optional key and database uniqueness serialize retries"
+    },
+    {
+      "name": "training_exam_get",
+      "request": ["p_attempt_id"],
+      "authorization": "examinee only",
+      "answer_safety": "questions never include correct answers or internal analysis"
+    },
+    {
+      "name": "training_exam_submit",
+      "request": ["p_attempt_id", "p_answers"],
+      "authorization": "examinee only",
+      "idempotency": "the first terminal result is immutable and repeated submit returns it",
+      "grading": "server grades against the attempt answer snapshot and percentage pass score"
+    },
+    {
+      "name": "training_exam_report_switch",
+      "request": ["p_attempt_id"],
+      "authorization": "examinee only",
+      "effect": "audit signal only; it cannot alter score or result"
+    },
+    {
+      "name": "training_exam_project_summary",
+      "request": ["p_project_id"],
+      "authorization": "D07 site_project_can_read_management_data",
+      "answer_safety": "summary contains no questions, answers or answer keys"
+    }
+  ],
+  "prerequisites": {
+    "formal_internal": "consume only the authoritative D11 training_three_level_status.exam_allowed result for the current employment relation; D13 never resolves organization, scheme, stages, or packages",
+    "contractor_and_temporary_individual": "require an active completed project-level admission training task; absent source fails closed and never creates employee three-level history",
+    "visitor": "blocked and routed to visitor safety briefing",
+    "special": "consume the exact current D12 requirement, certificate state, training completion and exact published special exam configuration; pass facts are isolated by admission/project/person/special type/plan"
+  },
+  "states": ["in_progress", "submitted", "timed_out"],
+  "results": ["pass", "fail"],
+  "reason_codes": [
+    "prerequisite_not_met", "three_level_training_required", "project_admission_training_required",
+    "special_requirement_not_met", "special_exam_not_configured", "exam_not_configured",
+    "attempt_limit_reached", "exam_timed_out", "exam_not_found", "invalid_answers",
+    "forbidden", "project_not_accessible", "exam_history_locked"
+  ],
+  "time": "deadline and timeout are decided using server clock; deadline is exclusive and 30:00 is timed out",
+  "history": "question, option, answer and rule snapshots plus attempts and events are persisted; submitted attempts cannot be updated or deleted and cannot satisfy another project's special requirement",
+  "security": {
+    "direct_attempt_table_access": "none for anon/authenticated",
+    "direct_answer_table_access": "ordinary authenticated users denied",
+    "legacy_exam_rpc": "execute revoked for anon/authenticated",
+    "rls": true,
+    "security_definer_search_path": "public"
+  },
+  "boundary": "D13 records exam facts only; D18 owns final work eligibility"
+}

@@ -223,10 +223,22 @@ function cleanupFixture(databaseUrl, fixture) {
   const employeeIds = fixture.users.map(item => `${sqlLiteral(item.employeeId)}::uuid`).join(',');
   return Number.parseInt(runPsql(databaseUrl, `
 BEGIN;
+SET LOCAL session_replication_role=replica;
 DELETE FROM public.site_project_roles WHERE project_id IN (${projectIds});
 DELETE FROM public.site_project_audit_logs WHERE project_id IN (${projectIds}) OR entity_id IN (${projectIds});
 DELETE FROM public.site_projects WHERE id IN (${projectIds});
 DELETE FROM public.site_project_audit_logs WHERE project_id IN (${projectIds}) OR entity_id IN (${projectIds});
+DELETE FROM public.training_employee_versions WHERE employee_id IN (${employeeIds});
+DELETE FROM public.account_high_privilege_approvals
+WHERE target_subject_id IN (SELECT id FROM public.account_subjects WHERE auth_user_id IN (${userIds}))
+   OR requested_by_subject_id IN (SELECT id FROM public.account_subjects WHERE auth_user_id IN (${userIds}))
+   OR reviewed_by_subject_id IN (SELECT id FROM public.account_subjects WHERE auth_user_id IN (${userIds}));
+DELETE FROM public.account_lifecycle_history
+WHERE subject_id IN (SELECT id FROM public.account_subjects WHERE auth_user_id IN (${userIds}))
+   OR operator_subject_id IN (SELECT id FROM public.account_subjects WHERE auth_user_id IN (${userIds}));
+DELETE FROM public.account_lifecycle WHERE subject_id IN (SELECT id FROM public.account_subjects WHERE auth_user_id IN (${userIds}));
+DELETE FROM public.account_subjects WHERE auth_user_id IN (${userIds});
+DELETE FROM public.profiles WHERE id IN (${userIds});
 DELETE FROM auth.users WHERE id IN (${userIds});
 DELETE FROM public.training_employees WHERE id IN (${employeeIds});
 COMMIT;
@@ -236,7 +248,9 @@ SELECT
   + (SELECT count(*) FROM public.site_project_audit_logs WHERE project_id IN (${projectIds}) OR entity_id IN (${projectIds}))
   + (SELECT count(*) FROM auth.users WHERE id IN (${userIds}))
   + (SELECT count(*) FROM public.profiles WHERE id IN (${userIds}))
-  + (SELECT count(*) FROM public.training_employees WHERE id IN (${employeeIds}));`), 10);
+  + (SELECT count(*) FROM public.training_employees WHERE id IN (${employeeIds}))
+  + (SELECT count(*) FROM public.training_employee_versions WHERE employee_id IN (${employeeIds}))
+  + (SELECT count(*) FROM public.account_subjects WHERE auth_user_id IN (${userIds}));`), 10);
 }
 
 async function main() {

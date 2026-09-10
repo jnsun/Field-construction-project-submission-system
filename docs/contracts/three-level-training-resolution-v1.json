@@ -1,0 +1,54 @@
+{
+  "contract": "three-level-training-resolution-v1",
+  "status": "S3-D production authority for newly required formal-employee three-level training",
+  "resolver": {
+    "rpc": "resolve_three_level_training_scheme",
+    "inputs": ["employee_id", "employment_relation_id", "as_of", "optional site_project_id"],
+    "authority_order": ["current employment relation", "effective organization assignment", "person category", "applicability rules", "as_of", "effective published scheme version"],
+    "outputs": ["status", "applicable", "person_category", "organization_assignment_id", "organization_unit_id", "matched_rule_id", "matched_rule_ids", "precedence", "priority", "scheme_id", "scheme_version_id", "stages", "reason_code", "explanation", "resolver_version"],
+    "resolver_version": "three-level-resolver-v1"
+  },
+  "precedence": {
+    "order": ["exact organization_unit", "organization_type", "company fallback"],
+    "within_level": "higher priority wins",
+    "different_schemes_at_same_level_and_priority": "training_scheme_ambiguous; fail closed"
+  },
+  "scheme_version": {
+    "eligible_statuses": ["published", "retired", "superseded"],
+    "rule": "published_at and effective range must include as_of; retired and superseded are historical only",
+    "draft_effective": false,
+    "multiple_effective_versions": "fail closed"
+  },
+  "snapshot": {
+    "root": "training_requirement_snapshots",
+    "items": "training_requirement_snapshot_items",
+    "events": "training_requirement_snapshot_events",
+    "unique_by": ["employment_relation_id", "basic_three_level"],
+    "immutable": true,
+    "production_generation": "training_ensure_three_level_requirement generates or reuses on first authoritative D11 need; explain remains preview-only",
+    "legacy_compatibility": "already completed or verified relations remain satisfied without backfill; an already-started incomplete D11 program is frozen on demand with source legacy_d11_compatibility",
+    "reused_after": ["scheme version change", "package version change", "project change", "year change", "organization rename", "project close"],
+    "frozen": ["employment relation", "organization assignment", "matched rule", "scheme version", "training package row/version number", "minimum study parameter value/version", "stage type", "actual project source"]
+  },
+  "stage": {
+    "levels": ["company", "organization", "third"],
+    "third_types": ["department_position", "logistics_position", "entity_position", "basic_project", "actual_project"],
+    "actual_project": "requires an active authoritative project and active membership for the person",
+    "other_third_types": "ignore optional project input"
+  },
+  "not_applicable": ["contractor", "temporary_individual", "visitor"],
+  "permissions": {
+    "resolver_and_explain": ["self", "company_admin", "existing organization reader", "existing project reader"],
+    "snapshot_creation": "server resolver only; client cannot choose organization, rule, scheme version, or package version",
+    "direct_table_writes": "denied to authenticated and anon"
+  },
+  "explain_rpc": "explain_three_level_training_resolution",
+  "shadow_rpc": "training_three_level_resolution_shadow (read-only compatibility comparison; production_cutover=true)",
+  "snapshot_rpcs": ["training_ensure_three_level_requirement", "generate_three_level_training_requirement_snapshot", "training_three_level_requirement_snapshot"],
+  "reason_codes": [
+    "three_level_not_applicable", "employment_relation_required", "organization_assignment_required",
+    "training_scheme_not_found", "training_scheme_ambiguous", "training_scheme_version_not_effective",
+    "training_stage_invalid", "training_package_version_required", "actual_project_required",
+    "requirement_snapshot_exists", "requirement_snapshot_not_required", "requirement_snapshot_immutable", "forbidden"
+  ]
+}

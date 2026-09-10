@@ -1,0 +1,45 @@
+{
+  "version": "V11-d00-d13-compatibility-v1",
+  "status": "pass",
+  "authority": "Web/backend database RPC",
+  "account_lifecycle": {
+    "states": ["active", "disabled", "frozen", "closed"],
+    "ordinary_admin_delete": "training_account_set_status(..., closed); never DELETE auth.users",
+    "rpcs": ["training_account_set_status", "training_account_request_high_privilege_action", "training_account_approve_high_privilege_action", "training_account_apply_company_admin_role", "training_account_roles"],
+    "high_privilege": "company administrator grant/revoke and lifecycle restriction require independent approval; last active company administrator is protected",
+    "session_revocation": "non-active status bans login and deletes refresh sessions; PostgREST pre-request rejects new API requests",
+    "history": ["account_subjects", "account_lifecycle_history", "account_high_privilege_approvals"]
+  },
+  "normal_exports": {
+    "rule": "all roles receive masked sensitive values from ordinary table/CSV/PDF/print RPCs",
+    "certificate_rpc": "certificate_normal_export",
+    "full_export": "not implemented here; reserved for D22"
+  },
+  "primary_admission_path": {
+    "values": ["employee", "contractor", "temporary_individual", "visitor"],
+    "key": ["project_id", "employee_id"],
+    "rpc": "training_primary_admission_path",
+    "history": "project_person_admission_path_history",
+    "legacy_sources": ["site_project_members.membership_type", "training_three_level_profiles.person_category"]
+  },
+  "roles": { "rpc": "training_account_roles", "shape": ["role", "scope", "scope_id"], "legacy_profile_role": "compatibility input only" },
+  "training_categories": ["basic_three_level", "project_induction", "project_special", "special_operation", "continuing_or_change"],
+  "system_parameters": {
+    "resources": ["system_parameter_definitions", "system_parameter_versions", "system_parameter_version_approvals", "system_parameter_audit"],
+    "rpcs": ["system_parameter_effective", "system_parameter_set", "system_parameter_approve"],
+    "effective_rule": "select the latest approved active version whose effective_at is not after as_of; a future version never retires the current effective version early",
+    "approval_rule": "requires_approval versions are pending until a different active company administrator approves using a server-derived account subject",
+    "history_rule": "new effective versions never rewrite completed training or exam snapshots"
+  },
+  "special_catalog": {
+    "resource": "special_requirement_catalog",
+    "special_operation": ["blasting", "electrical", "welding"],
+    "project_special": ["drilling"],
+    "risk_resources": ["project_risk_catalog", "site_project_risk_tags"],
+    "includes_drilling": "retained and synchronized with risk tag drilling"
+  },
+  "exam_semantics": ["employee_comprehensive_admission_exam", "project_induction_exam", "special_exam"],
+  "exam_parameter_ranges": { "EXAM-QTY-001": [10, 100], "EXAM-DUR-001": [10, 120], "EXAM-PASS-001": [60, 100], "EXAM-TRY-001": [1, 10] },
+  "drilling_exam": { "parameter_id": "EXAM-DRILL-001", "default": false, "training_required": true, "certificate_required": false, "approval": "maker-checker" },
+  "security": { "rls": true, "direct_client_writes": false, "company_read_implies_manage": false }
+}

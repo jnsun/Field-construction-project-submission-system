@@ -418,10 +418,10 @@ const PeopleModule = {
     const emp = this.state.employees.find(e => e.id === empId);
     if (!emp) return;
     const acct = this.accountOf(empId);
-    if (!confirm(`确定删除员工「${emp.name}」吗？\n\n其培训记录关联、变更留痕将一并删除${acct ? '，登录账号将解除关联但不会被删除' : ''}。`)) return;
+    if (!confirm(`确定停用员工「${emp.name}」吗？\n\n人员档案和业务历史继续保留${acct ? '，登录身份将关闭' : ''}。`)) return;
     const { error } = await sb.rpc('training_employees_batch_delete', { p_ids: [empId] });
-    if (error) { Utils.toast('删除失败：' + (Auth.mapDbError ? Auth.mapDbError(error) : error.message), 'error'); return; }
-    Utils.toast('员工已删除', 'success');
+    if (error) { Utils.toast('停用失败：' + (Auth.mapDbError ? Auth.mapDbError(error) : error.message), 'error'); return; }
+    Utils.toast('员工已停用，历史记录已保留', 'success');
     await this.renderStaff(document.getElementById('people-section'));
   },
 

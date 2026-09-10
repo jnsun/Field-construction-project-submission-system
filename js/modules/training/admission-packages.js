@@ -4,7 +4,7 @@
 // =============================================================
 const TrainingAdmissionPackages = {
 
-  state: { packages: [], items: {}, projects: [], plans: [], specialRules: [] },
+  state: { packages: [], items: {}, projects: [], plans: [], specialRules: [], specialCatalog: [] },
   STATUS: { draft: '草稿', pending_review: '待审核', published: '已发布', archived: '已归档' },
   LEVEL: { company: '公司级', dept: '经营实体级', project: '项目级', special: '专项' },
 
@@ -17,12 +17,13 @@ const TrainingAdmissionPackages = {
   },
 
   async load() {
-    const [packages, items, projects, plans, rules] = await Promise.all([
+    const [packages, items, projects, plans, rules, catalog] = await Promise.all([
       sb.from('training_admission_packages').select('id, project_id, title, version_no, validity_years, pause_retrain_days, exam_plan_id, status, source_document_path, review_note, approved_by, approved_at, created_at, supersedes_package_id').order('created_at', { ascending: false }),
       sb.from('training_admission_package_items').select('package_id, plan_id, level, required, sort_order'),
       sb.from('site_projects').select('id, project_code, name, status').order('created_at', { ascending: false }),
       sb.from('training_plans').select('id, title, level, category, plan_year, publish_status, status').order('plan_year', { ascending: false }).order('created_at', { ascending: false }),
       sb.from('training_admission_special_rules').select('package_id, position_keyword, special_type, plan_id, exam_plan_id'),
+      sb.from('special_requirement_catalog').select('special_type, category, display_name, exam_policy, enabled, sort_order').eq('enabled', true).order('sort_order'),
     ]);
     const error = [packages, items, projects, plans].find(r => r.error);
     if (error) throw error.error;
@@ -32,6 +33,7 @@ const TrainingAdmissionPackages = {
     this.state.projects = projects.data || [];
     this.state.plans = plans.data || [];
     this.state.specialRules = rules.data || [];
+    this.state.specialCatalog = catalog.data || [];
     this.renderTable();
   },
 
@@ -131,16 +133,16 @@ const TrainingAdmissionPackages = {
     const p = this.state.packages.find(x => x.id === packageId); if (!p) return;
     const items = (this.state.items[packageId] || []).filter(i => i.level === 'special');
     if (!items.length) { Utils.toast('请先在培训包中选择至少一个“专项培训”计划', 'info'); return; }
-    const types = [['blasting','爆破'],['electrical','电工'],['welding','焊工'],['drilling','钻探']];
+    const types = this.state.specialCatalog.map(x => [x.special_type, x.display_name, x.exam_policy]);
     const current = {}; this.state.specialRules.filter(r => r.package_id === packageId).forEach(r => { current[r.special_type] = r; });
     const trainingOptions = key => `<option value="">不适用</option>${items.map(i => `<option value="${i.plan_id}"${current[key]?.plan_id === i.plan_id ? ' selected' : ''}>${Utils.escapeHtml(this.planName(i.plan_id))}</option>`).join('')}`;
     const examOptions = key => `<option value="">请选择专项考试计划</option>${this.state.plans.filter(x => x.publish_status === 'published').map(x => `<option value="${x.id}"${current[key]?.exam_plan_id === x.id ? ' selected' : ''}>${Utils.escapeHtml(this.planName(x.id))}</option>`).join('')}`;
-    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingAdmissionPackages.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:720px"><div class="modal-header"><h3>实际专项作业规则</h3><button class="modal-close" onclick="TrainingAdmissionPackages.close()">×</button></div><div class="modal-body"><p class="hint">爆破、电工、焊工仅在项目管理人员明确选择实际作业后触发；钻探由项目 includes_drilling 对全体在场人员触发。培训与考试计划必须分别明确配置。</p>${types.map(([key,label]) => `<div class="form-row"><div class="form-group"><label>${label}专项培训</label><select id="special-training-${key}" class="form-control">${trainingOptions(key)}</select></div><div class="form-group"><label>${label}专项考试要求</label><select id="special-exam-${key}" class="form-control">${examOptions(key)}</select></div></div>`).join('')}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionPackages.close()">取消</button><button class="btn btn-primary" onclick="TrainingAdmissionPackages.saveSpecialRules('${packageId}')">保存规则</button></div></div></div>`;
+    this.host().innerHTML = `<div class="modal-overlay" onclick="TrainingAdmissionPackages.close()"><div class="modal" onclick="event.stopPropagation()" style="max-width:720px"><div class="modal-header"><h3>实际专项作业规则</h3><button class="modal-close" onclick="TrainingAdmissionPackages.close()">×</button></div><div class="modal-body"><p class="hint">个人持证专项由项目实际作业触发；项目专项由项目风险标签触发。钻探培训必选，考试由公司参数决定。</p>${types.map(([key,label,policy]) => `<div class="form-row"><div class="form-group"><label>${label}专项培训</label><select id="special-training-${key}" class="form-control">${trainingOptions(key)}</select></div><div class="form-group"><label>${label}专项考试${policy === 'parameter' ? '（受控可选）' : '要求'}</label><select id="special-exam-${key}" class="form-control">${examOptions(key)}</select></div></div>`).join('')}</div><div class="modal-footer"><button class="btn btn-secondary" onclick="TrainingAdmissionPackages.close()">取消</button><button class="btn btn-primary" onclick="TrainingAdmissionPackages.saveSpecialRules('${packageId}')">保存规则</button></div></div></div>`;
   },
 
   async saveSpecialRules(packageId) {
-    const rules = ['blasting','electrical','welding','drilling'].map(special_type => ({ special_type, training_plan_id: document.getElementById(`special-training-${special_type}`)?.value || '', exam_plan_id: document.getElementById(`special-exam-${special_type}`)?.value || '' })).filter(x => x.training_plan_id || x.exam_plan_id);
-    if (rules.some(x => !x.training_plan_id || !x.exam_plan_id)) { Utils.toast('每项启用的专项必须同时选择培训计划和考试计划', 'error'); return; }
+    const rules = this.state.specialCatalog.map(item => ({ special_type: item.special_type, exam_policy: item.exam_policy, training_plan_id: document.getElementById(`special-training-${item.special_type}`)?.value || '', exam_plan_id: document.getElementById(`special-exam-${item.special_type}`)?.value || '' })).filter(x => x.training_plan_id || x.exam_plan_id);
+    if (rules.some(x => !x.training_plan_id || (x.exam_policy === 'required' && !x.exam_plan_id))) { Utils.toast('启用专项必须选择培训计划；个人持证专项还必须选择考试计划', 'error'); return; }
     const { error } = await sb.rpc('training_set_package_special_requirements', { p_package_id: packageId, p_rules: rules });
     if (error) { Utils.toast(error.message, 'error'); return; }
     this.close(); Utils.toast('高风险专项规则已保存', 'success'); await this.load();
