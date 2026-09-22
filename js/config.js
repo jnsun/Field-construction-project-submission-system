@@ -7,10 +7,18 @@
  *   - anon public key -> 填入 SUPABASE_ANON_KEY
  */
 
-// 后端指向腾讯云自托管 Supabase（服务器 140.143.247.55，经 Nginx 同源反代）
-// 如需回滚云 Supabase：把下面两行改回云端 Project URL 与 anon key 即可
-const SUPABASE_URL = 'http://140.143.247.55';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg3OTIzMTgyLCJleHAiOjIxMDMyODMxODJ9.KnS6ejpGHGxOyET6KQdjwhFzWBcGNpHfoLKOfh-dTXU';
+// 后端指向云端 Supabase（HTTPS）。
+//
+// ⚠️ GitHub Pages 是 HTTPS 站点，这里不能用 http:// 的自托管端点：
+// 浏览器会把对 http:// 的 fetch 判定为「混合内容」直接拦截，
+// 表现就是登录时报 Failed to fetch。同理，http://140.143.247.55 也无法在 Pages 上使用。
+//
+// 如将来要切回腾讯云自托管后端（140.143.247.55），必须同时满足两个前提：
+//   1) 该站点本身提供 HTTPS（例如 https://test.safety.sx.cn）；
+//   2) 其 Nginx 已正确反代 /auth/v1 与 /rest/v1，并返回允许 GitHub Pages 源站跨域的 CORS 头。
+// 否则改回 http:// 只会再次登录失败。
+const SUPABASE_URL = 'https://exwsuwhqqpsqekzkmdol.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4d3N1d2hxcXBzcWVremttZG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MzUyNTcsImV4cCI6MjEwMzExMTI1N30.bMqWlGbJ0IGL9mgT33r9IjUQiJ7E2dwADKHNU04ukW0';
 
 // 初始化 Supabase 客户端（全局可用）
 // 使用 try-catch 防止 SDK 加载失败时阻塞整个应用
