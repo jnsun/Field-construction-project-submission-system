@@ -1,11 +1,18 @@
 name: Deploy static site to GitHub Pages
 
-# 培训教育模块测试用：本分支（training-module）每次 push 自动部署到 GitHub Pages
-# 合并回 main 后若要继续用 Pages，把 branches 改成 [main] 即可
+# 本站点的发布方式见 Settings → Pages → Source。
+#   - 若选「Deploy from a branch」：选 training-module（最新系统）/ (root)，push 即自动重建，
+#     本 workflow 不会自动运行（此时它是冗余的，留着以便随时切回 Actions 方式）。
+#   - 若选「GitHub Actions」：把下面的 on: 改回 push + branches: [training-module] 并保存即可。
+#
+# 后端地址不再由 GitHub Secrets 注入：js/config.js 中已内置云端 Supabase 的默认值
+# （https://exwsuwhqqpsqekzkmdol.supabase.co）。历史上这里是构建时用 secrets 生成
+# js/config.runtime.js，一旦 secret 指向已失效的项目，整站登录就会 Failed to fetch，
+# 且从仓库里看不出问题所在 —— 因此改为把默认值写进仓库，配置可追溯、可 review。
+# 如确需恢复运行时注入，把「Generate browser runtime configuration」步骤加回来，
+# 并注意注入值必须是 https://（http:// 会被浏览器按混合内容拦截）。
 
 on:
-  push:
-    branches: [training-module]
   workflow_dispatch:
 
 permissions:
@@ -29,21 +36,6 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
-
-      - name: Generate browser runtime configuration
-        env:
-          SAFETY_SUPABASE_URL: ${{ secrets.SAFETY_SUPABASE_URL }}
-          SAFETY_SUPABASE_ANON_KEY: ${{ secrets.SAFETY_SUPABASE_ANON_KEY }}
-        run: |
-          test -n "$SAFETY_SUPABASE_URL"
-          test -n "$SAFETY_SUPABASE_ANON_KEY"
-          node - <<'NODE' > js/config.runtime.js
-          const value = {
-            url: process.env.SAFETY_SUPABASE_URL,
-            anonKey: process.env.SAFETY_SUPABASE_ANON_KEY,
-          };
-          process.stdout.write(`window.__SAFETY_SUPABASE_CONFIG__ = ${JSON.stringify(value)};\n`);
-          NODE
 
       - name: Upload site files
         uses: actions/upload-pages-artifact@v3
