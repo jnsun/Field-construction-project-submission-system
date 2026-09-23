@@ -2,6 +2,37 @@
  * auth.js - 认证模块（登录 / 登出 / 会话管理）
  */
 
+/**
+ * 部门名称 → 部门编码 映射表（部门报送专用账号登录用）
+ *
+ * 部门报送账号的底层邮箱 = 部门编码小写 + @login.local，
+ * 与 sql/dept-report-accounts.sql 保持一致（例：工程测绘中心 → dept-02@login.local）。
+ * 登录框里用户直接输入中文部门名，前端查本表换算成底层邮箱，无需手工记邮箱。
+ *
+ * ⚠️ 新增 / 改名部门时，需同步维护本表与 sql/dept-report-accounts.sql 中的名单。
+ */
+const DEPT_LOGIN_CODES = {
+  '碳中和产业研究院': 'DEPT-01',
+  '工程测绘中心': 'DEPT-02',
+  '大地测绘中心': 'DEPT-03',
+  '遥感中心': 'DEPT-04',
+  '太原分院': 'DEPT-05',
+  '卫星遥感大数据应用中心': 'DEPT-06',
+  '地信中心': 'DEPT-07',
+  '岩土工程所': 'DEPT-08',
+  '地灾防治所': 'DEPT-09',
+  '地质勘查所': 'DEPT-10',
+  '生态化学所': 'DEPT-11',
+  '地质调查所': 'DEPT-12',
+  '资源环境所': 'DEPT-13',
+  '能源物探所': 'DEPT-14',
+  '广州分院': 'DEPT-15',
+  '工程物探所': 'DEPT-16',
+  '综合研究所': 'DEPT-17',
+  '地震物探所': 'DEPT-18',
+  '电磁物探所': 'DEPT-19',
+};
+
 const Auth = {
 
   /**
@@ -50,25 +81,31 @@ const Auth = {
   },
 
   /**
-   * 登录：邮箱或已绑定手机号 + 密码。手机号统一映射为内部邮箱别名，
-   * 不通过数据库查询解析账号，避免登录前暴露手机号与账号的关联关系。
-   * @param {string} identifier 登录邮箱或手机号
+   * 登录（支持邮箱 / 手机号 / 部门名称 / 部门编码）
+   * @param {string} identifier 邮箱、手机号、部门名称或部门编码
    * @param {string} password
    * @returns {Promise<{success: boolean, error?: string}>}
    */
   async login(identifier, password) {
-    const value = String(identifier || '').trim();
-    const digits = value.replace(/^\+86/, '');
-    const isPhone = /^1[3-9]\d{9}$/.test(digits);
-    const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
-    if (!isPhone && !isEmail) return { success: false, error: '请输入登录邮箱或 11 位手机号。' };
+    // 将标识符解析为登录邮箱
+    let email;
+    try {
+      email = await this.resolveLoginEmail(identifier);
+    } catch (e) {
+      return { success: false, error: e.message || '无法解析登录账号' };
+    }
+    if (!email) {
+      return {
+        success: false,
+        error: '无法识别该登录账号。请填写：手机号（11 位）、部门名称（如「工程测绘中心」）、'
+             + '部门编码（如 DEPT-02）或完整邮箱。',
+      };
+    }
 
-    // 手机号不走短信 Provider，直接使用与手机号一一对应的内部邮箱别名。
-    // 这样既能沿用原密码，也不会因为未配置 Twilio 而无法登录。
-    const result = isPhone
-      ? await sb.auth.signInWithPassword({ email: `${digits}@login.local`, password })
-      : await sb.auth.signInWithPassword({ email: value.toLowerCase(), password });
-    const { data, error } = result;
+    const { data, error } = await sb.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     if (error) {
       return { success: false, error: this.mapAuthError(error.message) };
@@ -97,19 +134,52 @@ const Auth = {
   },
 
   /**
-   * 兼容保留：不再调用登录前标识解析接口。
+   * 将用户输入的标识符解析为登录邮箱
+   * 支持：邮箱 / 手机号 / 部门名称 / 部门编码，全部在前端本地换算，不依赖数据库
+   *   邮箱          → 原样（小写）
+   *   手机号        → <手机号>@login.local
+   *   部门名称      → 查 DEPT_LOGIN_CODES 得编码 → <编码小写>@login.local
+   *   部门编码      → DEPT-02 / dept02 → dept-02@login.local
+   * 说明：线上 resolve_login_identifier 的 EXECUTE 已被回收（多个 SQL 迁移 REVOKE 过），
+   *       因此解析必须本地完成；仅在本地认不出时探测一次旧 RPC 作为兼容兜底，失败静默。
    * @param {string} identifier
-   * @returns {Promise<string|null>} 非邮箱返回 null
+   * @returns {Promise<string|null>} 解析失败返回 null（不抛异常，由 login 给提示）
    */
   async resolveLoginEmail(identifier) {
     const id = String(identifier || '').trim();
     if (!id) return null;
 
+    // 1) 邮箱格式直接使用
     if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(id)) {
       return id.toLowerCase();
     }
-    const phone = id.replace(/^\+86/, '');
-    if (/^1[3-9]\d{9}$/.test(phone)) return `${phone}@login.local`;
+
+    // 2) 手机号（允许带 +86 前缀与空格/短横线分隔）
+    const digits = id.replace(/^\+?86/, '').replace(/[\s-]/g, '');
+    if (/^1[3-9][0-9]{9}$/.test(digits)) {
+      return digits + '@login.local';
+    }
+
+    // 3) 部门编码（DEPT-02 / dept02 / DEPT2 等写法均可）
+    if (/^dept-?\d{1,3}$/i.test(id)) {
+      const num = id.replace(/^dept-?/i, '');
+      return 'dept-' + String(num).padStart(2, '0') + '@login.local';
+    }
+
+    // 4) 部门名称（严格匹配，不做模糊猜测，避免歧义）
+    const deptCode = DEPT_LOGIN_CODES[id];
+    if (deptCode) {
+      return deptCode.toLowerCase() + '@login.local';
+    }
+
+    // 5) 兼容兜底：旧库若仍保留 resolve_login_identifier，尝试一次（失败静默，不阻塞登录）
+    try {
+      const { data, error } = await sb.rpc('resolve_login_identifier', { p_identifier: id });
+      if (!error && data && data.email) return data.email;
+    } catch (e) {
+      /* 该函数在现行线上库已被 REVOKE，忽略即可 */
+    }
+
     return null;
   },
 
@@ -229,7 +299,8 @@ const Auth = {
    */
   mapAuthError(msg) {
     const map = {
-      'Invalid login credentials': '邮箱或密码错误。请排查：① 该账号是否已在 Supabase 控制台 Authentication → Users 中创建；② 密码是否正确（可在 Users 页面重置密码）；③ 若开启了邮箱确认，需先点击确认邮件后才能登录；④ config.js 中的 Project URL 是否为当前项目的地址',
+      'Invalid login credentials': '账号或密码错误。请确认：① 部门名称是否与系统里完全一致（如「工程测绘中心」）；② 密码是否正确（区分大小写，部门报送账号默认密码可向管理员索取）；③ 该账号是否已由管理员开通。',
+
       'Email not confirmed': '邮箱未验证，请到邮箱中点击确认链接后再登录',
       'Email rate limit exceeded': '尝试次数过多，请稍后再试',
       'User already registered': '该邮箱已注册',

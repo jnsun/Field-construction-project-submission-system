@@ -920,6 +920,99 @@ input[disabled] {
 
 .nfb-btn { flex-shrink: 0; }
 
+/* 上期待续报项目（部门端一键带入） */
+.pending-banner {
+  margin-bottom: 16px;
+  border: 1px solid var(--color-primary-light);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.pending-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 16px;
+  background: var(--color-primary-light);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.8125rem;
+}
+
+.pending-head .pending-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--color-primary-dark);
+}
+
+/* 计数药丸：与工具栏提示保持一致的克制样式 */
+.pending-head .chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pending-head .pending-hint {
+  flex: 1 1 320px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.pending-list { display: flex; flex-direction: column; }
+
+.pending-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pending-item:last-child { border-bottom: none; }
+
+.pending-item:hover { background: var(--color-bg); }
+
+.pending-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 单行省略：项目名称过长时截断，悬停 title 看全称 */
+.pending-item-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-item-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-gap { color: var(--color-accent); margin-left: 6px; }
+
+.pending-item .btn { flex-shrink: 0; }
+
 /* 表单网格 */
 .form-grid {
   display: grid;

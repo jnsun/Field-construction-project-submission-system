@@ -137,8 +137,8 @@ const App = {
           <div class="login-error" id="login-error"></div>
           <form id="login-form" onsubmit="return false">
             <div class="form-group">
-              <label for="login-email">登录邮箱或手机号</label>
-              <input type="text" id="login-email" placeholder="请输入登录邮箱或 11 位手机号" required autocomplete="username" inputmode="email">
+              <label for="login-email">手机号 / 部门名称 / 邮箱</label>
+              <input type="text" id="login-email" placeholder="请输入手机号、部门名称或邮箱（如：13800138000 或 工程测绘中心）" required autocomplete="username">
             </div>
             <div class="form-group">
               <label for="login-password">密码</label>
@@ -176,7 +176,7 @@ const App = {
     const password = passEl.value;
 
     if (!identifier || !password) {
-      errorEl.textContent = '请输入登录邮箱或手机号和密码';
+      errorEl.textContent = '请输入登录账号（手机号 / 部门名称 / 邮箱）和密码';
       errorEl.classList.add('show');
       return;
     }

@@ -20,7 +20,17 @@ const Reporter = {
     projectTab: 'active',     // 项目视角下的列表：'active' 在建 | 'completed' 已完工
     noFieldConfirmed: false,  // 当前月本部门是否已确认"无野外施工项目"（视同 0 填报）
     noFieldInfo: null,        // 确认记录详情（confirmed_at 等）
+    pendingProjects: [],      // 上期待续报项目（最近一次在建、本月尚未报送），供一键带入
   },
+
+  /**
+   * 续报时沿用的「项目固定信息」字段（与 project_reports 表基础信息列一致）
+   * 每月变化的内容（进度、施工情况、设备、人数、车辆、安全自查）不带入，由填报人按当月实际填写。
+   */
+  CARRY_OVER_FIELDS: [
+    'project_name', 'project_type', 'construction_location', 'contract_amount',
+    'duration_months', 'department_entity', 'project_manager', 'contact_info',
+  ],
 
   /**
    * 项目类型默认值（数据库配置未就绪时的兜底，保证系统不因缺表而崩溃）
@@ -87,6 +97,7 @@ const Reporter = {
     await this.loadFormConfig();
     await this.loadReports();
     await this.loadNoFieldStatus();
+    await this.loadPendingProjects();
   },
 
   /**
@@ -104,6 +115,7 @@ const Reporter = {
     const body = `
       ${this.buildToolbar()}
       <div id="no-field-banner"></div>
+      <div id="pending-banner"></div>
       <div id="reports-section"></div>
     `;
     if (embedded) return body;
@@ -289,6 +301,147 @@ const Reporter = {
         </div>
       `;
     }
+  },
+
+  // ========================================================================
+  // 上期待续报项目（部门报送账号每月填报时，一键沿用项目固定信息）
+  // ========================================================================
+
+  /**
+   * 加载「上期待续报项目」
+   *
+   * 口径：该项目最近一次报送状态为「在建」，且该次报送月份早于本月、本月尚未报送。
+   *   - 已完工的项目不再提示续报
+   *   - 本月已报送过的项目自动从清单移除
+   *   - 跨年场景（如 1 月填报、上次为去年 12 月）通过放宽查询年份覆盖
+   * 用途：部门报送账号不必每月重录项目名称、类型、地点、合同额等固定信息。
+   */
+  async loadPendingProjects() {
+    const ym = Utils.getCurrentYearMonth();
+    const curKey = ym.year * 100 + ym.month;
+    this.state.pendingProjects = [];
+
+    try {
+      const { data, error } = await sb
+        .from('project_reports')
+        .select('*')
+        .eq('department_id', this.state.departmentId)
+        .gte('reporting_year', ym.year - 2)
+        .order('reporting_year', { ascending: false })
+        .order('reporting_month', { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+
+      // 按「项目名称 + 施工地点」归并为一个项目（与项目视角的归并口径一致）
+      const map = new Map();
+      for (const r of data || []) {
+        const k = String(r.project_name || '') + '|' + String(r.construction_location || '');
+        if (!map.has(k)) map.set(k, []);
+        map.get(k).push(r);
+      }
+
+      const pending = [];
+      for (const [key, list] of map.entries()) {
+        list.sort((a, b) =>
+          (b.reporting_year * 100 + b.reporting_month) - (a.reporting_year * 100 + a.reporting_month) ||
+          (new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0))
+        );
+        const latest = list[0];
+        const latestKey = latest.reporting_year * 100 + latest.reporting_month;
+
+        // 最近一次已是本月或更晚 → 本月已报
+        if (latestKey >= curKey) continue;
+        // 已完工 → 不再续报
+        if (latest.project_status === 'completed') continue;
+
+        pending.push({
+          key,
+          name: latest.project_name,
+          location: latest.construction_location || '',
+          lastYear: latest.reporting_year,
+          lastMonth: latest.reporting_month,
+          gapMonths: (ym.year * 12 + ym.month) - (latest.reporting_year * 12 + latest.reporting_month),
+          prefill: this.buildCarryOver(latest),
+        });
+      }
+
+      // 最近报送的排前面，同月按项目名称排序，便于逐条处理
+      pending.sort((a, b) =>
+        (b.lastYear * 100 + b.lastMonth) - (a.lastYear * 100 + a.lastMonth) ||
+        String(a.name).localeCompare(String(b.name), 'zh')
+      );
+      this.state.pendingProjects = pending;
+    } catch (e) {
+      // 旧库缺列或查询失败时降级：不展示该区块，报送主流程不受影响
+      console.warn('上期待续报项目加载失败，已跳过该区块:', e);
+      this.state.pendingProjects = [];
+    }
+    this.renderPendingBanner();
+  },
+
+  /**
+   * 从一条既往报送记录中抽取「项目固定信息」作为续报预填值
+   */
+  buildCarryOver(record) {
+    const prefill = {};
+    this.CARRY_OVER_FIELDS.forEach((f) => {
+      if (record[f] !== undefined && record[f] !== null) prefill[f] = record[f];
+    });
+    return prefill;
+  },
+
+  /**
+   * 渲染「上期待续报项目」横幅（无待续报项目时不占位）
+   */
+  renderPendingBanner() {
+    const el = document.getElementById('pending-banner');
+    if (!el) return;
+
+    const list = this.state.pendingProjects || [];
+    if (list.length === 0) {
+      el.innerHTML = '';
+      return;
+    }
+
+    const ym = Utils.getCurrentYearMonth();
+    const items = list.map((p) => `
+      <div class="pending-item">
+        <div class="pending-item-main">
+          <span class="pending-item-name" title="${Utils.escapeHtml(p.name)}">${Utils.escapeHtml(p.name)}</span>
+          <span class="pending-item-meta">
+            ${p.location ? Utils.escapeHtml(p.location) + ' · ' : ''}最近报送 ${p.lastYear}年${p.lastMonth}月
+            ${p.gapMonths > 1 ? `<span class="pending-gap">已 ${p.gapMonths} 个月未报</span>` : ''}
+          </span>
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="Reporter.fillFromPending('${this.esc(p.key)}')">填入本月</button>
+      </div>
+    `).join('');
+
+    el.innerHTML = `
+      <div class="pending-banner">
+        <div class="pending-head">
+          <span class="pending-title">上期待续报项目</span>
+          <span class="chip-count">${list.length}</span>
+          <span class="pending-hint">
+            截至上月仍在建、${ym.year}年${ym.month}月尚未报送的项目。点「填入本月」会自动带出项目名称、类型、地点、合同额等固定信息，本月进度与现场情况按实际填写。
+          </span>
+        </div>
+        <div class="pending-list">${items}</div>
+      </div>
+    `;
+  },
+
+  /**
+   * 点击「填入本月」：打开填报表单并预填项目固定信息
+   * @param {string} key 项目归并键（项目名称|施工地点）
+   */
+  fillFromPending(key) {
+    const p = (this.state.pendingProjects || []).find((x) => x.key === key);
+    if (!p) {
+      Utils.toast('该项目状态已变化，请刷新页面后重试', 'error');
+      return;
+    }
+    this.showReportForm(null, p.prefill);
   },
 
   /**
@@ -834,8 +987,10 @@ const Reporter = {
 
   /**
    * 显示报送表单（新建或编辑）
+   * @param {string|null} reportId 编辑时的报送记录 id；传 null 表示新建
+   * @param {Object|null} prefill  新建时的预填值（来自「上期待续报项目」一键带入）
    */
-  async showReportForm(reportId = null) {
+  async showReportForm(reportId = null, prefill = null) {
     this.state.editingId = reportId;
 
     let report = null;
@@ -855,24 +1010,25 @@ const Reporter = {
     const builtinFields = fields.filter(f => f.is_builtin);
     const customFields = fields.filter(f => !f.is_builtin);
 
-    // 表单默认值
-    const v = report || {};
+    // 表单默认值：编辑时读原记录；新建时用续报预填值（无则为空）
+    const v = report || prefill || {};
     const ym = Utils.getCurrentYearMonth();
     const defYear = v.reporting_year || ym.year;
     const defMonth = v.reporting_month || ym.month;
     // 编辑标题附带报送月份，方便定位历史记录
     const editTitle = reportId && report
       ? `编辑项目报送（${report.reporting_year}年${report.reporting_month}月）`
-      : '新建项目报送';
+      : (prefill ? '新建项目报送（已带入上期项目信息）' : '新建项目报送');
 
     // 基本信息区（内置字段，完全由管理员配置驱动）
-    const builtinHTML = this.buildFieldSectionHTML(builtinFields, report);
+    // 注意：取值为 v（编辑时为原记录，新建时为续报预填值），不能传 report
+    const builtinHTML = this.buildFieldSectionHTML(builtinFields, v);
     // 附加数据区（管理员自定义字段）
     const customHTML = customFields.length > 0 ? `
                 <div class="form-group col-span-2 form-section-divider">
                   附加数据<span class="hint" style="margin-left:8px;font-weight:400;">（由管理员在「报送配置」中定义）</span>
                 </div>
-                ${this.buildFieldSectionHTML(customFields, report)}
+                ${this.buildFieldSectionHTML(customFields, v)}
     ` : '';
 
     const modalHTML = `
@@ -1334,6 +1490,8 @@ const Reporter = {
     }
 
     await this.loadReports();
+    // 同步刷新「上期待续报项目」：刚提交的项目应立即移出清单，避免重复报送
+    await this.loadPendingProjects();
   },
 
   /**
@@ -1354,5 +1512,7 @@ const Reporter = {
 
     Utils.toast('报送记录已删除', 'success');
     await this.loadReports();
+    // 删除后该项目可能重新变为「待续报」，同步刷新清单
+    await this.loadPendingProjects();
   },
 };
