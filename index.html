@@ -4,8 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>安全生产管理系统</title>
-  <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/qualification-module.css">
+  <!--
+    ⚠️ 静态资源版本号说明
+    修改 css/ 、js/ 、vendor/ 下任意文件后，请把下面所有 ?v= 的值一起递增
+    （例如改成今天日期 20260924）。GitHub Pages 对静态文件返回
+    Cache-Control: max-age=600，浏览器与 CDN 最长会继续用 10 分钟的旧缓存；
+    改了版本号即可让所有客户端立刻拉取新文件，避免出现「代码已修但页面仍旧」的情况。
+  -->
+  <link rel="stylesheet" href="css/style.css?v=20260923">
+  <link rel="stylesheet" href="css/qualification-module.css?v=20260923">
 </head>
 <body>
   <!-- 应用根容器 -->
@@ -21,29 +28,29 @@
   <div id="toast-container" class="toast-container"></div>
 
   <!-- Supabase JS SDK v2（本地引入，避免 CDN 加载失败） -->
-  <script src="vendor/supabase.min.js"></script>
+  <script src="vendor/supabase.min.js?v=20260923"></script>
   <!-- Excel 解析库（资质证照批量导入 CertImport 依赖 XLSX 全局） -->
-  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="vendor/xlsx.full.min.js?v=20260923"></script>
   <!-- 脚本按顺序加载：基础 → 各业务模块 → 注册表 → 应用入口 -->
-  <script src="js/config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/modules/report/reporter.js"></script>
-  <script src="js/modules/report/admin.js"></script>
-  <script src="js/modules/qualification/certs.js"></script>
-  <script src="js/modules/qualification/admin.js"></script>
-  <script src="js/modules/qualification/import.js"></script>
-  <script src="js/modules/qualification.js"></script>
-  <script src="js/modules/inspection.js"></script>
-  <script src="js/modules/vehicle.js"></script>
-  <script src="js/modules/docstudy.js"></script>
-  <script src="js/modules/performance.js"></script>
-  <script src="js/modules/contract.js"></script>
-  <script src="js/modules/training.js"></script>
-  <script src="js/modules/notice.js"></script>
-  <script src="js/modules/registry.js"></script>
-  <script src="js/account.js"></script>
-  <script src="js/dashboard.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/config.js?v=20260923"></script>
+  <script src="js/utils.js?v=20260923"></script>
+  <script src="js/auth.js?v=20260923"></script>
+  <script src="js/modules/report/reporter.js?v=20260923"></script>
+  <script src="js/modules/report/admin.js?v=20260923"></script>
+  <script src="js/modules/qualification/certs.js?v=20260923"></script>
+  <script src="js/modules/qualification/admin.js?v=20260923"></script>
+  <script src="js/modules/qualification/import.js?v=20260923"></script>
+  <script src="js/modules/qualification.js?v=20260923"></script>
+  <script src="js/modules/inspection.js?v=20260923"></script>
+  <script src="js/modules/vehicle.js?v=20260923"></script>
+  <script src="js/modules/docstudy.js?v=20260923"></script>
+  <script src="js/modules/performance.js?v=20260923"></script>
+  <script src="js/modules/contract.js?v=20260923"></script>
+  <script src="js/modules/training.js?v=20260923"></script>
+  <script src="js/modules/notice.js?v=20260923"></script>
+  <script src="js/modules/registry.js?v=20260923"></script>
+  <script src="js/account.js?v=20260923"></script>
+  <script src="js/dashboard.js?v=20260923"></script>
+  <script src="js/app.js?v=20260923"></script>
 </body>
 </html>
