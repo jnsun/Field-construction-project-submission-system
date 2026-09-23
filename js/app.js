@@ -132,13 +132,13 @@ const App = {
           <div class="logo">
             <h1>安全生产管理系统</h1>
             <p class="logo-en">Safety Production Management System</p>
-            <p class="logo-hint">请使用部门账号登录</p>
+            <p class="logo-hint">请使用手机号或邮箱登录</p>
           </div>
           <div class="login-error" id="login-error"></div>
           <form id="login-form" onsubmit="return false">
             <div class="form-group">
-              <label for="login-email">邮箱 / 手机号 / 部门名称 / 部门编码</label>
-              <input type="text" id="login-email" placeholder="请输入邮箱、手机号、部门名称或部门编码（如：13800138000 或 工程一部 或 DEPT-01）" required autocomplete="username">
+              <label for="login-email">手机号 / 邮箱</label>
+              <input type="text" id="login-email" placeholder="请输入 11 位手机号或登录邮箱（如：13800138000）" required autocomplete="username">
             </div>
             <div class="form-group">
               <label for="login-password">密码</label>
@@ -176,7 +176,7 @@ const App = {
     const password = passEl.value;
 
     if (!identifier || !password) {
-      errorEl.textContent = '请输入邮箱/手机号/部门名称/部门编码和密码';
+      errorEl.textContent = '请输入手机号/邮箱和密码';
       errorEl.classList.add('show');
       return;
     }

@@ -50,8 +50,8 @@ const Auth = {
   },
 
   /**
-   * 登录（支持邮箱 / 手机号 / 部门名称 / 部门编码）
-   * @param {string} identifier 邮箱、手机号、部门名称或部门编码
+   * 登录（支持 11 位手机号 / 登录邮箱）
+   * @param {string} identifier 手机号或邮箱
    * @param {string} password
    * @returns {Promise<{success: boolean, error?: string}>}
    */
@@ -64,7 +64,7 @@ const Auth = {
       return { success: false, error: e.message || '无法解析登录账号' };
     }
     if (!email) {
-      return { success: false, error: '未找到对应的登录账号，请检查输入内容' };
+      return { success: false, error: '请输入 11 位手机号或有效的登录邮箱' };
     }
 
     const { data, error } = await sb.auth.signInWithPassword({
@@ -100,11 +100,17 @@ const Auth = {
 
   /**
    * 将用户输入的标识符解析为登录邮箱
-   * 支持：邮箱 / 手机号 / 部门名称 / 部门编码
-   * 邮箱在前端直接识别；手机号、部门名称/编码由 RPC 解析
-   * （需执行 sql/phone-login.sql 后手机号解析才生效，旧库提示未找到）
+   * 支持：邮箱 / 11 位手机号
+   *
+   * ⚠️ 手机号在前端直接映射为内部登录别名 `<手机号>@login.local`，
+   *    不再调用 resolve_login_identifier —— 该 RPC 已在 sql/login-account.sql、
+   *    sql/security-hardening-v1.sql 中被显式 REVOKE（原因：避免匿名枚举账号），
+   *    调用它只会抛 `permission denied for function resolve_login_identifier`。
+   *    数据库侧 sql/phone-password-login-v2.sql + v3 触发器会保证有手机号的账号
+   *    其 auth.users.email 始终等于该别名，因此前端本地映射即可完成登录。
+   *
    * @param {string} identifier
-   * @returns {Promise<string|null>} 解析失败返回 null，RPC 出错抛出异常
+   * @returns {Promise<string|null>} 解析失败返回 null
    */
   async resolveLoginEmail(identifier) {
     const id = String(identifier || '').trim();
@@ -115,12 +121,13 @@ const Auth = {
       return id.toLowerCase();
     }
 
-    // 手机号 / 部门名称 / 部门编码 → 调用 RPC 解析为邮箱
-    const { data, error } = await sb.rpc('resolve_login_identifier', { p_identifier: id });
-    if (error) {
-      throw new Error(this.extractRpcMessage(error));
+    // 手机号（允许带 +86 前缀）→ 内部登录别名
+    const digits = id.replace(/^\+?86/, '');
+    if (/^1[3-9][0-9]{9}$/.test(digits)) {
+      return `${digits}@login.local`;
     }
-    if (data && data.email) return data.email;
+
+    // 其他标识符（部门名称/编码）已不再支持，提示改用手机号或邮箱
     return null;
   },
 
@@ -240,7 +247,7 @@ const Auth = {
    */
   mapAuthError(msg) {
     const map = {
-      'Invalid login credentials': '邮箱或密码错误。请排查：① 该账号是否已在 Supabase 控制台 Authentication → Users 中创建；② 密码是否正确（可在 Users 页面重置密码）；③ 若开启了邮箱确认，需先点击确认邮件后才能登录；④ config.js 中的 Project URL 是否为当前项目的地址',
+      'Invalid login credentials': '手机号/邮箱或密码错误。请排查：① 输入的是否为 11 位手机号（账号已统一改用手机号登录，登录名为 <手机号>@login.local，原邮箱登录名已停用）；② 密码是否正确（可在 Supabase 控制台 Authentication → Users 中重置）；③ 该账号是否在当前项目（config.js 中的 SUPABASE_URL）中创建',
       'Email not confirmed': '邮箱未验证，请到邮箱中点击确认链接后再登录',
       'Email rate limit exceeded': '尝试次数过多，请稍后再试',
       'User already registered': '该邮箱已注册',
