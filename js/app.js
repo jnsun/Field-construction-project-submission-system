@@ -176,7 +176,7 @@ const App = {
     const password = passEl.value;
 
     if (!identifier || !password) {
-      errorEl.textContent = '请输入邮箱/手机号/部门名称/部门编码和密码';
+      errorEl.textContent = '请输入手机号/邮箱和密码';
       errorEl.classList.add('show');
       return;
     }
